@@ -2,15 +2,13 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { chatJSON } from '@/lib/llm/openai';
 import { googleTrends, change } from '@/lib/connectors/trends';
-import { keywordIdeas, type KeywordIdea } from '@/lib/connectors/google';
-import { has } from '@/lib/env';
+import { keywordIdeas, googleAdsReady, type KeywordIdea } from '@/lib/connectors/google';
 import { emit } from './events';
 import { loadMemory } from './memory';
 import { persona } from './people';
 import { fileReport } from './review';
 
 const BASE_SEEDS = ['gold necklace', 'temple jewellery', 'bridal jewellery', 'diamond ring', 'gold bangles', 'kerala jewellery'];
-const ADS_KEYS = ['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID', 'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'GOOGLE_OAUTH_REFRESH_TOKEN'];
 const msg = (e: unknown) => e instanceof Error ? e.message : String(e);
 
 /** Search terms to study: SEO_SEED_KEYWORDS if set, else what the store sells most plus a few jewellery staples. */
@@ -60,12 +58,13 @@ export async function runSeo(db: SupabaseClient) {
 
     // Keyword Planner: monthly searches, competition and bids
     let ideas: KeywordIdea[] = [];
-    if (has(...ADS_KEYS)) {
+    const ads = await googleAdsReady();
+    if (ads) {
       try {
         await emit(db, run.id, 'think', 'keywordResearcher', 'Pulling search volumes from Keyword Planner');
         ideas = (await keywordIdeas(terms)).filter(i => i.avg_monthly_searches).sort((a, b) => (b.avg_monthly_searches || 0) - (a.avg_monthly_searches || 0)).slice(0, 150);
         for (const i of ideas) { const r = row(i.keyword); const { keyword: _k, ...rest } = i; Object.assign(r, rest); (r.source as string[]).push('keyword_planner'); }
-        await db.from('connections').upsert({ provider: 'keyword_planner', status: 'connected', account_ref: process.env.GOOGLE_ADS_CUSTOMER_ID, last_synced_at: now, last_error: null });
+        await db.from('connections').upsert({ provider: 'keyword_planner', status: 'connected', account_ref: ads.customer, last_synced_at: now, last_error: null });
       } catch (e) {
         problems.push(`Keyword Planner: ${msg(e)}`);
         await db.from('connections').upsert({ provider: 'keyword_planner', status: 'error', last_error: msg(e).slice(0, 500) });

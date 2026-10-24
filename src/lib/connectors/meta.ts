@@ -1,17 +1,29 @@
 import 'server-only';
-import { env, opt } from '@/lib/env';
+import { opt } from '@/lib/env';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { loadAccess } from './vault';
 
-const G = () => `https://graph.facebook.com/${opt('META_API_VERSION', 'v21.0')}`;
+export const G = () => `https://graph.facebook.com/${opt('META_API_VERSION', 'v21.0')}`;
+
+type MetaConfig = { token: string; account?: string; page?: string; ig?: string };
+/** Access connected on the Admin page, else the Vercel keys, else null. */
+export async function metaConfig(): Promise<MetaConfig | null> {
+  const s = await loadAccess('meta');
+  if (s) return { token: s.tokens.access_token, account: s.settings.ad_account_id, page: s.settings.page_id, ig: s.settings.ig_user_id };
+  const e = process.env;
+  return e.META_ACCESS_TOKEN ? { token: e.META_ACCESS_TOKEN, account: e.META_AD_ACCOUNT_ID, page: e.META_PAGE_ID, ig: e.META_IG_USER_ID } : null;
+}
+async function cfg() { const c = await metaConfig(); if (!c) throw new Error('Meta is not connected. Connect it on the Admin page.'); return c; }
+const need = (v: string | undefined, what: string) => { if (!v) throw new Error(`Choose the Meta ${what} on the Admin page.`); return v; };
 
 async function get(path: string, params: Record<string, string> = {}) {
-  const u = new URL(`${G()}/${path}`); Object.entries({ ...params, access_token: env('META_ACCESS_TOKEN') }).forEach(([k, v]) => u.searchParams.set(k, v));
+  const u = new URL(`${G()}/${path}`); Object.entries({ ...params, access_token: (await cfg()).token }).forEach(([k, v]) => u.searchParams.set(k, v));
   const res = await fetch(u); const data = await res.json();
   if (!res.ok || data.error) throw new Error(`Meta ${res.status}: ${data.error?.message || JSON.stringify(data).slice(0, 200)}`);
   return data;
 }
 async function post(path: string, body: Record<string, unknown>) {
-  const form = new URLSearchParams({ access_token: env('META_ACCESS_TOKEN') });
+  const form = new URLSearchParams({ access_token: (await cfg()).token });
   Object.entries(body).forEach(([k, v]) => form.set(k, typeof v === 'string' ? v : JSON.stringify(v)));
   const res = await fetch(`${G()}/${path}`, { method: 'POST', body: form }); const data = await res.json();
   if (!res.ok || data.error) throw new Error(`Meta ${res.status}: ${data.error?.error_user_msg || data.error?.message || JSON.stringify(data).slice(0, 200)}`);
@@ -26,7 +38,7 @@ const act = (list: any[] | undefined, type: string) => Number(list?.find(a => a.
 
 /** Daily results per ad for the last 30 days. */
 export async function syncAdInsights(db: SupabaseClient) {
-  const rows = (await all(`${env('META_AD_ACCOUNT_ID')}/insights`, {
+  const rows = (await all(`${need((await cfg()).account, 'ad account')}/insights`, {
     level: 'ad', time_increment: '1', date_preset: 'last_30d', limit: '500',
     fields: 'ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,actions,action_values',
   })).map(r => ({
@@ -40,7 +52,7 @@ export async function syncAdInsights(db: SupabaseClient) {
 
 /** Your recent Instagram posts with reach and saves, so the Post Analyst can see what sells. */
 export async function syncInstagram(db: SupabaseClient, limit = 50) {
-  const media = (await get(`${env('META_IG_USER_ID')}/media`, { fields: 'id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count', limit: String(limit) })).data as any[];
+  const media = (await get(`${need((await cfg()).ig, 'Instagram account')}/media`, { fields: 'id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count', limit: String(limit) })).data as any[];
   const rows = [];
   for (const m of media) {
     let reach = null, saves = null, shares = null;
@@ -58,7 +70,7 @@ export async function syncInstagram(db: SupabaseClient, limit = 50) {
 
 /** A competitor's public Instagram business profile and latest posts (Instagram business discovery). */
 export async function competitorInstagram(handle: string) {
-  const d = await get(env('META_IG_USER_ID'), {
+  const d = await get(need((await cfg()).ig, 'Instagram account'), {
     fields: `business_discovery.username(${handle}){username,followers_count,media_count,media.limit(12){caption,like_count,comments_count,timestamp,permalink,media_type}}`,
   });
   return d.business_discovery as { username: string; followers_count: number; media: { data: any[] } };
@@ -79,7 +91,7 @@ export type MetaLaunch = { name: string; dailyBudgetInr: number; days: number; l
  * so a half-built campaign never spends. Only called after the Super Admin approves.
  */
 export async function publishCampaign(p: MetaLaunch) {
-  const account = env('META_AD_ACCOUNT_ID'), pixel = process.env.META_PIXEL_ID;
+  const c = await cfg(), account = need(c.account, 'ad account'), pixel = process.env.META_PIXEL_ID;
   const campaign = await post(`${account}/campaigns`, { name: p.name, objective: pixel ? 'OUTCOME_SALES' : 'OUTCOME_TRAFFIC', status: 'PAUSED', special_ad_categories: [] });
   const start = new Date(), end = new Date(Date.now() + p.days * 864e5);
   const adset = await post(`${account}/adsets`, {
@@ -90,7 +102,7 @@ export async function publishCampaign(p: MetaLaunch) {
   });
   const img = await post(`${account}/adimages`, { bytes: p.image.toString('base64') });
   const hash = Object.values(img.images as Record<string, { hash: string }>)[0].hash;
-  const creative = await post(`${account}/adcreatives`, { name: p.name, object_story_spec: { page_id: env('META_PAGE_ID'), instagram_user_id: process.env.META_IG_USER_ID, link_data: { image_hash: hash, link: p.link, message: p.message, name: p.headline, call_to_action: { type: 'SHOP_NOW', value: { link: p.link } } } } });
+  const creative = await post(`${account}/adcreatives`, { name: p.name, object_story_spec: { page_id: need(c.page, 'Facebook page'), instagram_user_id: c.ig, link_data: { image_hash: hash, link: p.link, message: p.message, name: p.headline, call_to_action: { type: 'SHOP_NOW', value: { link: p.link } } } } });
   const ad = await post(`${account}/ads`, { name: p.name, adset_id: adset.id, creative: { creative_id: creative.id }, status: 'ACTIVE' });
   await post(adset.id, { status: 'ACTIVE' });
   await post(campaign.id, { status: 'ACTIVE' });

@@ -2,19 +2,20 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { has } from '@/lib/env';
 import { syncProducts, syncOrders, shopifyReady } from '@/lib/connectors/shopify';
-import { syncAdInsights, syncInstagram } from '@/lib/connectors/meta';
-import { syncGoogleAds } from '@/lib/connectors/google';
+import { syncAdInsights, syncInstagram, metaConfig } from '@/lib/connectors/meta';
+import { syncGoogleAds, googleAdsReady } from '@/lib/connectors/google';
 import { learnFromData } from './learn';
 import { emit } from './events';
 
-const JOBS: { provider: string; bot: string; needs: string[]; ready?: () => boolean; run: (db: SupabaseClient) => Promise<string>; ref?: () => string | undefined }[] = [
-  { provider: 'shopify', bot: 'shopifySync', needs: ['SHOPIFY_STORE_DOMAIN'], ready: shopifyReady, ref: () => process.env.SHOPIFY_STORE_DOMAIN,
+// ready() says whether a platform can be reached, from access connected on the Admin page or from Vercel keys, and names the account
+const JOBS: { provider: string; bot: string; ready: () => Promise<string | null | undefined>; run: (db: SupabaseClient) => Promise<string> }[] = [
+  { provider: 'shopify', bot: 'shopifySync', ready: shopifyReady,
     run: async db => `${await syncProducts(db)} products, ${await syncOrders(db)} product-days of orders` },
-  { provider: 'meta', bot: 'metaSync', needs: ['META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID'], ref: () => process.env.META_AD_ACCOUNT_ID,
+  { provider: 'meta', bot: 'metaSync', ready: async () => (await metaConfig())?.account,
     run: async db => `${await syncAdInsights(db)} ad-days` },
-  { provider: 'instagram', bot: 'metaSync', needs: ['META_ACCESS_TOKEN', 'META_IG_USER_ID'], ref: () => process.env.META_IG_USER_ID,
+  { provider: 'instagram', bot: 'metaSync', ready: async () => (await metaConfig())?.ig,
     run: async db => `${await syncInstagram(db)} posts` },
-  { provider: 'google_ads', bot: 'googleSync', needs: ['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID', 'GOOGLE_OAUTH_REFRESH_TOKEN'], ref: () => process.env.GOOGLE_ADS_CUSTOMER_ID,
+  { provider: 'google_ads', bot: 'googleSync', ready: async () => (await googleAdsReady())?.customer,
     run: async db => `${await syncGoogleAds(db)} ad-days` },
 ];
 
@@ -22,12 +23,14 @@ const JOBS: { provider: string; bot: string; needs: string[]; ready?: () => bool
 export async function syncAll(db: SupabaseClient) {
   const results: Record<string, string> = {};
   for (const j of JOBS) {
-    if (!has(...j.needs) || (j.ready && !j.ready())) { results[j.provider] = 'not connected'; continue; }
+    let ref: string | null | undefined;
+    try { ref = await j.ready(); } catch { ref = null; }
+    if (!ref) { results[j.provider] = 'not connected'; continue; }
     try {
       await emit(db, null, 'think', j.bot, `Syncing ${j.provider.replace('_', ' ')}`);
       const msg = await j.run(db);
       results[j.provider] = msg;
-      await db.from('connections').upsert({ provider: j.provider, status: 'connected', account_ref: j.ref?.() ?? null, last_synced_at: new Date().toISOString(), last_error: null });
+      await db.from('connections').upsert({ provider: j.provider, status: 'connected', account_ref: ref, last_synced_at: new Date().toISOString(), last_error: null });
       await emit(db, null, 'say', j.bot, `Synced ${msg}.`, 'dataLead');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

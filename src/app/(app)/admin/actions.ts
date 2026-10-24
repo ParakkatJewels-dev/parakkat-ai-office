@@ -6,6 +6,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { startCampaign, advance } from '@/lib/agents/campaign';
 import { syncAll } from '@/lib/agents/sync';
 import { publishApproved } from '@/lib/agents/publish';
+import { loadAccess, saveSettings, dropAccess, type Platform } from '@/lib/connectors/vault';
+import { connectionRows } from '@/lib/connectors/connect';
 
 async function admin() {
   const u = await requireUser();
@@ -70,4 +72,41 @@ export async function retireLesson(form: FormData) {
   await admin();
   const { error } = await supabaseAdmin().from('lessons').update({ active: false }).eq('id', String(form.get('id')));
   if (error) fail(error); done('Lesson retired. The agents stop reading it.');
+}
+
+const PLATFORM_NAME: Record<Platform, string> = { meta: 'Meta', google: 'Google', shopify: 'Shopify' };
+const platformOf = (form: FormData) => { const p = String(form.get('platform')) as Platform; if (!(p in PLATFORM_NAME)) throw new Error('Unknown platform.'); return p; };
+
+/** Which ad account, page, Instagram account or Analytics property a connected platform should use. */
+export async function chooseAccounts(form: FormData) {
+  await admin();
+  const f = (k: string) => String(form.get(k) || '').trim() || undefined;
+  try {
+    const p = platformOf(form), s = (await loadAccess(p))?.settings;
+    if (!s) throw new Error(`Connect ${PLATFORM_NAME[p]} first.`);
+    let patch: Record<string, string | undefined>;
+    if (p === 'meta') {
+      const ad = f('ad'), page = (s.choices?.pages || []).find((x: any) => x.id === f('page'));
+      if (ad && !(s.choices?.ads || []).some((x: any) => x.id === ad)) throw new Error('That ad account is not one this sign-in can reach.');
+      patch = { ad_account_id: ad, page_id: page?.id, ig_user_id: page?.ig || undefined };
+    } else if (p === 'google') {
+      const id = (k: string) => f(k)?.replace(/-/g, '');
+      patch = { customer_id: id('customer'), login_customer_id: id('login'), ga4_property_id: id('ga4') };
+      for (const [k, v] of Object.entries(patch)) if (v && !/^\d{4,12}$/.test(v)) throw new Error(`${k === 'ga4_property_id' ? 'The Analytics property' : 'A Google Ads account'} id should be digits only.`);
+    } else throw new Error('Shopify needs no choice: it is one store.');
+    await saveSettings(p, patch);
+    await supabaseAdmin().from('connections').upsert(connectionRows(p, { ...s, ...patch }));
+  } catch (e) { fail(e); }
+  done('Saved. Press Sync data now to pull it in.');
+}
+
+/** Forget the access saved from the app. The platform falls back to Vercel keys if any are set. */
+export async function disconnect(form: FormData) {
+  await admin();
+  let p: Platform = 'meta';
+  try {
+    p = platformOf(form); await dropAccess(p);
+    await supabaseAdmin().from('connections').upsert(connectionRows(p, {}));
+  } catch (e) { fail(e); }
+  done(`${PLATFORM_NAME[p]} disconnected. Remove the app from the ${PLATFORM_NAME[p]} account too if you no longer want it to have access.`);
 }

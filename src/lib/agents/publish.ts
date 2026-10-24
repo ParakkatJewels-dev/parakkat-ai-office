@@ -1,7 +1,6 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { publishCampaign } from '@/lib/connectors/meta';
-import { has } from '@/lib/env';
+import { publishCampaign, metaConfig } from '@/lib/connectors/meta';
 import { emit } from './events';
 
 /**
@@ -15,7 +14,8 @@ export async function publishApproved(db: SupabaseClient, approvalId: string, si
   const { data: cr } = await db.from('creatives').select().eq('campaign_id', a.campaign_id).not('image_path', 'is', null).limit(1).maybeSingle();
   const ids: Record<string, unknown> = { ...(c.external_ids || {}) };
 
-  if (c.channels.includes('meta') && has('META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID', 'META_PAGE_ID')) {
+  const meta = await metaConfig();
+  if (c.channels.includes('meta') && meta?.account && meta.page) {
     if (!cr) throw new Error('This plan has no banner image to publish on Meta.');
     await emit(db, c.run_id, 'think', 'metaSpec', `Creating ${c.name} on Meta within the approved cap`);
     const img = await db.storage.from('creatives').download(cr.image_path);
