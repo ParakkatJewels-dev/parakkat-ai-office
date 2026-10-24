@@ -31,6 +31,7 @@ before(async () => {
   await db.exec(read('supabase/migrations/20261024000400_scale.sql'));
   await db.exec(read('supabase/migrations/20261024000500_learn_from_leads.sql'));
   await db.exec(read('supabase/migrations/20261024000600_platform_credentials.sql'));
+  await db.exec(read('supabase/migrations/20261024000700_sync_lock.sql'));
   // what Supabase grants signed-in users by default
   await db.exec(`grant usage on schema public, auth to authenticated; grant all on all tables in schema public to authenticated; grant execute on function auth.uid() to authenticated;`);
   for (const [k, id] of Object.entries(U)) await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [id, { full_name: k }]);
@@ -161,4 +162,16 @@ test('saved platform access is out of reach for everyone signed in, the Super Ad
     const rows = await as(who, 'select secret from platform_credentials').then(r => r.rows, () => []);
     assert.equal(rows.length, 0);
   }
+});
+
+test('only one sync holds the lock until it lets go', async () => {
+  const take = async who => (await db.query(`select acquire_job_lock('sync', $1, 300) ok`, [who])).rows[0].ok;
+  assert.equal(await take('first'), true);
+  assert.equal(await take('second'), false);
+  await db.query(`select release_job_lock('sync', 'second')`); // someone else's release does nothing
+  assert.equal(await take('second'), false);
+  await db.query(`select release_job_lock('sync', 'first')`);
+  assert.equal(await take('second'), true);
+  await db.exec(`update job_locks set until = now() - interval '1 second'`); // an expired lease can be taken over
+  assert.equal(await take('third'), true);
 });

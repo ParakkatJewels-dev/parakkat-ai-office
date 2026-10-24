@@ -1,4 +1,5 @@
 import 'server-only';
+import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { has } from '@/lib/env';
 import { syncProducts, syncOrders, shopifyReady } from '@/lib/connectors/shopify';
@@ -8,9 +9,13 @@ import { learnFromData } from './learn';
 import { emit } from './events';
 
 // ready() says whether a platform can be reached, from access connected on the Admin page or from Vercel keys, and names the account
-const JOBS: { provider: string; bot: string; ready: () => Promise<string | null | undefined>; run: (db: SupabaseClient) => Promise<string> }[] = [
+const JOBS: { provider: string; bot: string; ready: () => Promise<string | null | undefined>; run: (db: SupabaseClient, deadline: number) => Promise<string> }[] = [
+  // orders first: they are what the agents read most, and they finish quickly; products use whatever time is left
   { provider: 'shopify', bot: 'shopifySync', ready: shopifyReady,
-    run: async db => `${await syncProducts(db)} products, ${await syncOrders(db)} product-days of orders` },
+    run: async (db, deadline) => {
+      const orders = await syncOrders(db, 30, deadline), p = await syncProducts(db, deadline);
+      return `${orders} product-days of orders, ${p.count} products${p.more ? ' (more next sync, it carries on where it stopped)' : ''}`;
+    } },
   { provider: 'meta', bot: 'metaSync', ready: async () => (await metaConfig())?.account,
     run: async db => `${await syncAdInsights(db)} ad-days` },
   { provider: 'instagram', bot: 'metaSync', ready: async () => (await metaConfig())?.ig,
@@ -21,14 +26,25 @@ const JOBS: { provider: string; bot: string; ready: () => Promise<string | null 
 
 /** Pull fresh data from every connected platform. Each Data Hub bot reports to the Data Hub Lead. */
 export async function syncAll(db: SupabaseClient) {
+  // one sync at a time: two at once spend Shopify's query budget twice over and both get throttled
+  const holder = randomUUID();
+  const { data: got, error } = await db.rpc('acquire_job_lock', { p_name: 'sync', p_holder: holder, p_seconds: 300 });
+  if (error) throw new Error(`Could not start the sync: ${error.message}`);
+  if (!got) return { sync: 'A sync is already running. It finishes within five minutes; check back then.' } as Record<string, string>;
+  try { return await syncLocked(db); } finally { await db.rpc('release_job_lock', { p_name: 'sync', p_holder: holder }); }
+}
+
+async function syncLocked(db: SupabaseClient) {
   const results: Record<string, string> = {};
+  // the request may run for 300 seconds; each platform gets until about two and a half minutes in, then saves its place
+  const deadline = Date.now() + 150_000;
   for (const j of JOBS) {
     let ref: string | null | undefined;
     try { ref = await j.ready(); } catch { ref = null; }
     if (!ref) { results[j.provider] = 'not connected'; continue; }
     try {
       await emit(db, null, 'think', j.bot, `Syncing ${j.provider.replace('_', ' ')}`);
-      const msg = await j.run(db);
+      const msg = await j.run(db, deadline);
       results[j.provider] = msg;
       await db.from('connections').upsert({ provider: j.provider, status: 'connected', account_ref: ref, last_synced_at: new Date().toISOString(), last_error: null });
       await emit(db, null, 'say', j.bot, `Synced ${msg}.`, 'dataLead');

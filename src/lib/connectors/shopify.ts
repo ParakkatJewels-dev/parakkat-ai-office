@@ -2,6 +2,7 @@ import 'server-only';
 import { env, opt } from '@/lib/env';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess, saveAccess, type Saved } from './vault';
+import { isThrottled, waitMs } from './shopify-limits.mjs';
 
 let cached: { token: string; until: number } | null = null;
 type Store = { domain: string; saved: Saved | null };
@@ -49,42 +50,70 @@ async function adminToken(s: Store) {
   return cached.token;
 }
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/** One GraphQL call. Waits when Shopify's query budget runs low and retries when it says THROTTLED. */
 async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
   const s = await store(); if (!s) throw new Error('Shopify is not connected. Connect it on the Admin page.');
-  const res = await fetch(`https://${s.domain}/admin/api/${opt('SHOPIFY_API_VERSION', '2025-07')}/graphql.json`, {
-    method: 'POST',
-    headers: { 'X-Shopify-Access-Token': await adminToken(s), 'content-type': 'application/json' },
-    body: JSON.stringify({ query, variables }),
-  });
-  const data = await res.json();
-  if (!res.ok || data.errors) throw new Error(`Shopify ${res.status}: ${JSON.stringify(data.errors || data).slice(0, 300)}`);
-  return data.data as T;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`https://${s.domain}/admin/api/${opt('SHOPIFY_API_VERSION', '2025-07')}/graphql.json`, {
+      method: 'POST',
+      headers: { 'X-Shopify-Access-Token': await adminToken(s), 'content-type': 'application/json' },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (res.status === 429 && attempt < 6) { await sleep(Number(res.headers.get('retry-after') || 2) * 1000); continue; }
+    const data = await res.json().catch(() => ({}));
+    const cost = data.extensions?.cost;
+    if (isThrottled(data) && attempt < 6) { await sleep(waitMs(cost, { throttled: true, attempt })); continue; }
+    if (!res.ok || data.errors) throw new Error(`Shopify ${res.status}: ${JSON.stringify(data.errors || data).slice(0, 300)}`);
+    const pause = waitMs(cost); if (pause) await sleep(pause);
+    return data.data as T;
+  }
 }
 const num = (gid: string) => Number(gid.split('/').pop());
 
-/** Products with price, stock and main photo. The photo is what the Creative House builds banners from. */
-export async function syncProducts(db: SupabaseClient) {
-  let after: string | null = null, count = 0;
+type ProductPass = { after?: string | null; query?: string; started?: string; done_at?: string };
+
+/**
+ * Products with price, stock and main photo. The photo is what the Creative House builds banners from.
+ * The first pass reads every product; later passes only those changed since the last finished pass. A pass that runs
+ * out of time saves its place and the next sync carries on from there, so a store of any size gets there in the end.
+ */
+export async function syncProducts(db: SupabaseClient, deadline = Date.now() + 240_000) {
+  const { data: saved } = await db.from('sync_cursors').select('state').eq('name', 'shopify_products').maybeSingle();
+  let pass: ProductPass = saved?.state || {};
+  if (!pass.after) {
+    // a new pass: everything the first time, then whatever changed since the last pass began (with an hour's overlap)
+    const from = pass.done_at ? new Date(Date.parse(pass.done_at) - 3600_000).toISOString() : null;
+    pass = { after: null, query: from ? `updated_at:>='${from}'` : '', started: new Date().toISOString(), done_at: pass.done_at };
+  }
+  const keep = (state: ProductPass) => db.from('sync_cursors').upsert({ name: 'shopify_products', state, updated_at: new Date().toISOString() });
+  let count = 0, after = pass.after ?? null;
   do {
-    const d: any = await gql(`query($after: String) { products(first: 100, after: $after) { pageInfo { hasNextPage endCursor }
-      nodes { id title handle productType tags status updatedAt totalInventory featuredMedia { preview { image { url } } } variants(first: 1) { nodes { price } } } } }`, { after });
+    const d: any = await gql(`query($after: String, $q: String) { products(first: 50, after: $after, query: $q) { pageInfo { hasNextPage endCursor }
+      nodes { id title handle productType tags status updatedAt totalInventory featuredMedia { preview { image { url } } } variants(first: 1) { nodes { price } } } } }`, { after, q: pass.query || null });
     const rows = d.products.nodes.map((p: any) => ({
       id: num(p.id), title: p.title, handle: p.handle, product_type: p.productType, tags: p.tags, status: p.status, updated_at: p.updatedAt,
       inventory: p.totalInventory, price: Number(p.variants.nodes[0]?.price ?? 0), image_url: p.featuredMedia?.preview?.image?.url ?? null,
     }));
     if (rows.length) { const { error } = await db.from('products').upsert(rows); if (error) throw error; }
     count += rows.length; after = d.products.pageInfo.hasNextPage ? d.products.pageInfo.endCursor : null;
+    if (after && Date.now() > deadline) { await keep({ ...pass, after }); return { count, more: true }; }
   } while (after);
-  return count;
+  await keep({ done_at: pass.started });
+  return { count, more: false };
 }
 
-/** Units and revenue per product per day for the last `days` days. */
-export async function syncOrders(db: SupabaseClient, days = 30) {
+/**
+ * Units and revenue per product per day for the last `days` days. Totals are only written once every order in the window
+ * has been read, so a run cut short never replaces good numbers with partial ones.
+ */
+export async function syncOrders(db: SupabaseClient, days = 30, deadline = Date.now() + 240_000) {
   const since = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
   const agg = new Map<string, { day: string; product_id: number; units: number; revenue: number }>();
   let after: string | null = null;
   do {
-    const d: any = await gql(`query($after: String, $q: String) { orders(first: 100, after: $after, query: $q) { pageInfo { hasNextPage endCursor }
+    const d: any = await gql(`query($after: String, $q: String) { orders(first: 50, after: $after, query: $q) { pageInfo { hasNextPage endCursor }
       nodes { createdAt lineItems(first: 50) { nodes { quantity product { id } discountedTotalSet { shopMoney { amount } } } } } } }`, { after, q: `created_at:>=${since} -status:cancelled` });
     for (const o of d.orders.nodes) for (const li of o.lineItems.nodes) {
       if (!li.product) continue;
@@ -93,6 +122,7 @@ export async function syncOrders(db: SupabaseClient, days = 30) {
       a.units += li.quantity; a.revenue += Number(li.discountedTotalSet.shopMoney.amount); agg.set(k, a);
     }
     after = d.orders.pageInfo.hasNextPage ? d.orders.pageInfo.endCursor : null;
+    if (after && Date.now() > deadline) throw new Error('Ran out of time reading orders; the last good totals are kept. The next sync tries again.');
   } while (after);
   const rows = [...agg.values()];
   if (rows.length) { const { error } = await db.from('orders_daily').upsert(rows); if (error) throw error; }

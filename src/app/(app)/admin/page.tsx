@@ -6,6 +6,7 @@ import { BUILDINGS } from '@/office/roster.mjs';
 import { Icon } from '@/components/Icon';
 import { PageHead, Tile, Avatar, Stepper, Pager, pageOf, rangeOf, when } from '@/components/ui';
 import { Integrations } from './Integrations';
+import { SyncButton } from './SyncButton';
 import { setRole, setHead, addCompetitor, runCampaign, nextStep, syncNow, publishAgain, saveBrandBook, addLesson, retireLesson } from './actions';
 
 export const maxDuration = 300;
@@ -42,7 +43,7 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
       {sp.msg && <p className="flash ok">{sp.msg}</p>}
       {sp.error && <p className="flash">{sp.error}</p>}
       <PageHead title="Admin" sub="Start campaigns, check the data connections, and decide who heads each department.">
-        <form action={syncNow}><button className="btn ghost"><Icon name="sync" size={18} />Sync data now</button></form>
+        <form action={syncNow}><SyncButton /></form>
       </PageHead>
 
       <section className="tiles" aria-label="Summary">
