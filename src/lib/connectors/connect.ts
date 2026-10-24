@@ -1,8 +1,9 @@
 import 'server-only';
 import { env, has, opt } from '@/lib/env';
 import { G } from './meta';
-import { accessToken } from './google';
+import { accessToken, devToken } from './google';
 import { shopifyHmacOk } from './oauth-core.mjs';
+import { chosen, googleId, metaId, type GoogleChoice } from './accounts.mjs';
 import type { Platform, Tokens } from './vault';
 
 /**
@@ -14,7 +15,7 @@ import type { Platform, Tokens } from './vault';
 /** The Vercel keys each platform's app needs before its Connect button works. */
 export const APP_KEYS: Record<Platform, string[]> = {
   meta: ['META_APP_ID', 'META_APP_SECRET'],
-  google: ['GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'GOOGLE_ADS_DEVELOPER_TOKEN'],
+  google: ['GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET'],
   shopify: ['SHOPIFY_CLIENT_ID', 'SHOPIFY_CLIENT_SECRET'],
 };
 export const appReady = (p: Platform) => has(...APP_KEYS[p]);
@@ -67,7 +68,7 @@ export async function finish(p: Platform, params: URLSearchParams, redirectUri: 
     const ads: Option[] = (acts.data || []).map((a: any) => ({ id: a.id, name: a.name || a.id }));
     const pg = (pages.data || []).map((x: any) => ({ id: x.id, name: x.name, ig: x.instagram_business_account?.id || null, ig_name: x.instagram_business_account?.username || null }));
     const settings: Record<string, any> = { choices: { ads, pages: pg } };
-    if (ads.length === 1) settings.ad_account_id = ads[0].id;
+    if (ads.length === 1) { settings.ad_account_ids = [ads[0].id]; settings.ad_account_id = ads[0].id; }
     if (pg.length === 1) { settings.page_id = pg[0].id; settings.ig_user_id = pg[0].ig || undefined; }
     return { tokens: { access_token: tok.access_token }, settings, expiresAt: tok.expires_in ? new Date(Date.now() + Number(tok.expires_in) * 1000) : null,
       summary: `${ads.length} ad account${ads.length === 1 ? '' : 's'} and ${pg.length} page${pg.length === 1 ? '' : 's'} found` };
@@ -78,19 +79,30 @@ export async function finish(p: Platform, params: URLSearchParams, redirectUri: 
       client_id: env('GOOGLE_OAUTH_CLIENT_ID'), client_secret: env('GOOGLE_OAUTH_CLIENT_SECRET'), code, redirect_uri: redirectUri, grant_type: 'authorization_code' }) }), 'Google sign-in');
     if (!tok.refresh_token) throw new Error('Google did not return lasting access. Remove the app under myaccount.google.com/permissions and connect again.');
     const access = tok.access_token || await accessToken(tok.refresh_token);
-    const v = opt('GOOGLE_ADS_API_VERSION', 'v21'), h = { authorization: `Bearer ${access}`, 'developer-token': env('GOOGLE_ADS_DEVELOPER_TOKEN'), 'content-type': 'application/json' };
-    // the Ads accounts this person can open, with names where Google gives them
-    const customers: (Option & { manager: boolean })[] = []; let note: string | undefined;
+    const v = opt('GOOGLE_ADS_API_VERSION', 'v26'), h = { authorization: `Bearer ${access}`, ...devToken(), 'content-type': 'application/json' };
+    // the Ads accounts this person can open, with names where Google gives them, and the accounts under each manager
+    const customers: GoogleChoice[] = []; let note: string | undefined;
+    const search = (id: string, query: string) => fetch(`https://googleads.googleapis.com/${v}/customers/${id}/googleAds:search`, { method: 'POST',
+      headers: { ...h, 'login-customer-id': id }, body: JSON.stringify({ query }) }).then(r => json(r, 'Google Ads account'));
     try {
       const list = await json(await fetch(`https://googleads.googleapis.com/${v}/customers:listAccessibleCustomers`, { headers: h }), 'Google Ads accounts');
       for (const rn of ((list.resourceNames || []) as string[]).slice(0, 25)) {
         const id = rn.split('/')[1]; let name = id, manager = false;
         try {
-          const r = await json(await fetch(`https://googleads.googleapis.com/${v}/customers/${id}/googleAds:search`, { method: 'POST', headers: { ...h, 'login-customer-id': id },
-            body: JSON.stringify({ query: 'SELECT customer.descriptive_name, customer.manager FROM customer LIMIT 1' }) }), 'Google Ads account');
+          const r = await search(id, 'SELECT customer.descriptive_name, customer.manager FROM customer LIMIT 1');
           name = r.results?.[0]?.customer?.descriptiveName || id; manager = !!r.results?.[0]?.customer?.manager;
         } catch { /* listed but not readable on its own; still offer it */ }
         customers.push({ id, name, manager });
+      }
+      // a manager's own accounts are often not listed above; they are read through the manager
+      for (const m of customers.filter(c => c.manager)) {
+        try {
+          const r = await search(m.id, 'SELECT customer_client.id, customer_client.descriptive_name, customer_client.manager FROM customer_client WHERE customer_client.level = 1 AND customer_client.status = \'ENABLED\'');
+          for (const row of r.results || []) {
+            const cc = row.customerClient || {}, id = String(cc.id || '');
+            if (id && !customers.some(c => c.id === id)) customers.push({ id, name: cc.descriptiveName || id, manager: !!cc.manager, via: m.id });
+          }
+        } catch { /* the manager's accounts stay hidden; its own row is still there */ }
       }
     } catch (e) { note = e instanceof Error ? e.message : String(e); /* type the account id by hand instead */ }
     // Analytics properties, if the Analytics Admin API is switched on in the Google Cloud project
@@ -101,7 +113,7 @@ export async function finish(p: Platform, params: URLSearchParams, redirectUri: 
     } catch { /* GA4 stays optional */ }
     const settings: Record<string, any> = { choices: { customers, properties }, ...(note ? { note: note.slice(0, 300) } : {}) };
     const plain = customers.filter(c => !c.manager);
-    if (plain.length === 1) settings.customer_id = plain[0].id;
+    if (plain.length === 1) settings.customer_ids = [plain[0].id];
     if (properties.length === 1) settings.ga4_property_id = properties[0].id;
     return { tokens: { access_token: access, refresh_token: tok.refresh_token }, settings, expiresAt: null,
       summary: `${customers.length} Ads account${customers.length === 1 ? '' : 's'} and ${properties.length} Analytics propert${properties.length === 1 ? 'y' : 'ies'} found` };
@@ -123,7 +135,9 @@ export const STATE_COOKIE = 'pk_connect';
 /** The rows of the Connections list that a platform's chosen accounts fill in. */
 export function connectionRows(p: Platform, s: Record<string, any>) {
   const row = (provider: string, ref?: string) => ({ provider, status: ref ? 'connected' : 'not_connected', account_ref: ref || null, last_error: null });
-  if (p === 'meta') return [row('meta', s.ad_account_id), row('instagram', s.ig_user_id)];
-  if (p === 'google') return [row('google_ads', s.customer_id), row('keyword_planner', s.customer_id), row('ga4', s.ga4_property_id)];
+  const list = (ids: string[]) => ids.join(', ') || undefined;
+  if (p === 'meta') return [row('meta', list(chosen(s.ad_account_ids, s.ad_account_id).map(metaId))), row('instagram', s.ig_user_id)];
+  const ads = chosen(s.customer_ids, s.customer_id).map(googleId);
+  if (p === 'google') return [row('google_ads', list(ads)), row('keyword_planner', ads[0]), row('ga4', s.ga4_property_id)];
   return [row('shopify', s.shop)];
 }

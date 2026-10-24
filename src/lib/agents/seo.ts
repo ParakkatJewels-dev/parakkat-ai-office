@@ -66,11 +66,14 @@ export async function runSeo(db: SupabaseClient) {
         for (const i of ideas) { const r = row(i.keyword); const { keyword: _k, ...rest } = i; Object.assign(r, rest); (r.source as string[]).push('keyword_planner'); }
         await db.from('connections').upsert({ provider: 'keyword_planner', status: 'connected', account_ref: ads.customer, last_synced_at: now, last_error: null });
       } catch (e) {
-        problems.push(`Keyword Planner: ${msg(e)}`);
-        await db.from('connections').upsert({ provider: 'keyword_planner', status: 'error', last_error: msg(e).slice(0, 500) });
-        await emit(db, run.id, 'feedback', 'keywordResearcher', `Keyword Planner failed: ${msg(e).slice(0, 140)}`, 'seoLead');
+        // Explorer access (the default for a new Cloud project) cannot use Keyword Planner; that is a setting to change, not a fault
+        const access = /NOT_APPROVED|PERMISSION_DENIED|access level|Basic access|USER_PERMISSION|developer token/i.test(msg(e));
+        problems.push(access ? 'Keyword Planner: needs Basic access on the Google Cloud project; using Google Trends only' : `Keyword Planner: ${msg(e)}`);
+        await db.from('connections').upsert({ provider: 'keyword_planner', status: access ? 'not_connected' : 'error',
+          last_error: access ? 'Needs Basic access on the Google Cloud project (brand verification). Google Trends still runs.' : msg(e).slice(0, 500) });
+        await emit(db, run.id, access ? 'say' : 'feedback', 'keywordResearcher', access ? 'Keyword Planner needs Basic access, so this week I worked from Google Trends only.' : `Keyword Planner failed: ${msg(e).slice(0, 140)}`, 'seoLead');
       }
-    } else problems.push('Keyword Planner: Google Ads keys are not set');
+    } else problems.push('Keyword Planner: Google is not connected yet');
 
     if (!rows.size) throw new Error(`No SEO data came back. ${problems.join(' · ')}`);
     const { error: upErr } = await db.from('seo_keywords').upsert([...rows.values()].map(r => ({ ...r, source: [...new Set(r.source as string[])] })));

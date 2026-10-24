@@ -2,21 +2,30 @@ import 'server-only';
 import { env, opt } from '@/lib/env';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess } from './vault';
+import { chosen, googleId, googleTargets } from './accounts.mjs';
 
-type GoogleConfig = { refresh: string; customer?: string; login?: string; ga4?: string };
-/** The Google sign-in saved on the Admin page, else the Vercel keys, else null. The app's client id and developer token always come from Vercel. */
+type Target = { id: string; login?: string };
+/** customers are the Ads accounts to sync; customer is the first, which Keyword Planner uses. */
+type GoogleConfig = { refresh: string; customers: Target[]; customer?: string; login?: string; ga4?: string };
+/** The Google sign-in saved on the Admin page, else the Vercel keys, else null. The app's OAuth client always comes from Vercel. */
 export async function googleConfig(): Promise<GoogleConfig | null> {
   const s = await loadAccess('google');
-  if (s?.tokens.refresh_token) return { refresh: s.tokens.refresh_token, customer: s.settings.customer_id, login: s.settings.login_customer_id, ga4: s.settings.ga4_property_id };
+  if (s?.tokens.refresh_token) {
+    const st = s.settings, customers = googleTargets(chosen(st.customer_ids, st.customer_id), st.choices?.customers, st.login_customer_id);
+    return { refresh: s.tokens.refresh_token, customers, customer: customers[0]?.id, login: customers[0]?.login, ga4: st.ga4_property_id };
+  }
   const e = process.env;
-  return e.GOOGLE_OAUTH_REFRESH_TOKEN ? { refresh: e.GOOGLE_OAUTH_REFRESH_TOKEN, customer: e.GOOGLE_ADS_CUSTOMER_ID, login: e.GOOGLE_ADS_LOGIN_CUSTOMER_ID, ga4: e.GA4_PROPERTY_ID } : null;
+  if (!e.GOOGLE_OAUTH_REFRESH_TOKEN) return null;
+  // GOOGLE_ADS_CUSTOMER_ID may list several accounts, comma separated
+  const customers = googleTargets(chosen(null, e.GOOGLE_ADS_CUSTOMER_ID), [], e.GOOGLE_ADS_LOGIN_CUSTOMER_ID);
+  return { refresh: e.GOOGLE_OAUTH_REFRESH_TOKEN, customers, customer: customers[0]?.id, login: customers[0]?.login, ga4: e.GA4_PROPERTY_ID };
 }
 async function cfg() { const c = await googleConfig(); if (!c) throw new Error('Google is not connected. Connect it on the Admin page.'); return c; }
 const need = (v: string | undefined, what: string) => { if (!v) throw new Error(`Choose the Google ${what} on the Admin page.`); return v; };
 /** True when Google Ads can be called: app keys in Vercel, a sign-in, and an ad account chosen. */
 export async function googleAdsReady() {
   const c = await googleConfig();
-  return !!c?.customer && !!process.env.GOOGLE_ADS_DEVELOPER_TOKEN && !!process.env.GOOGLE_OAUTH_CLIENT_ID && !!process.env.GOOGLE_OAUTH_CLIENT_SECRET ? c : null;
+  return !!c?.customer && !!process.env.GOOGLE_OAUTH_CLIENT_ID && !!process.env.GOOGLE_OAUTH_CLIENT_SECRET ? c : null;
 }
 
 export async function accessToken(refresh?: string) {
@@ -26,43 +35,58 @@ export async function accessToken(refresh?: string) {
   return d.access_token as string;
 }
 
-/** Headers for any Google Ads API call: OAuth token, developer token and the manager account when there is one. */
-async function adsHeaders() {
-  const c = await cfg();
-  return { authorization: `Bearer ${await accessToken(c.refresh)}`, 'developer-token': env('GOOGLE_ADS_DEVELOPER_TOKEN'), 'content-type': 'application/json',
-    ...(c.login ? { 'login-customer-id': c.login.replace(/-/g, '') } : {}) };
-}
-const adsUrl = async (path: string) => `https://googleads.googleapis.com/${opt('GOOGLE_ADS_API_VERSION', 'v21')}/customers/${need((await cfg()).customer, 'Ads account').replace(/-/g, '')}${path}`;
+/**
+ * Headers for any Google Ads API call: OAuth token and the manager account when there is one.
+ * Since September 2026 API access belongs to the Google Cloud project and Google ignores the developer token,
+ * so it is sent only when GOOGLE_ADS_DEVELOPER_TOKEN is still set.
+ */
+export const devToken = (): Record<string, string> => process.env.GOOGLE_ADS_DEVELOPER_TOKEN ? { 'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN } : {};
+const adsHeaders = async (login?: string, token?: string) => ({ authorization: `Bearer ${token || await accessToken((await cfg()).refresh)}`, ...devToken(), 'content-type': 'application/json',
+  ...(login ? { 'login-customer-id': login } : {}) });
+const adsUrl = (customer: string | undefined, path: string) => `https://googleads.googleapis.com/${opt('GOOGLE_ADS_API_VERSION', 'v26')}/customers/${need(customer, 'Ads account').replace(/-/g, '')}${path}`;
 
-/** Daily results per ad for the last 30 days (Google Ads API, GAQL). */
+/**
+ * Daily results per ad for the last 30 days (Google Ads API, GAQL), for every chosen account.
+ * One account failing does not stop the others; the ones that failed come back by id.
+ */
 export async function syncGoogleAds(db: SupabaseClient) {
-  const res = await fetch(await adsUrl('/googleAds:searchStream'), {
-    method: 'POST',
-    headers: await adsHeaders(),
-    body: JSON.stringify({ query: `SELECT segments.date, campaign.id, campaign.name, ad_group_ad.ad.id, ad_group_ad.ad.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value
-      FROM ad_group_ad WHERE segments.date DURING LAST_30_DAYS` }),
-  });
-  const chunks = await res.json(); if (!res.ok) throw new Error(`Google Ads ${res.status}: ${JSON.stringify(chunks).slice(0, 300)}`);
-  const rows = (chunks as any[]).flatMap(c => c.results || []).map((r: any) => ({
-    day: r.segments.date, platform: 'google', campaign_id: r.campaign.id, campaign_name: r.campaign.name, ad_id: String(r.adGroupAd.ad.id), ad_name: r.adGroupAd.ad.name || null,
-    spend: Number(r.metrics.costMicros || 0) / 1e6, impressions: Number(r.metrics.impressions || 0), clicks: Number(r.metrics.clicks || 0),
-    purchases: Number(r.metrics.conversions || 0), revenue: Number(r.metrics.conversionsValue || 0),
-  }));
-  if (rows.length) { const { error } = await db.from('ad_insights_daily').upsert(rows); if (error) throw error; }
-  return rows.length;
+  const c = await cfg(), token = await accessToken(c.refresh);
+  if (!c.customers.length) need(undefined, 'Ads account');
+  let count = 0; const failed: string[] = [];
+  for (const t of c.customers) {
+    try {
+      const res = await fetch(adsUrl(t.id, '/googleAds:searchStream'), {
+        method: 'POST',
+        headers: await adsHeaders(t.login, token),
+        body: JSON.stringify({ query: `SELECT segments.date, campaign.id, campaign.name, ad_group_ad.ad.id, ad_group_ad.ad.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value
+          FROM ad_group_ad WHERE segments.date DURING LAST_30_DAYS` }),
+      });
+      const chunks = await res.json(); if (!res.ok) throw new Error(`${res.status}: ${JSON.stringify((chunks as any)?.error?.message || chunks).slice(0, 200)}`);
+      const rows = (chunks as any[]).flatMap(ch => ch.results || []).map((r: any) => ({
+        day: r.segments.date, platform: 'google', account_id: t.id, campaign_id: r.campaign.id, campaign_name: r.campaign.name, ad_id: String(r.adGroupAd.ad.id), ad_name: r.adGroupAd.ad.name || null,
+        spend: Number(r.metrics.costMicros || 0) / 1e6, impressions: Number(r.metrics.impressions || 0), clicks: Number(r.metrics.clicks || 0),
+        purchases: Number(r.metrics.conversions || 0), revenue: Number(r.metrics.conversionsValue || 0),
+      }));
+      if (rows.length) { const { error } = await db.from('ad_insights_daily').upsert(rows); if (error) throw error; }
+      count += rows.length;
+    } catch (e) { failed.push(`${googleId(t.id)} (${e instanceof Error ? e.message : String(e)})`); }
+  }
+  if (failed.length === c.customers.length) throw new Error(`Google Ads: ${failed.join('; ')}`);
+  return { count, accounts: c.customers.length, failed };
 }
 
 export type KeywordIdea = { keyword: string; avg_monthly_searches: number | null; competition: string | null; bid_low: number | null; bid_high: number | null; monthly: { month: string; searches: number }[] };
 
 /**
  * Keyword ideas with monthly searches and bid ranges from Keyword Planner (KeywordPlanIdeaService).
- * Needs a developer token with Basic access; a test token only returns test data.
+ * Needs Basic access on the Google Cloud project; with Explorer access Google refuses it and the SEO Desk carries on with Trends.
  * Defaults to India in English; SEO_GEO_TARGETS and SEO_LANGUAGE take Google's geo and language constant ids.
  */
 export async function keywordIdeas(seeds: string[]): Promise<KeywordIdea[]> {
   const geos = opt('SEO_GEO_TARGETS', '2356').split(',').map(g => `geoTargetConstants/${g.trim()}`);
-  const res = await fetch(await adsUrl(':generateKeywordIdeas'), {
-    method: 'POST', headers: await adsHeaders(),
+  const c = await cfg();
+  const res = await fetch(adsUrl(c.customer, ':generateKeywordIdeas'), {
+    method: 'POST', headers: await adsHeaders(c.login),
     body: JSON.stringify({ language: `languageConstants/${opt('SEO_LANGUAGE', '1000')}`, geoTargetConstants: geos, includeAdultKeywords: false,
       keywordPlanNetwork: 'GOOGLE_SEARCH', keywordSeed: { keywords: seeds.slice(0, 20) }, pageSize: 200 }),
   });
