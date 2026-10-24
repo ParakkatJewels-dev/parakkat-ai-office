@@ -3,6 +3,7 @@ import { env, opt } from '@/lib/env';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess } from './vault';
 import { chosen, googleId, googleTargets } from './accounts.mjs';
+import { errText } from '@/lib/errors';
 
 type Target = { id: string; login?: string };
 /** customers are the Ads accounts to sync; customer is the first, which Keyword Planner uses. */
@@ -69,7 +70,7 @@ export async function syncGoogleAds(db: SupabaseClient) {
       }));
       if (rows.length) { const { error } = await db.from('ad_insights_daily').upsert(rows); if (error) throw error; }
       count += rows.length;
-    } catch (e) { failed.push(`${googleId(t.id)} (${e instanceof Error ? e.message : String(e)})`); }
+    } catch (e) { failed.push(`${googleId(t.id)} (${errText(e)})`); }
   }
   if (failed.length === c.customers.length) throw new Error(`Google Ads: ${failed.join('; ')}`);
   return { count, accounts: c.customers.length, failed };

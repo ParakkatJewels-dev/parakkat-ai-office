@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/auth/session';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { connectionRows, finish, redirectUri, STATE_COOKIE } from '@/lib/connectors/connect';
 import { saveAccess, type Platform } from '@/lib/connectors/vault';
+import { errText } from '@/lib/errors';
 
 export const maxDuration = 60;
 const NAME: Record<Platform, string> = { meta: 'Meta', google: 'Google', shopify: 'Shopify' };
@@ -31,6 +32,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
     const pick = p !== 'shopify' && !(p === 'meta' ? f.settings.ad_account_ids?.length && f.settings.page_id : f.settings.customer_ids?.length);
     return back('msg', `${NAME[p]} connected: ${f.summary}.${pick ? ' Choose the accounts to use below.' : ' Press Sync data now to pull it in.'}`);
   } catch (e) {
-    return back('error', `${NAME[p]} could not connect. ${e instanceof Error ? e.message : String(e)}`.slice(0, 400));
+    return back('error', `${NAME[p]} could not connect. ${errText(e)}`.slice(0, 400));
   }
 }

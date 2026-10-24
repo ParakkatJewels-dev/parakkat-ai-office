@@ -23,7 +23,7 @@ About 30 minutes. You need admin access to Supabase, Vercel, Shopify, Meta Busin
 
 ## 3. Let campaigns move on their own
 
-Each campaign advances one stage per call to `/api/agents/tick`. Schedule it every minute from Supabase (**Database > Extensions**: enable `pg_cron` and `pg_net`, then in SQL Editor). Keep the secret in Vault so it never sits in the job text:
+Each campaign advances one stage per call to `/api/agents/tick`, and the same tick runs the agents' own schedule (data sync every 6 hours, hourly watchers for stock, sales, ads and competitors, and the AI CMO's morning planner, which opens campaigns by itself; they still need the heads' approval). Schedule it every minute from Supabase (**Database > Extensions**: enable `pg_cron` and `pg_net`, then in SQL Editor). Keep the secret in Vault so it never sits in the job text:
 
 ```sql
 select vault.create_secret('<same value as CRON_SECRET in Vercel>', 'parakkat_cron_secret');

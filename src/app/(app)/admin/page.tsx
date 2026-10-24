@@ -18,6 +18,16 @@ const PEOPLE = 20, LESSONS = 15;
 const SOURCE: Record<string, string> = { manual: 'Added by you', results: 'Learned from campaign results', analytics: 'Learned from this month\'s analytics', lead: 'Stopped by the AI team lead', report: 'From a head\'s report decision', plan: 'From a plan decision' };
 const STAGE_LABEL: Record<string, string> = { analyse: 'Analyse', competitors: 'Competitors', plan: 'Plan', create: 'Create', review: 'Review', approval: 'Approval', done: 'Live' };
 
+const AUTOPILOT = [
+  { id: 'planner', name: 'AI CMO morning planning', when: 'Daily from 9am. Reads the festival calendar, sales, stock, ads, posts, rivals and searches, and opens up to two campaigns' },
+  { id: 'sync', name: 'Data sync', when: 'Every 6 hours. Shopify, Meta, Instagram and Google Ads' },
+  { id: 'festivals', name: 'Festival Calendar Keeper', when: 'Daily. Tells the CMO what is coming and when planning should start' },
+  { id: 'stock', name: 'Product Picker: stock check', when: 'Hourly, 8am to 10pm. Best sellers running low' },
+  { id: 'sales', name: 'Sales Analyst: daily pulse', when: 'Every 90 minutes, 8am to 10pm. Yesterday against the two weeks before' },
+  { id: 'ads', name: 'Ads Analyst and Budget Guard', when: 'Every 90 minutes, 8am to 10pm. Spend, return, and ads losing money' },
+  { id: 'rivals', name: 'Competitor Scout', when: 'Every 3 hours, 9am to 9pm. This week\'s competitor moves' },
+];
+
 const TABS = [
   { id: 'overview', label: 'Overview', icon: 'chart' },
   { id: 'connections', label: 'Connections', icon: 'plug' },
@@ -57,14 +67,16 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
 type Db = Awaited<ReturnType<typeof requireUser>>['db'];
 
 async function Overview({ db }: { db: Db }) {
-  const [{ data: conns }, { data: runs }, { data: stuck }, { count: people }, { count: noRole }, { count: rivals }] = await Promise.all([
+  const [{ data: conns }, { data: runs }, { data: stuck }, { count: people }, { count: noRole }, { count: rivals }, { data: jobs }] = await Promise.all([
     db.from('connections').select('provider, status'),
-    db.from('agent_runs').select('id, occasion, stage, status, error, started_at').order('started_at', { ascending: false }).limit(8),
+    db.from('agent_runs').select('id, occasion, stage, status, error, started_at, state').eq('kind', 'campaign').order('started_at', { ascending: false }).limit(8),
     db.from('approvals').select('id, campaigns(name)').eq('status', 'approved').limit(50),
     db.from('profiles').select('id', { count: 'exact', head: true }),
     db.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'viewer'),
     db.from('competitors').select('id', { count: 'exact', head: true }),
+    db.from('autopilot_jobs').select('name, last_run_at, last_result'),
   ]);
+  const J = Object.fromEntries((jobs || []).map(j => [j.name, j]));
   const connected = (conns || []).filter(c => c.status === 'connected').length;
   const active = (runs || []).filter(r => r.status !== 'failed' && r.stage !== 'done').length;
   return <>
@@ -93,14 +105,28 @@ async function Overview({ db }: { db: Db }) {
           const at = STAGES.indexOf(r.stage as any);
           return (
             <li key={r.id}>
-              <div className="run-name"><b>{r.occasion}</b><span className={`sm ${r.error ? 'err' : ''}`}>{r.error ? r.error.slice(0, 120) : `Started ${when(r.started_at)}`}</span></div>
+              <div className="run-name"><b>{r.occasion}</b>{(r.state as any)?.origin && <span className="pill acc" title={(r.state as any).origin.why}>Opened by the AI CMO</span>}
+                <span className={`sm ${r.error ? 'err' : ''}`}>{r.error ? r.error.slice(0, 120) : (r.state as any)?.origin?.why || `Started ${when(r.started_at)}`}</span></div>
               <Stepper steps={STAGES.map((s, i) => ({ label: STAGE_LABEL[s], state: i < at || r.stage === 'done' ? 'done' : i === at ? (r.status === 'failed' ? 'bad' : 'now') : 'todo' }))} />
               {r.status !== 'waiting' && r.stage !== 'done'
                 ? <form action={nextStep}><input type="hidden" name="id" value={r.id} /><Submit ghost small icon="arrow" pending="Working…">Next step</Submit></form>
                 : <span className={`pill ${r.stage === 'done' ? 'good' : 'warn'}`}>{r.stage === 'done' ? 'Live' : 'With the heads'}</span>}
             </li>
           );
-        })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No runs yet. Start one on the left.</p></div>}
+        })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No runs yet. The AI CMO opens campaigns by itself each morning when the calendar or the numbers call for one, or start one on the left.</p></div>}
+      </section>
+
+      <section className="card s12">
+        <div className="card-head"><div><h3>What the agents do on their own</h3><p className="sub">They run on a schedule, Indian time. Campaigns the AI CMO opens still go through the AI team leads and the heads; nothing goes live without approval.</p></div></div>
+        <ul className="autopilot">{AUTOPILOT.map(a => {
+          const j = J[a.id], bad = j?.last_result?.startsWith('failed');
+          return (
+            <li key={a.id}>
+              <div className="grow"><b>{a.name}</b><span className="sm">{a.when}</span></div>
+              <span className={`sm clip ${bad ? 'err' : ''}`} title={j?.last_result || undefined}>{j?.last_run_at ? `${when(j.last_run_at)} · ${j.last_result === 'running' ? 'running now' : (j.last_result || '').slice(0, 90)}` : 'Not run yet'}</span>
+            </li>
+          );
+        })}</ul>
       </section>
     </div>
   </>;

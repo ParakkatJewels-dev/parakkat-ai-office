@@ -34,6 +34,7 @@ before(async () => {
   await db.exec(read('supabase/migrations/20261024000700_sync_lock.sql'));
   await db.exec(read('supabase/migrations/20261024000800_ad_account_column.sql'));
   await db.exec(read('supabase/migrations/20261024000900_dashboard_filters.sql'));
+  await db.exec(read('supabase/migrations/20261024001000_autopilot.sql'));
   // what Supabase grants signed-in users by default
   await db.exec(`grant usage on schema public, auth to authenticated; grant all on all tables in schema public to authenticated; grant execute on function auth.uid() to authenticated;`);
   for (const [k, id] of Object.entries(U)) await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [id, { full_name: k }]);

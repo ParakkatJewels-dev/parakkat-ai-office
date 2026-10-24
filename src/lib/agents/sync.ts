@@ -8,6 +8,7 @@ import { syncGoogleAds, googleAdsReady } from '@/lib/connectors/google';
 import { googleId, metaId } from '@/lib/connectors/accounts.mjs';
 import { learnFromData } from './learn';
 import { emit } from './events';
+import { errText } from '@/lib/errors';
 
 // ready() says whether a platform can be reached, from access connected on the Admin page or from Vercel keys, and names the account
 const JOBS: { provider: string; bot: string; ready: () => Promise<string | null | undefined>; run: (db: SupabaseClient, deadline: number) => Promise<string> }[] = [
@@ -52,7 +53,7 @@ async function syncLocked(db: SupabaseClient) {
       await db.from('connections').upsert({ provider: j.provider, status: 'connected', account_ref: ref, last_synced_at: new Date().toISOString(), last_error: null });
       await emit(db, null, 'say', j.bot, `Synced ${msg}.`, 'dataLead');
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = errText(e);
       results[j.provider] = 'error: ' + msg;
       await db.from('connections').upsert({ provider: j.provider, status: 'error', last_error: msg.slice(0, 500) });
       await emit(db, null, 'feedback', j.bot, `Sync failed: ${msg.slice(0, 160)}`, 'dataLead');
@@ -66,6 +67,6 @@ async function syncLocked(db: SupabaseClient) {
     const l = await learnFromData(db);
     results.learning = `${l.results} result and ${l.analytics} analytics lessons`;
     if (l.results + l.analytics) await emit(db, null, 'say', 'dataLead', `Updated the team's memory: ${results.learning}.`, 'cmo');
-  } catch (e) { results.learning = 'error: ' + (e instanceof Error ? e.message : String(e)); }
+  } catch (e) { results.learning = 'error: ' + (errText(e)); }
   return results;
 }

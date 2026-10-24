@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { runSeo } from '@/lib/agents/seo';
 import { isCron } from '@/lib/auth/session';
+import { errText } from '@/lib/errors';
 
 export const maxDuration = 300;
 
@@ -9,5 +10,5 @@ export const maxDuration = 300;
 export async function GET(req: Request) {
   if (!isCron(req)) return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
   try { return NextResponse.json(await runSeo(supabaseAdmin())); }
-  catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
+  catch (e) { return NextResponse.json({ error: errText(e) }, { status: 500 }); }
 }
