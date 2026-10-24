@@ -19,8 +19,10 @@ export async function POST(req: Request) {
   // a stage can take longer than the minute between ticks; the lock stops the next tick running the same stage again
   const { data: got } = await db.rpc('acquire_job_lock', { p_name: 'tick', p_holder: holder, p_seconds: 290 });
   if (got) try {
-    const { data: runs } = await db.from('agent_runs').select('id').eq('kind', 'campaign').eq('status', 'running').limit(3);
-    for (const r of runs || []) {
+    // runs waiting out a retry are skipped until their time comes
+    const { data: all } = await db.from('agent_runs').select('id, state').eq('kind', 'campaign').eq('status', 'running').order('started_at').limit(50);
+    const runs = (all || []).filter(r => !r.state?.retry?.at || Date.parse(r.state.retry.at) <= Date.now()).slice(0, 3);
+    for (const r of runs) {
       if (await isPaused(true)) break;
       try { moved[r.id] = await advance(db, r.id); } catch (e) { moved[r.id] = 'failed: ' + errText(e); }
     }

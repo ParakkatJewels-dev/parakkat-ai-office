@@ -110,7 +110,7 @@ async function Overview({ db }: { db: Db }) {
           return (
             <li key={r.id}>
               <div className="run-name"><b>{r.occasion}</b>{(r.state as any)?.origin && <span className="pill acc" title={(r.state as any).origin.why}>Opened by the AI CMO</span>}
-                <span className={`sm ${r.error ? 'err' : ''}`}>{r.error ? r.error.slice(0, 120) : (r.state as any)?.origin?.why || `Started ${when(r.started_at)}`}</span></div>
+                <span className={`sm ${r.error ? 'err' : ''}`}>{r.error ? `${(r.state as any)?.retry?.at && r.status === 'running' ? `Trying again at ${when((r.state as any).retry.at)} (try ${(r.state as any).retry.n}): ` : ''}${r.error.slice(0, 120)}` : (r.state as any)?.origin?.why || `Started ${when(r.started_at)}`}</span></div>
               <Stepper steps={STAGES.map((s, i) => ({ label: STAGE_LABEL[s], state: i < at || r.stage === 'done' ? 'done' : i === at ? (r.status === 'failed' ? 'bad' : 'now') : 'todo' }))} />
               {r.status !== 'waiting' && r.stage !== 'done'
                 ? <form action={nextStep}><input type="hidden" name="id" value={r.id} /><Submit ghost small icon="arrow" pending="Working…">Next step</Submit></form>
