@@ -165,9 +165,17 @@ const STEP: Record<Exclude<Stage, 'done'>, (db: SupabaseClient, run: Run, s: Run
     const plan = await chatJSON<Plan>('manager', persona('strategist', `Plan one campaign. Use only product ids from the in-stock list. Keep the daily budget realistic for a regional jewellery brand unless the data says otherwise.
 Shape: {"name": "...", "occasion": "...", "headline": "max 5 words", "sub": "max 8 words", "product_ids": [ids], "budget_daily": rupees, "days": n, "channels": ["meta","google"], "split": "one line", "audiences": "one line", "reasons": ["3 short reasons tied to the data"]}`),
       `Occasion: ${run.occasion}\n\nInsights:\n${(s.insights || []).join('\n\n') || 'none forwarded'}\n\nCompetitors:\n${(s.competitors || []).join('\n') || 'none'}\n\nPast campaigns and what the heads said (learn from these):\n${past.join('\n') || 'none yet'}\n\nWhat people search (SEO Desk):\n${search.join('\n') || 'no SEO data yet'}\n\nIn stock:\n${(stock || []).map(p => `${p.id} | ${p.title} | ${p.product_type} | ${inr(p.price)} | ${p.inventory} left`).join('\n')}`);
-    const ok = new Set((stock || []).map(p => p.id));
-    plan.product_ids = (plan.product_ids || []).filter(id => ok.has(id)).slice(0, 6);
-    if (!plan.product_ids.length) throw new Error('The plan picked no in-stock products. Sync Shopify first.');
+    // models sometimes return the ids as strings; match on the text and keep the database's own id
+    const ok = new Map((stock || []).map(p => [String(p.id), p.id]));
+    const valid = (ids: unknown) => [...new Set((Array.isArray(ids) ? ids : []).map(id => ok.get(String(id).trim())).filter((id): id is number => id != null))].slice(0, 6);
+    plan.product_ids = valid(plan.product_ids);
+    if (!plan.product_ids.length && ok.size) {
+      // one more try: ask for ids copied from the list, not made up
+      const again = await chatJSON<{ product_ids: unknown[] }>('worker', persona('strategist', 'None of the product ids you chose are in the in-stock list. Pick 3 to 6 that fit the plan, copying each id exactly from the list. Shape: {"product_ids": [ids]}'),
+        `Plan: ${plan.name}, ${plan.headline}\n\nIn stock:\n${(stock || []).map(p => `${p.id} | ${p.title} | ${p.product_type}`).join('\n')}`);
+      plan.product_ids = valid(again.product_ids);
+    }
+    if (!plan.product_ids.length) throw new Error(ok.size ? 'The plan picked no products from the in-stock list, twice.' : 'No products are in stock. Sync Shopify first.');
     s.plan = plan;
     await emit(db, run.id, 'think', 'budgetForecaster', 'Working out what this plan should bring in, from our own last 30 days');
     plan.report = await proposal(db, run, s, plan, (stock || []).filter(p => plan.product_ids.includes(p.id)));
