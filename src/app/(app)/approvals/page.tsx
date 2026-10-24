@@ -2,6 +2,7 @@ import { requireUser } from '@/lib/auth/session';
 import { ROLE_LABEL, type AppRole } from '@/lib/roles';
 import { decideReport, decideApproval } from './actions';
 import { Icon } from '@/components/Icon';
+import { Submit } from '@/components/forms';
 import { PageHead, Tile, Avatar, Stepper, Pager, pageOf, rangeOf, inr, when } from '@/components/ui';
 
 export const maxDuration = 300; // publishing to Meta happens in the approve action
@@ -69,7 +70,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
             <form action={decideReport} className="decide">
               <input type="hidden" name="id" value={r.id} />
               <textarea className="in" name="note" placeholder="Note for the team lead (needed to send back or reject)" aria-label="Note" />
-              <div className="decide-btns"><button className="btn ghost" name="decision" value="reject">Reject</button><button className="btn ghost" name="decision" value="send_back">Send back</button><button className="btn" name="decision" value="accept"><Icon name="check" size={18} />Accept</button></div>
+              <div className="decide-btns"><Submit ghost name="decision" value="reject" pending="Rejecting…">Reject</Submit><Submit ghost name="decision" value="send_back" pending="Sending back…">Send back</Submit><Submit name="decision" value="accept" icon="check" pending="Accepting…">Accept</Submit></div>
             </form>
           </article>
         )) : <div className="empty"><Icon name="doc" size={26} /><p>No reports waiting on you.</p></div>}
@@ -109,7 +110,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
                   <form action={decideApproval} className="decide">
                     <input type="hidden" name="id" value={p.id} />
                     <textarea className="in" name="note" placeholder="Note for the team (needed to request changes or reject)" aria-label="Note" />
-                    <div className="decide-btns"><button className="btn ghost" name="decision" value="reject">Reject</button><button className="btn ghost" name="decision" value="changes">Request changes</button><button className="btn" name="decision" value="approve"><Icon name={role === 'super_admin' ? 'rocket' : 'check'} size={18} />{role === 'super_admin' ? 'Approve and publish' : 'Approve'}</button></div>
+                    <div className="decide-btns"><Submit ghost name="decision" value="reject" pending="Rejecting…">Reject</Submit><Submit ghost name="decision" value="changes" pending="Sending…">Request changes</Submit><Submit name="decision" value="approve" icon={role === 'super_admin' ? 'rocket' : 'check'} pending={role === 'super_admin' ? 'Approving and publishing…' : 'Approving…'}>{role === 'super_admin' ? 'Approve and publish' : 'Approve'}</Submit></div>
                   </form>
                 ) : p.status === 'pending' && <p className="sub">Waiting on {next.map(r => ROLE_LABEL[r]).join(', ')}.</p>}
               </div>

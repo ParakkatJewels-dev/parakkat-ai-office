@@ -4,6 +4,7 @@ import type { Platform } from '@/lib/connectors/vault';
 import { Icon } from '@/components/Icon';
 import { when } from '@/components/ui';
 import { chosen, googleId, googleLabel, metaAdLabel, metaId, pageLabel, type GoogleChoice } from '@/lib/connectors/accounts.mjs';
+import { Locked, Submit, GoLink } from '@/components/forms';
 import { chooseAccounts, disconnect } from './actions';
 
 const PLATFORMS: { id: Platform; name: string; what: string; envKeys: string[] }[] = [
@@ -23,6 +24,10 @@ export async function Integrations() {
       const ready = appReady(p.id), viaEnv = !c && p.envKeys.some(k => process.env[k]);
       const left = c?.expires_at ? Math.round((Date.parse(c.expires_at) - Date.now()) / DAY) : null;
       const s = c?.settings || {}, ch = s.choices || {};
+      // the form locks once accounts are chosen; its key changes with them so it locks again after each save
+      const picked = p.id === 'meta' ? chosen(s.ad_account_ids, s.ad_account_id) : chosen(s.customer_ids, s.customer_id);
+      const savedKey = JSON.stringify([picked, s.ad_account_id, s.page_id, s.login_customer_id, s.ga4_property_id, c?.updated_at]);
+      const note = `${picked.length} account${picked.length === 1 ? '' : 's'} syncing`;
       return (
         <li key={p.id}>
           <div className="integr-top">
@@ -34,18 +39,17 @@ export async function Integrations() {
           {c && <span className="sm">Connected {when(c.updated_at)}{left !== null && left >= 10 ? ` · renew within ${left} days` : ''}{p.id === 'shopify' && s.shop ? ` · ${s.shop}` : ''}</span>}
 
           {c && p.id === 'meta' && (
-            <form action={chooseAccounts} className="integr-pick"><input type="hidden" name="platform" value="meta" />
+            <Locked key={savedKey} action={chooseAccounts} saved={picked.length > 0} className="integr-pick" savedNote={note}><input type="hidden" name="platform" value="meta" />
               <AccountChecks label="Ad accounts to sync" name="ad" picked={chosen(s.ad_account_ids, s.ad_account_id)}
                 options={(ch.ads || []).map((a: any) => ({ id: a.id, label: metaAdLabel(a) }))} />
               <label className="field">Launch new campaigns in<select name="launch" defaultValue={s.ad_account_id || ''} className="in"><option value="">First ticked account</option>
                 {(ch.ads || []).map((a: any) => <option key={a.id} value={a.id}>{metaAdLabel(a)}</option>)}</select></label>
               <label className="field">Facebook page and Instagram<select name="page" defaultValue={s.page_id || ''} className="in"><option value="">Choose…</option>
                 {(ch.pages || []).map((x: any) => <option key={x.id} value={x.id}>{pageLabel(x)}</option>)}</select></label>
-              <button className="btn ghost sm-btn">Save</button>
-            </form>
+            </Locked>
           )}
           {c && p.id === 'google' && (
-            <form action={chooseAccounts} className="integr-pick"><input type="hidden" name="platform" value="google" />
+            <Locked key={savedKey} action={chooseAccounts} saved={picked.length > 0} className="integr-pick" savedNote={note}><input type="hidden" name="platform" value="google" />
               {(ch.customers || []).length ? <>
                 <AccountChecks label="Google Ads accounts to sync" name="customer" picked={chosen(s.customer_ids, s.customer_id)}
                   options={(ch.customers as GoogleChoice[]).filter(x => !x.manager).map(x => ({ id: x.id, label: googleLabel(x, ch.customers) }))} />
@@ -60,17 +64,16 @@ export async function Integrations() {
                     {ch.properties.map((x: any) => <option key={x.id} value={x.id}>{x.name} · {x.id}</option>)}</select></label>
                 : <label className="field">Analytics property id<input name="ga4" className="in" defaultValue={s.ga4_property_id || ''} placeholder="Optional" /></label>}
               {s.note && <span className="sm err">Google could not list the accounts: {String(s.note).slice(0, 140)}</span>}
-              <button className="btn ghost sm-btn">Save</button>
-            </form>
+            </Locked>
           )}
 
           <div className="integr-act">
             {!ready ? <span className="sm">Add {APP_KEYS[p.id].filter(k => !process.env[k]).join(', ')} in Vercel to switch this on.</span>
               : p.id === 'shopify'
                 ? <form action="/api/connect/shopify" method="get" className="inline"><input name="shop" className="in" required defaultValue={s.shop || process.env.SHOPIFY_STORE_DOMAIN || ''} placeholder="store.myshopify.com" aria-label="Shopify store" />
-                    <button className="btn sm-btn">{c ? 'Reconnect' : 'Connect'}</button></form>
-                : <a className="btn sm-btn" href={`/api/connect/${p.id}`}>{c ? 'Reconnect' : `Connect ${p.name}`}</a>}
-            {c && <form action={disconnect}><input type="hidden" name="platform" value={p.id} /><button className="btn ghost sm-btn">Disconnect</button></form>}
+                    <Submit small pending="Opening Shopify…">{c ? 'Reconnect' : 'Connect'}</Submit></form>
+                : <GoLink href={`/api/connect/${p.id}`} going={`Opening ${p.name}…`}>{c ? 'Reconnect' : `Connect ${p.name}`}</GoLink>}
+            {c && <form action={disconnect}><input type="hidden" name="platform" value={p.id} /><Submit ghost small pending="Disconnecting…">Disconnect</Submit></form>}
           </div>
         </li>
       );

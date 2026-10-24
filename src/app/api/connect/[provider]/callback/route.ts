@@ -18,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   const parts = (req.cookies.get(STATE_COOKIE)?.value || '').split('.'), [cp, cState = ''] = parts, shop = parts.slice(2).join('.');
   const state = q.get('state') || '';
   const back = (key: 'msg' | 'error', text: string) => {
-    const res = NextResponse.redirect(new URL(`/admin?${key}=${encodeURIComponent(text)}#sync`, req.url));
+    const res = NextResponse.redirect(new URL(`/admin?tab=connections&${key}=${encodeURIComponent(text)}`, req.url));
     res.cookies.delete({ name: STATE_COOKIE, path: '/api/connect' });
     return res;
   };
