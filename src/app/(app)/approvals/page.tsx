@@ -1,6 +1,8 @@
 import { requireUser } from '@/lib/auth/session';
 import { ROLE_LABEL, type AppRole } from '@/lib/roles';
 import { decideReport, decideApproval } from './actions';
+import { Icon } from '@/components/Icon';
+import { PageHead, Tile, Avatar, Stepper, inr, when } from '@/components/ui';
 
 export const maxDuration = 300; // publishing to Meta happens in the approve action
 
@@ -13,80 +15,107 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
   const [{ data: reports }, { data: plans }, { data: agents }, { data: depts }] = await Promise.all([
     db.from('reports').select('id, department_id, author_agent, lead_agent, title, body, status, lead_note, head_note, revision, updated_at').order('updated_at', { ascending: false }).limit(40),
     db.from('approvals').select('id, status, version, required_roles, created_at, approval_steps(role, decision, note), campaigns(id, name, occasion, plan, budget_daily, channels, creatives(id, kind, language, headline, body, image_path))').order('created_at', { ascending: false }).limit(20),
-    db.from('agents').select('id, name'), db.from('departments').select('id, name'),
+    db.from('agents').select('id, name, department_id'), db.from('departments').select('id, name'),
   ]);
-  const A = Object.fromEntries((agents || []).map(a => [a.id, a.name])), D = Object.fromEntries((depts || []).map(d => [d.id, d.name]));
+  const A = Object.fromEntries((agents || []).map(a => [a.id, a.name])), AD = Object.fromEntries((agents || []).map(a => [a.id, a.department_id])), D = Object.fromEntries((depts || []).map(d => [d.id, d.name]));
   const paths = (plans || []).flatMap(p => ((p.campaigns as any)?.creatives || []).map((c: any) => c.image_path).filter(Boolean));
   const signed = paths.length ? (await db.storage.from('creatives').createSignedUrls(paths, 3600)).data || [] : [];
   const url = (p: string) => signed.find(s => s.path === p)?.signedUrl ?? undefined;
 
   const myReports = (reports || []).filter(r => r.status === 'with_head');
   const doneReports = (reports || []).filter(r => r.status !== 'with_head').slice(0, 8);
+  // where each plan stands for me
+  const view = (plans || []).map(p => {
+    const steps = p.approval_steps as Step[], approved = new Set(steps.filter(s => s.decision === 'approve').map(s => s.role));
+    const headsLeft = (p.required_roles as AppRole[]).filter(r => !approved.has(r));
+    const next: AppRole[] = p.status !== 'pending' ? [] : headsLeft.length ? headsLeft : ['super_admin'];
+    return { p, c: p.campaigns as any, steps, approved, next, mine: next.includes(role) && (role !== 'super_admin' || headsLeft.length === 0) };
+  });
+  const minePlans = view.filter(v => v.mine).length, live = view.filter(v => v.p.status === 'published').length;
   return (
-    <div className="stack">
+    <div className="page">
       {sp.error && <p className="flash">{sp.error}</p>}
-      <div><h2 style={{ fontSize: 28 }}>Approvals</h2>
-        <p className="note">Reports reach you only after your department&apos;s AI team lead has checked them. Plans go from the AI CMO to the heads they touch, then to the Super Admin, who alone can publish.</p></div>
+      <PageHead title="Approvals" sub="Reports reach you only after your department's AI team lead has checked them. Plans go from the AI CMO to the heads they touch, then to the Super Admin, who alone can publish." />
 
-      <h3 className="eyebrow">Reports waiting on you</h3>
-      {myReports.length ? myReports.map(r => (
-        <article key={r.id} className="card">
-          <span className="pill acc">{D[r.department_id]} report</span>
-          <h3 style={{ textTransform: 'none', letterSpacing: '.01em', fontSize: 18, margin: '8px 0 4px' }}>{r.title}</h3>
-          <p className="note" style={{ marginTop: 0 }}>From {A[r.author_agent]}, checked by {A[r.lead_agent!]} (AI team lead){r.revision > 1 ? `, revision ${r.revision}` : ''}. {r.lead_note}</p>
-          <p style={{ whiteSpace: 'pre-wrap' }}>{r.body}</p>
-          <form action={decideReport} className="actions">
-            <input type="hidden" name="id" value={r.id} />
-            <button className="btn" name="decision" value="accept">Accept</button>
-            <button className="btn ghost" name="decision" value="send_back">Send back</button>
-            <button className="btn ghost" name="decision" value="reject">Reject</button>
-            <textarea className="in" name="note" placeholder="Note for the team lead (needed to send back or reject)" aria-label="Note" />
-          </form>
-        </article>
-      )) : <div className="empty">No reports waiting on you.</div>}
+      <section className="tiles" aria-label="Summary">
+        <Tile icon="doc" label="Reports waiting on you" value={myReports.length} sub={myReports.length ? 'Checked by an AI team lead' : 'All caught up'} />
+        <Tile icon="check" tone="amber" label="Plans waiting on you" value={minePlans} sub={`${view.filter(v => v.p.status === 'pending').length} in sign-off`} />
+        <Tile icon="rocket" tone="blue" label="Campaigns live" value={live} sub="Published to Meta" />
+        <Tile icon="clock" tone="violet" label="Decided recently" value={doneReports.length} sub="Reports accepted, sent back or rejected" />
+      </section>
 
-      <h3 className="eyebrow" style={{ marginTop: 10 }}>Campaign plans</h3>
-      {(plans || []).length ? (plans || []).map(p => {
-        const c = p.campaigns as any, steps = p.approval_steps as Step[], approved = new Set(steps.filter(s => s.decision === 'approve').map(s => s.role));
-        const headsLeft = (p.required_roles as AppRole[]).filter(r => !approved.has(r));
-        const next: AppRole[] = p.status !== 'pending' ? [] : headsLeft.length ? headsLeft : ['super_admin'];
-        const mine = next.includes(role) && (role !== 'super_admin' || headsLeft.length === 0);
-        const chain: AppRole[] = [...(p.required_roles as AppRole[]), 'super_admin'];
-        const banner = c.creatives?.find((x: any) => x.image_path);
-        return (
-          <article key={p.id} className="card" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,360px) minmax(0,1fr)', gap: 20 }}>
-            <div>{banner && url(banner.image_path) ? <img src={url(banner.image_path)} alt={`Banner for ${c.name}`} style={{ width: '100%', borderRadius: 14 }} /> : <div className="empty">No banner image</div>}</div>
-            <div style={{ minWidth: 0 }}>
-              <span className="pill acc">{c.occasion}</span>
-              <h3 style={{ textTransform: 'none', letterSpacing: '.01em', fontSize: 20, margin: '8px 0 4px' }}>{c.name}{p.version > 1 ? ` · v${p.version}` : ''}</h3>
-              <p className="note" style={{ marginTop: 0 }}>Up to ₹{Number(c.budget_daily).toLocaleString('en-IN')} a day for {c.plan.days} days on {c.channels.join(' and ')}. {c.plan.split}</p>
-              <ul>{(c.plan.reasons || []).map((r: string) => <li key={r}>{r}</li>)}</ul>
-              {c.plan.ai_review && <p className="note">AI CMO: {c.plan.ai_review}</p>}
-              {c.creatives?.map((x: any) => <p key={x.id} style={{ margin: '6px 0' }}><span className="pill">{x.language.toUpperCase()}</span> <b>{x.headline}</b> {x.body}</p>)}
-              <div className="chain"><span className="done">✓ AI CMO</span>{chain.map(r => {
-                const st = r === 'super_admin' ? (['approved', 'published'].includes(p.status) ? 'done' : next.includes(r) ? 'now' : '') : approved.has(r) ? 'done' : next.includes(r) ? 'now' : '';
-                return <span key={r} className={st}>{st === 'done' ? '✓' : st === 'now' ? '●' : '○'} {ROLE_LABEL[r]}</span>;
-              })}</div>
-              {steps.filter(s => s.decision !== 'approve').map(s => <p key={s.role} className="note"><span className="pill bad">{s.decision === 'changes' ? 'Changes requested' : 'Rejected'}</span> {ROLE_LABEL[s.role]}: {s.note}</p>)}
-              {p.status === 'published' && <p><span className="pill good">Live</span></p>}
-              {mine ? (
-                <form action={decideApproval} className="actions">
-                  <input type="hidden" name="id" value={p.id} />
-                  <button className="btn" name="decision" value="approve">{role === 'super_admin' ? 'Approve and publish' : 'Approve'}</button>
-                  <button className="btn ghost" name="decision" value="changes">Request changes</button>
-                  <button className="btn ghost" name="decision" value="reject">Reject</button>
-                  <textarea className="in" name="note" placeholder="Note for the team (needed to request changes or reject)" aria-label="Note" />
-                </form>
-              ) : p.status === 'pending' && <p className="note">Waiting on {next.map(r => ROLE_LABEL[r]).join(', ')}.</p>}
-            </div>
+      <nav className="chips" aria-label="Sections"><a href="#reports">Reports <b>{myReports.length}</b></a><a href="#plans">Campaign plans <b>{view.length}</b></a>{doneReports.length > 0 && <a href="#decided">Decided</a>}</nav>
+
+      <section id="reports" className="section">
+        <h2 className="section-title">Reports waiting on you</h2>
+        {myReports.length ? myReports.map(r => (
+          <article key={r.id} className="card report">
+            <header className="report-head">
+              <Avatar name={A[r.author_agent] || r.author_agent} dept={r.department_id} size={44} />
+              <div className="grow"><h3 className="title">{r.title}</h3>
+                <p className="sub">From <b>{A[r.author_agent]}</b> · {D[r.department_id]} · {when(r.updated_at)}{r.revision > 1 ? ` · revision ${r.revision}` : ''}</p></div>
+              <span className="pill acc">{D[r.department_id]}</span>
+            </header>
+            {r.lead_note && <blockquote className="lead-note"><Avatar name={A[r.lead_agent!] || 'Lead'} dept={AD[r.lead_agent!] || r.department_id} size={28} /><div><b>{A[r.lead_agent!]} <span>AI team lead</span></b><p>{r.lead_note}</p></div></blockquote>}
+            <details className="report-body" open><summary>Report</summary><p>{r.body}</p></details>
+            <form action={decideReport} className="decide">
+              <input type="hidden" name="id" value={r.id} />
+              <textarea className="in" name="note" placeholder="Note for the team lead (needed to send back or reject)" aria-label="Note" />
+              <div className="decide-btns"><button className="btn ghost" name="decision" value="reject">Reject</button><button className="btn ghost" name="decision" value="send_back">Send back</button><button className="btn" name="decision" value="accept"><Icon name="check" size={18} />Accept</button></div>
+            </form>
           </article>
-        );
-      }) : <div className="empty">No plans yet.</div>}
+        )) : <div className="empty"><Icon name="doc" size={26} /><p>No reports waiting on you.</p></div>}
+      </section>
 
-      {doneReports.length > 0 && <>
-        <h3 className="eyebrow" style={{ marginTop: 10 }}>Recent report decisions</h3>
-        <ul className="list card">{doneReports.map(r => <li key={r.id}><div className="grow"><b>{r.title}</b><span className="sm">{D[r.department_id]} · {r.status.replace('_', ' ')}{r.head_note ? ` · ${r.head_note}` : ''}</span></div></li>)}</ul>
-      </>}
+      <section id="plans" className="section">
+        <h2 className="section-title">Campaign plans</h2>
+        {view.length ? view.map(({ p, c, steps, approved, next, mine }) => {
+          const chain: AppRole[] = [...(p.required_roles as AppRole[]), 'super_admin'];
+          const banner = c.creatives?.find((x: any) => x.image_path);
+          const bad = steps.filter(s => s.decision !== 'approve');
+          return (
+            <article key={p.id} className="card plan">
+              <div className="plan-art">{banner && url(banner.image_path) ? <img src={url(banner.image_path)} alt={`Banner for ${c.name}`} /> : <div className="empty"><Icon name="spark" size={26} /><p>No banner image</p></div>}</div>
+              <div className="plan-main">
+                <header className="report-head"><div className="grow"><span className="pill acc">{c.occasion}</span><h3 className="title">{c.name}{p.version > 1 ? ` · v${p.version}` : ''}</h3></div>
+                  <span className={`pill ${p.status === 'published' ? 'good' : p.status === 'pending' ? 'warn' : p.status === 'approved' ? 'acc' : 'bad'}`}>{p.status === 'published' ? 'Live' : p.status === 'pending' ? (mine ? 'Needs you' : 'In sign-off') : p.status === 'changes' ? 'Changes requested' : p.status}</span></header>
+                <div className="facts">
+                  <div><small>Daily budget</small><b>{inr(Number(c.budget_daily))}</b></div>
+                  <div><small>Runs for</small><b>{c.plan.days} days</b></div>
+                  <div><small>Total</small><b>{inr(Number(c.budget_daily) * Number(c.plan.days || 0))}</b></div>
+                  <div><small>Channels</small><b>{c.channels.join(', ')}</b></div>
+                </div>
+                {c.plan.split && <p className="sub">{c.plan.split}</p>}
+                {(c.plan.reasons || []).length > 0 && <ul className="reasons">{c.plan.reasons.map((r: string) => <li key={r}>{r}</li>)}</ul>}
+                {c.plan.ai_review && <blockquote className="lead-note"><Avatar name="CMO AI" dept="board" size={28} /><div><b>AI CMO <span>reviewed the plan</span></b><p>{c.plan.ai_review}</p></div></blockquote>}
+                {c.creatives?.length > 0 && <div className="copy">{c.creatives.map((x: any) => <p key={x.id}><span className="pill">{x.language.toUpperCase()}</span> <b>{x.headline}</b> {x.body}</p>)}</div>}
+                <h4 className="eyebrow">Sign-off</h4>
+                <Stepper steps={[{ label: 'AI CMO', state: 'done' }, ...chain.map(r => ({
+                  label: ROLE_LABEL[r],
+                  state: (r === 'super_admin' ? ['approved', 'published'].includes(p.status) : approved.has(r)) ? 'done' as const
+                    : bad.some(s => s.role === r) ? 'bad' as const : next.includes(r) ? 'now' as const : 'todo' as const,
+                }))]} />
+                {bad.map(s => <p key={s.role} className="flag"><b>{s.decision === 'changes' ? 'Changes requested' : 'Rejected'} by {ROLE_LABEL[s.role]}:</b> {s.note}</p>)}
+                {mine ? (
+                  <form action={decideApproval} className="decide">
+                    <input type="hidden" name="id" value={p.id} />
+                    <textarea className="in" name="note" placeholder="Note for the team (needed to request changes or reject)" aria-label="Note" />
+                    <div className="decide-btns"><button className="btn ghost" name="decision" value="reject">Reject</button><button className="btn ghost" name="decision" value="changes">Request changes</button><button className="btn" name="decision" value="approve"><Icon name={role === 'super_admin' ? 'rocket' : 'check'} size={18} />{role === 'super_admin' ? 'Approve and publish' : 'Approve'}</button></div>
+                  </form>
+                ) : p.status === 'pending' && <p className="sub">Waiting on {next.map(r => ROLE_LABEL[r]).join(', ')}.</p>}
+              </div>
+            </article>
+          );
+        }) : <div className="empty"><Icon name="check" size={26} /><p>No plans yet. Start a campaign from the Admin page.</p></div>}
+      </section>
+
+      {doneReports.length > 0 && <section id="decided" className="section">
+        <h2 className="section-title">Recent report decisions</h2>
+        <ul className="card rows">{doneReports.map(r => (
+          <li key={r.id}><Avatar name={A[r.author_agent] || r.author_agent} dept={r.department_id} /><div className="grow"><b className="clip">{r.title}</b><span className="sm">{D[r.department_id]}{r.head_note ? ` · ${r.head_note}` : ''}</span></div>
+            <span className={`pill ${r.status === 'accepted' ? 'good' : r.status.includes('reject') ? 'bad' : 'warn'}`}>{r.status.replace(/_/g, ' ')}</span></li>
+        ))}</ul>
+      </section>}
     </div>
   );
 }
