@@ -552,9 +552,14 @@ export function createOffice(o) {
     turn(deg) { orbit(deg * Math.PI / 180, 0); }, tilt(deg) { orbit(0, deg * Math.PI / 180); }, zoom(f) { orbit(0, 0, f); },
     fullscreen() { return document.fullscreenElement ? document.exitFullscreen() : host.requestFullscreen?.(); }, get selected() { return sel; }, resize,
     setVisible(v) { visible = v; if (v) resize(); },
-    /** Who is at work: everyone, and how many were busy in the last five minutes, overall and per building. */
-    stats() { const now = performance.now(), active = l => l.filter(p => BUSY.has(p.status) || now - (p.active || -1e9) < 3e5).length;
-      return { total: people.length, active: active(people), buildings: Object.values(B).map(b => ({ id: b.id, name: b.short, total: b.people.length, active: active(b.people), rooms: b.rooms })) }; },
+    /**
+     * The AI staff and how many are working now, overall and per building. With `seen` (agent id to the time of its
+     * last action, from the database) "working now" means an action in the last ten minutes, the same rule as Agent
+     * reports, so the two pages agree. People (the heads) are not counted.
+     */
+    stats(seen) { const t = performance.now(), ai = l => l.filter(p => !p.human);
+      const active = l => ai(l).filter(p => seen ? Date.now() - (seen[p.id] || 0) < 6e5 : BUSY.has(p.status) || t - (p.active || -1e9) < 3e5).length;
+      return { total: ai(people).length, active: active(people), buildings: Object.values(B).map(b => ({ id: b.id, name: b.short, total: ai(b.people).length, active: active(b.people), rooms: b.rooms })) }; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, quality }; },
     async walkTo(id, toId) { const p = P[id], b = P[toId]; if (!p || !b) return; markDirty(p); p.active = performance.now(); p.status = 'walking'; p.task = `Walking to ${b.name}`; p.faceTo = null; const s = standBy(b); await goTo(p, s.x, s.z); p.room = roomAt(s.x, s.z) || p.room; p.faceTo = b; },
     async walkHome(id) { const p = P[id]; if (!p) return; markDirty(p); p.status = 'walking'; p.faceTo = null; await goTo(p, p.home.x, p.home.z); p.room = p.homeRoom; p.sitting = true; p.status = rest(p); markDirty(p); p.task = p.quest ? 'Waiting on an approval' : 'Waiting for the next job'; p.carry = false; },
