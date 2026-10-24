@@ -1,13 +1,13 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { has } from '@/lib/env';
-import { syncProducts, syncOrders } from '@/lib/connectors/shopify';
+import { syncProducts, syncOrders, shopifyReady } from '@/lib/connectors/shopify';
 import { syncAdInsights, syncInstagram } from '@/lib/connectors/meta';
 import { syncGoogleAds } from '@/lib/connectors/google';
 import { emit } from './events';
 
-const JOBS: { provider: string; bot: string; needs: string[]; run: (db: SupabaseClient) => Promise<string>; ref?: () => string | undefined }[] = [
-  { provider: 'shopify', bot: 'shopifySync', needs: ['SHOPIFY_STORE_DOMAIN', 'SHOPIFY_ADMIN_TOKEN'], ref: () => process.env.SHOPIFY_STORE_DOMAIN,
+const JOBS: { provider: string; bot: string; needs: string[]; ready?: () => boolean; run: (db: SupabaseClient) => Promise<string>; ref?: () => string | undefined }[] = [
+  { provider: 'shopify', bot: 'shopifySync', needs: ['SHOPIFY_STORE_DOMAIN'], ready: shopifyReady, ref: () => process.env.SHOPIFY_STORE_DOMAIN,
     run: async db => `${await syncProducts(db)} products, ${await syncOrders(db)} product-days of orders` },
   { provider: 'meta', bot: 'metaSync', needs: ['META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID'], ref: () => process.env.META_AD_ACCOUNT_ID,
     run: async db => `${await syncAdInsights(db)} ad-days` },
@@ -21,7 +21,7 @@ const JOBS: { provider: string; bot: string; needs: string[]; run: (db: Supabase
 export async function syncAll(db: SupabaseClient) {
   const results: Record<string, string> = {};
   for (const j of JOBS) {
-    if (!has(...j.needs)) { results[j.provider] = 'not connected'; continue; }
+    if (!has(...j.needs) || (j.ready && !j.ready())) { results[j.provider] = 'not connected'; continue; }
     try {
       await emit(db, null, 'think', j.bot, `Syncing ${j.provider.replace('_', ' ')}`);
       const msg = await j.run(db);

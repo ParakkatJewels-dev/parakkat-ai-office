@@ -7,7 +7,7 @@
 
 /** @type {Building[]} */
 export const BUILDINGS = [
-  { id: 'ic', name: 'Parakkat Intelligence Centre', short: 'Intelligence Centre', ox: -48, cols: 3 },
+  { id: 'ic', name: 'Parakkat Intelligence Centre', short: 'Intelligence Centre', ox: -54, cols: 4 },
   { id: 'hq', name: 'Parakkat Marketing HQ', short: 'Marketing HQ', ox: 0, cols: 4 },
   { id: 'ch', name: 'Parakkat Creative House', short: 'Creative House', ox: 48, cols: 3 },
 ];
@@ -30,6 +30,7 @@ export const ROOMS = [
   { id: 'datahub', name: 'Data Hub', building: 'ic', col: 0, row: 1, floor: 'concrete', decor: 'servers' },
   { id: 'forecast', name: 'Forecast Lab', building: 'ic', col: 1, row: 1, floor: 'carpet', decor: 'screens' },
   { id: 'qa', name: 'Quality and Compliance', building: 'ic', col: 2, row: 1, floor: 'marble', decor: 'shelves' },
+  { id: 'seo', name: 'SEO Desk', building: 'ic', col: 3, row: 0, floor: 'oak', decor: 'seo' },
   // Creative House
   { id: 'photo', name: 'Photo Studio', building: 'ch', col: 0, row: 0, floor: 'concrete', decor: 'photo' },
   { id: 'reels', name: 'Reels Studio', building: 'ch', col: 1, row: 0, floor: 'wood', decor: 'reels' },
@@ -94,6 +95,10 @@ export const PEOPLE = [
   { id: 'compliance', name: 'Compliance Checker', role: 'Hallmark and claims rules', room: 'qa', seat: 0, model: JEV('GPT explains'), dept: 'qa', head: true },
   { id: 'priceAuditor', name: 'Price Auditor', role: 'Ad prices match Shopify', room: 'qa', seat: 1, model: JEV(), dept: 'qa' },
   { id: 'policyChecker', name: 'Ad Policy Checker', role: 'Meta and Google ad policies', room: 'qa', seat: 2, model: JEV(), dept: 'qa' },
+  { id: 'seoLead', name: 'SEO Lead', role: 'Head of the SEO Desk', room: 'seo', seat: 0, model: GPT_M, dept: 'seo', head: true },
+  { id: 'trendsAnalyst', name: 'Google Trends Analyst', role: 'Rising and falling searches in Kerala', room: 'seo', seat: 1, model: GPT_W, dept: 'seo' },
+  { id: 'keywordResearcher', name: 'Keyword Researcher', role: 'Search volumes from Keyword Planner', room: 'seo', seat: 2, model: GPT_W, dept: 'seo' },
+  { id: 'seoWriter', name: 'SEO Content Writer', role: 'Product titles, meta descriptions, blog topics', room: 'seo', seat: 3, model: GPT_W, dept: 'seo' },
   // Creative House
   { id: 'studioLead', name: 'Studio Lead', role: 'Head of Photo Studio', room: 'photo', seat: 0, model: GPT_M, dept: 'photo', head: true },
   { id: 'photoEditor', name: 'Product Photo Editor', role: 'Cleans Shopify photos', room: 'photo', seat: 1, model: GEM_I, dept: 'photo' },
@@ -127,7 +132,7 @@ export const APPROVER_NAMES = { creativeHead: 'Creative Head', ecomManager: 'E-c
  */
 export const HUMAN_HEAD = {
   creative: 'creativeHead', photo: 'creativeHead', reels: 'creativeHead', catalog: 'creativeHead', lang: 'creativeHead', brand: 'creativeHead',
-  insights: 'ecomManager', strategy: 'ecomManager', customer: 'ecomManager', forecast: 'ecomManager', crm: 'ecomManager', goldrate: 'ecomManager',
+  insights: 'ecomManager', strategy: 'ecomManager', seo: 'ecomManager', customer: 'ecomManager', forecast: 'ecomManager', crm: 'ecomManager', goldrate: 'ecomManager',
   perf: 'perfMarketer', social: 'perfMarketer', intel: 'perfMarketer', warroom: 'perfMarketer',
   board: 'superAdmin', datahub: 'superAdmin', qa: 'superAdmin', lead: 'superAdmin',
 };

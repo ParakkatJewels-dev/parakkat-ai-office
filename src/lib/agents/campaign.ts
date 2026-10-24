@@ -8,6 +8,8 @@ import { has } from '@/lib/env';
 import { emit } from './events';
 import { persona } from './people';
 import { fileReport } from './review';
+import { seoBrief } from './seo';
+import { loadMemory, pastResults } from './memory';
 import type { AppRole } from '@/lib/roles';
 
 /** A campaign run moves one stage per call to advance(), so each step fits in a single serverless call. */
@@ -38,6 +40,7 @@ export async function advance(db: SupabaseClient, runId: string) {
   if (!STAGES.includes(run.stage) || run.stage === 'done') return run.stage;
   const state = { ...run.state };
   try {
+    await loadMemory(db);
     await STEP[run.stage](db, run, state);
     const next = STAGES[STAGES.indexOf(run.stage) + 1];
     await db.from('agent_runs').update({ stage: next, state, status: next === 'done' ? 'waiting' : 'running' }).eq('id', runId);
@@ -106,11 +109,15 @@ const STEP: Record<Exclude<Stage, 'done'>, (db: SupabaseClient, run: Run, s: Run
 
   // Strategy turns the forwarded reports into one plan, picking only in-stock products.
   async plan(db, run, s) {
-    const { data: stock } = await db.from('products').select('id, title, product_type, price, inventory, image_url').eq('status', 'ACTIVE').gt('inventory', 0).limit(200);
+    const [{ data: stock }, search, past] = await Promise.all([
+      db.from('products').select('id, title, product_type, price, inventory, image_url').eq('status', 'ACTIVE').gt('inventory', 0).limit(200),
+      seoBrief(db).catch(() => [] as string[]),
+      pastResults(db).catch(() => [] as string[]),
+    ]);
     await emit(db, run.id, 'think', 'strategist', `Drafting the ${run.occasion} plan`);
     const plan = await chatJSON<Plan>('manager', persona('strategist', `Plan one campaign. Use only product ids from the in-stock list. Keep the daily budget realistic for a regional jewellery brand unless the data says otherwise.
 Shape: {"name": "...", "occasion": "...", "headline": "max 5 words", "sub": "max 8 words", "product_ids": [ids], "budget_daily": rupees, "days": n, "channels": ["meta","google"], "split": "one line", "audiences": "one line", "reasons": ["3 short reasons tied to the data"]}`),
-      `Occasion: ${run.occasion}\n\nInsights:\n${(s.insights || []).join('\n\n') || 'none forwarded'}\n\nCompetitors:\n${(s.competitors || []).join('\n') || 'none'}\n\nIn stock:\n${(stock || []).map(p => `${p.id} | ${p.title} | ${p.product_type} | ${inr(p.price)} | ${p.inventory} left`).join('\n')}`);
+      `Occasion: ${run.occasion}\n\nInsights:\n${(s.insights || []).join('\n\n') || 'none forwarded'}\n\nCompetitors:\n${(s.competitors || []).join('\n') || 'none'}\n\nPast campaigns and what the heads said (learn from these):\n${past.join('\n') || 'none yet'}\n\nWhat people search (SEO Desk):\n${search.join('\n') || 'no SEO data yet'}\n\nIn stock:\n${(stock || []).map(p => `${p.id} | ${p.title} | ${p.product_type} | ${inr(p.price)} | ${p.inventory} left`).join('\n')}`);
     const ok = new Set((stock || []).map(p => p.id));
     plan.product_ids = (plan.product_ids || []).filter(id => ok.has(id)).slice(0, 6);
     if (!plan.product_ids.length) throw new Error('The plan picked no in-stock products. Sync Shopify first.');

@@ -23,9 +23,11 @@ before(async () => {
     create schema storage; create table storage.buckets (id text primary key, name text, public boolean); create table storage.objects (id uuid default gen_random_uuid(), bucket_id text);
     alter table storage.objects enable row level security;
     create publication supabase_realtime;
-    create role authenticated nologin;`);
+    create role authenticated nologin; create role anon nologin;`);
   await db.exec(read('supabase/migrations/20261024000000_init.sql').replace('create extension if not exists pgcrypto;', ''));
   await db.exec(read('supabase/seed.sql'));
+  await db.exec(read('supabase/migrations/20261024000200_seo_studio.sql'));
+  await db.exec(read('supabase/migrations/20261024000300_memory.sql'));
   // what Supabase grants signed-in users by default
   await db.exec(`grant usage on schema public, auth to authenticated; grant all on all tables in schema public to authenticated; grant execute on function auth.uid() to authenticated;`);
   for (const [k, id] of Object.entries(U)) await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [id, { full_name: k }]);
@@ -84,4 +86,31 @@ test('a head cannot change roles or write agent data directly', async () => {
   await as('creative', `update profiles set role = 'super_admin' where id = '${U.creative}'`);
   assert.equal((await db.query(`select role from profiles where id = $1`, [U.creative])).rows[0].role, 'creative_head');
   await assert.rejects(as('creative', `insert into agent_events (kind, text) values ('say', 'spoof')`), /permission denied|row-level security/);
+});
+
+test('designs are visible to the creative head and the Super Admin only', async () => {
+  await db.exec(`insert into designs (format, brief, status) values ('poster', 'Onam poster', 'ready')`);
+  assert.equal((await as('creative', 'select brief from designs')).rows.length, 1);
+  assert.equal((await as('admin', 'select brief from designs')).rows.length, 1);
+  assert.equal((await as('perf', 'select brief from designs')).rows.length, 0);
+});
+
+test('the SEO Desk reports to the e-com manager', async () => {
+  const { rows } = await as('ecom', `select id from departments where id in (select my_depts()) and id = 'seo'`);
+  assert.equal(rows.length, 1);
+});
+
+test("a head's notes become lessons for that department only", async () => {
+  await db.exec(`insert into reports (id, department_id, author_agent, lead_agent, title, body, status) values
+    ('10000000-0000-0000-0000-000000000009', 'photo', 'photoEditor', 'studioLead', 'Studio shots', 'x', 'with_head')`);
+  await as('creative', `select decide_report('10000000-0000-0000-0000-000000000009', 'send_back', 'Use daylight, not yellow light')`);
+  const mine = (await as('creative', 'select department_id, decision, lesson from lessons')).rows;
+  assert.ok(mine.some(l => l.department_id === 'photo' && l.decision === 'sent_back' && /daylight/.test(l.lesson)));
+  assert.equal((await as('perf', 'select id from lessons')).rows.length, 0);
+
+  await db.exec(`insert into campaigns (id, name, plan) values ('20000000-0000-0000-0000-000000000002', 'Onam', '{}');
+    insert into approvals (id, campaign_id, required_roles) values ('30000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', '{perf_marketer}')`);
+  await as('perf', `select decide_approval('30000000-0000-0000-0000-000000000002', 'changes', 'Cap the daily budget at 15000')`);
+  const perf = (await as('perf', 'select department_id, lesson from lessons')).rows;
+  assert.ok(perf.some(l => l.department_id === 'perf' && /Onam/.test(l.lesson) && /15000/.test(l.lesson)));
 });

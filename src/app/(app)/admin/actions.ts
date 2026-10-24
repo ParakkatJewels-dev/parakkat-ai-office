@@ -53,3 +53,21 @@ export async function publishAgain(form: FormData) {
   try { await publishApproved(supabaseAdmin(), String(form.get('id'))); } catch (e) { fail(e); }
   done('Published.');
 }
+export async function saveBrandBook(form: FormData) {
+  const { user } = await admin();
+  const f = (k: string) => String(form.get(k) || '').trim().slice(0, 4000);
+  const { error } = await supabaseAdmin().from('brand_book').upsert({ id: 1, voice: f('voice'), always: f('always'), never: f('never'), notes: f('notes'), updated_at: new Date().toISOString(), updated_by: user.id });
+  if (error) fail(error); done('Brand book saved. Every agent reads it from the next job.');
+}
+export async function addLesson(form: FormData) {
+  const { role } = await admin();
+  const lesson = String(form.get('lesson') || '').trim();
+  if (!lesson) fail('Write the lesson first.');
+  const { error } = await supabaseAdmin().from('lessons').insert({ department_id: String(form.get('dept')), source: 'manual', lesson, by_role: role });
+  if (error) fail(error); done('Lesson added.');
+}
+export async function retireLesson(form: FormData) {
+  await admin();
+  const { error } = await supabaseAdmin().from('lessons').update({ active: false }).eq('id', String(form.get('id')));
+  if (error) fail(error); done('Lesson retired. The agents stop reading it.');
+}

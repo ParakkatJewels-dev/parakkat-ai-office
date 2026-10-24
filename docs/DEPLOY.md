@@ -41,10 +41,12 @@ Without it, use **Run next step** on the Admin page.
 
 | Platform | Where | Variables |
 | --- | --- | --- |
-| Shopify | Settings > Apps > Develop apps > create app, Admin API scopes `read_products`, `read_orders`, `read_inventory`, install, copy the Admin API token | `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_ADMIN_TOKEN` |
+| Shopify | New stores: create an app in the Shopify Dev Dashboard with Admin API scopes `read_products`, `read_orders`, `read_inventory`, install it on the store, copy the Client ID and secret (the app trades them for a token each day). Stores with an older custom app can use its Admin API token instead | `SHOPIFY_STORE_DOMAIN`, then `SHOPIFY_CLIENT_ID` + `SHOPIFY_CLIENT_SECRET`, or `SHOPIFY_ADMIN_TOKEN` |
 | Meta | Business Settings > Users > System users > add an admin system user, assign the ad account, Page and Instagram account, generate a token with `ads_management`, `ads_read`, `business_management`, `pages_read_engagement`, `instagram_basic`, `instagram_manage_insights` | `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` (starts `act_`), `META_PAGE_ID`, `META_IG_USER_ID`, optional `META_PIXEL_ID` for sales-optimised ads |
 | Google Ads | Google Ads > Tools > API Center for the developer token; a Google Cloud OAuth client and a refresh token for an admin user | `GOOGLE_ADS_*`, `GOOGLE_OAUTH_*` |
-| GA4 | Admin > Property settings for the property id (same Google OAuth user needs Viewer) | `GA4_PROPERTY_ID` |
+| Keyword Planner | Uses the Google Ads keys above. The developer token needs Basic access; a test token returns test data only | optional `SEO_GEO_TARGETS` (default `2356`, India), `SEO_LANGUAGE` (default `1000`, English) |
+| Google Trends | Nothing to set: the SEO Desk reads Google Trends' public pages, which can rate-limit servers. For a dependable feed add a SerpApi key | optional `SERPAPI_KEY`, `SEO_TRENDS_GEO` (default `IN-KL`, Kerala), `SEO_SEED_KEYWORDS` (comma list) |
+| GA4 | Admin > Property settings for the property id (same Google OAuth user needs Viewer; the refresh token needs the `analytics.readonly` scope as well as `adwords`) | `GA4_PROPERTY_ID` |
 | OpenAI / Gemini | platform.openai.com and aistudio.google.com API keys | `OPENAI_API_KEY`, `GEMINI_API_KEY` |
 | Jev | TypeSafe AI | `JEV_API_KEY` (optional; OpenAI answers until then) |
 
@@ -52,5 +54,5 @@ Secrets live only in Vercel. The database stores which accounts are connected, n
 
 ## What is live and what is next
 
-- Live: Shopify, Meta ads and Instagram sync; competitor Instagram scan; full agent pipeline with team-lead review; Gemini banners from product photos; approvals; publishing to Meta (created paused, switched on only after everything is built).
+- Live: Shopify, Meta ads and Instagram sync; SEO Desk (Google Trends and Keyword Planner, every Monday); Design Studio (banners and posters on request); agent reports; learning memory (brand book and lessons from the heads' notes); competitor Instagram scan; full agent pipeline with team-lead review; Gemini banners from product photos; approvals; publishing to Meta (created paused, switched on only after everything is built).
 - Next: automatic Google Ads campaign creation (needs Basic access on the developer token; until then the Google part of a plan is handed to the Performance Marketer); WhatsApp alerts; Triple Whale as an extra source; reels and catalogue generation.
