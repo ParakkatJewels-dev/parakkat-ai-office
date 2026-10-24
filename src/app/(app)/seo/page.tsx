@@ -72,7 +72,7 @@ export default async function Seo({ searchParams }: { searchParams: Promise<Reco
               <td className="r num">{k.bid_high ? `${inr(k.bid_low || 0)}–${inr(k.bid_high)}` : '–'}</td>
               <td><Spark pts={k.trend_series as Pt[] | null} /></td>
             </tr>)}</tbody>
-          </table></div> : <div className="empty"><Icon name="search" size={26} /><p>{q ? `No keywords match "${q}".` : 'No Keyword Planner data yet. It needs the Google Ads keys and a developer token with Basic access.'}</p></div>}
+          </table></div> : <div className="empty"><Icon name="search" size={26} /><p>{q ? `No keywords match "${q}".` : 'No Keyword Planner data yet. It needs Google connected and Basic access on the Google Cloud project; Google Trends still works without it.'}</p></div>}
           <Pager sp={sp} param="kp" page={kp} size={KW} total={volCount} shown={(byVolume || []).length} />
         </section>
 

@@ -24,8 +24,8 @@ export async function publishApproved(db: SupabaseClient, approvalId: string, si
     await emit(db, c.run_id, 'live', 'metaSpec', `${c.name} is live on Meta. Budget Guard is tracking it daily.`, 'perfLead');
   }
   if (c.channels.includes('google')) {
-    // Creating Google Ads campaigns needs Basic access on the developer token; until then the plan is handed over to run by hand.
-    await emit(db, c.run_id, 'say', 'googleSpec', `${c.name}: Google Ads plan ready (${c.plan.split}). Creating it automatically comes once the developer token has Basic access.`, 'perfLead');
+    // Creating Google Ads campaigns needs Basic access on the Google Cloud project; until then the plan is handed over to run by hand.
+    await emit(db, c.run_id, 'say', 'googleSpec', `${c.name}: Google Ads plan ready (${c.plan.split}). Creating it automatically comes once the Google Cloud project has Basic access.`, 'perfLead');
     ids.google = { status: 'manual' };
   }
   await db.from('campaigns').update({ status: 'live', external_ids: ids }).eq('id', c.id);

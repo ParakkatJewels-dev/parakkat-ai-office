@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess } from './vault';
 
 type GoogleConfig = { refresh: string; customer?: string; login?: string; ga4?: string };
-/** The Google sign-in saved on the Admin page, else the Vercel keys, else null. The app's client id and developer token always come from Vercel. */
+/** The Google sign-in saved on the Admin page, else the Vercel keys, else null. The app's OAuth client always comes from Vercel. */
 export async function googleConfig(): Promise<GoogleConfig | null> {
   const s = await loadAccess('google');
   if (s?.tokens.refresh_token) return { refresh: s.tokens.refresh_token, customer: s.settings.customer_id, login: s.settings.login_customer_id, ga4: s.settings.ga4_property_id };
@@ -16,7 +16,7 @@ const need = (v: string | undefined, what: string) => { if (!v) throw new Error(
 /** True when Google Ads can be called: app keys in Vercel, a sign-in, and an ad account chosen. */
 export async function googleAdsReady() {
   const c = await googleConfig();
-  return !!c?.customer && !!process.env.GOOGLE_ADS_DEVELOPER_TOKEN && !!process.env.GOOGLE_OAUTH_CLIENT_ID && !!process.env.GOOGLE_OAUTH_CLIENT_SECRET ? c : null;
+  return !!c?.customer && !!process.env.GOOGLE_OAUTH_CLIENT_ID && !!process.env.GOOGLE_OAUTH_CLIENT_SECRET ? c : null;
 }
 
 export async function accessToken(refresh?: string) {
@@ -26,10 +26,15 @@ export async function accessToken(refresh?: string) {
   return d.access_token as string;
 }
 
-/** Headers for any Google Ads API call: OAuth token, developer token and the manager account when there is one. */
+/**
+ * Headers for any Google Ads API call: OAuth token and the manager account when there is one.
+ * Since September 2026 API access belongs to the Google Cloud project and Google ignores the developer token,
+ * so it is sent only when GOOGLE_ADS_DEVELOPER_TOKEN is still set.
+ */
+export const devToken = (): Record<string, string> => process.env.GOOGLE_ADS_DEVELOPER_TOKEN ? { 'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN } : {};
 async function adsHeaders() {
   const c = await cfg();
-  return { authorization: `Bearer ${await accessToken(c.refresh)}`, 'developer-token': env('GOOGLE_ADS_DEVELOPER_TOKEN'), 'content-type': 'application/json',
+  return { authorization: `Bearer ${await accessToken(c.refresh)}`, ...devToken(), 'content-type': 'application/json',
     ...(c.login ? { 'login-customer-id': c.login.replace(/-/g, '') } : {}) };
 }
 const adsUrl = async (path: string) => `https://googleads.googleapis.com/${opt('GOOGLE_ADS_API_VERSION', 'v21')}/customers/${need((await cfg()).customer, 'Ads account').replace(/-/g, '')}${path}`;
@@ -56,7 +61,7 @@ export type KeywordIdea = { keyword: string; avg_monthly_searches: number | null
 
 /**
  * Keyword ideas with monthly searches and bid ranges from Keyword Planner (KeywordPlanIdeaService).
- * Needs a developer token with Basic access; a test token only returns test data.
+ * Needs Basic access on the Google Cloud project; with Explorer access Google refuses it and the SEO Desk carries on with Trends.
  * Defaults to India in English; SEO_GEO_TARGETS and SEO_LANGUAGE take Google's geo and language constant ids.
  */
 export async function keywordIdeas(seeds: string[]): Promise<KeywordIdea[]> {

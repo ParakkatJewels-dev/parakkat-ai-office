@@ -1,7 +1,7 @@
 import 'server-only';
 import { env, has, opt } from '@/lib/env';
 import { G } from './meta';
-import { accessToken } from './google';
+import { accessToken, devToken } from './google';
 import { shopifyHmacOk } from './oauth-core.mjs';
 import type { Platform, Tokens } from './vault';
 
@@ -14,7 +14,7 @@ import type { Platform, Tokens } from './vault';
 /** The Vercel keys each platform's app needs before its Connect button works. */
 export const APP_KEYS: Record<Platform, string[]> = {
   meta: ['META_APP_ID', 'META_APP_SECRET'],
-  google: ['GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'GOOGLE_ADS_DEVELOPER_TOKEN'],
+  google: ['GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET'],
   shopify: ['SHOPIFY_CLIENT_ID', 'SHOPIFY_CLIENT_SECRET'],
 };
 export const appReady = (p: Platform) => has(...APP_KEYS[p]);
@@ -78,7 +78,7 @@ export async function finish(p: Platform, params: URLSearchParams, redirectUri: 
       client_id: env('GOOGLE_OAUTH_CLIENT_ID'), client_secret: env('GOOGLE_OAUTH_CLIENT_SECRET'), code, redirect_uri: redirectUri, grant_type: 'authorization_code' }) }), 'Google sign-in');
     if (!tok.refresh_token) throw new Error('Google did not return lasting access. Remove the app under myaccount.google.com/permissions and connect again.');
     const access = tok.access_token || await accessToken(tok.refresh_token);
-    const v = opt('GOOGLE_ADS_API_VERSION', 'v21'), h = { authorization: `Bearer ${access}`, 'developer-token': env('GOOGLE_ADS_DEVELOPER_TOKEN'), 'content-type': 'application/json' };
+    const v = opt('GOOGLE_ADS_API_VERSION', 'v21'), h = { authorization: `Bearer ${access}`, ...devToken(), 'content-type': 'application/json' };
     // the Ads accounts this person can open, with names where Google gives them
     const customers: (Option & { manager: boolean })[] = []; let note: string | undefined;
     try {
