@@ -16,6 +16,8 @@ import { withUsage } from '@/lib/usage';
 import { Paused } from '@/lib/pause';
 
 /** A campaign run moves one stage per call to advance(), so each step fits in a single serverless call. */
+const RETRY_MIN = [1, 2, 5, 15, 30, 60];
+
 export const STAGES = ['analyse', 'competitors', 'plan', 'create', 'review', 'approval', 'done'] as const;
 type Stage = (typeof STAGES)[number];
 
@@ -28,7 +30,7 @@ type Plan = {
   name: string; occasion: string; headline: string; sub: string; product_ids: number[]; budget_daily: number; days: number;
   channels: string[]; split: string; audiences: string; reasons: string[]; report?: Proposal;
 };
-type RunState = { origin?: { by: string; why: string }; insights?: string[]; competitors?: string[]; plan?: Plan; campaign_id?: string; creative_ids?: string[]; review?: string };
+type RunState = { retry?: { n: number; at: string; stage: string }; origin?: { by: string; why: string }; insights?: string[]; competitors?: string[]; plan?: Plan; campaign_id?: string; creative_ids?: string[]; review?: string };
 type Run = { id: string; occasion: string | null; stage: Stage; state: RunState };
 
 const inr = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN');
@@ -57,15 +59,20 @@ export async function advance(db: SupabaseClient, runId: string) {
     const step = STEP[run.stage];
     await withUsage({ run_id: runId, feature: 'campaign' }, () => step(db, run, state));
     const next = STAGES[STAGES.indexOf(run.stage) + 1];
-    await db.from('agent_runs').update({ stage: next, state, status: next === 'done' ? 'waiting' : 'running' }).eq('id', runId);
+    delete state.retry;
+    await db.from('agent_runs').update({ stage: next, state, error: null, status: next === 'done' ? 'waiting' : 'running' }).eq('id', runId);
     return next;
   } catch (e) {
     // paused mid-step: the run keeps its stage and does this step again after Resume
     if (e instanceof Paused) return run.stage;
-    const msg = errText(e);
-    await db.from('agent_runs').update({ status: 'failed', error: msg, state }).eq('id', runId);
-    await emit(db, runId, 'feedback', 'cmo', `The ${run.stage} step failed: ${msg.slice(0, 180)}`);
-    throw e;
+    // a campaign never stops on an error: it waits and tries the same step again, a little longer each time
+    // (1, 2, 5, 15, 30, then every 60 minutes), so a provider outage or empty credits clear up on their own
+    const msg = errText(e), n = (run.state.retry?.stage === run.stage ? run.state.retry.n : 0) + 1;
+    const wait = RETRY_MIN[Math.min(n, RETRY_MIN.length) - 1], at = new Date(Date.now() + wait * 6e4).toISOString();
+    await db.from('agent_runs').update({ status: 'running', error: msg.slice(0, 500), state: { ...run.state, retry: { n, at, stage: run.stage } } }).eq('id', runId);
+    // say so on the first try and then every fifth, not every minute
+    if (n === 1 || n % 5 === 0) await emit(db, runId, 'feedback', 'cmo', `The ${run.stage} step hit a problem${n > 1 ? ` (try ${n})` : ''}: ${msg.slice(0, 160)}. I will try again in ${wait} minute${wait === 1 ? '' : 's'}.`, n >= 5 ? 'superAdmin' : undefined);
+    return run.stage;
   }
 }
 
