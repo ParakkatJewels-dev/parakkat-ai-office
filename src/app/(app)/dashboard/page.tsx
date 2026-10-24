@@ -1,13 +1,12 @@
 import Link from 'next/link';
 import { requireUser } from '@/lib/auth/session';
-import { STAGES } from '@/lib/agents/campaign';
+import { liveRuns, runSteps } from '@/lib/agents/campaign';
 import { Icon } from '@/components/Icon';
 import { PageHead, Tile, Stepper, inr, when } from '@/components/ui';
 import { googleId, metaId } from '@/lib/connectors/accounts.mjs';
 import { Filters } from './Filters';
 
 const PLATFORM: Record<string, { label: string; color: string }> = { meta: { label: 'Meta', color: '#3d6fb0' }, google: { label: 'Google', color: '#1fc7a4' } };
-const STAGE_LABEL: Record<string, string> = { analyse: 'Analyse', competitors: 'Competitors', plan: 'Plan', create: 'Create', review: 'Review', approval: 'Approval', done: 'Live' };
 
 const DAY = 864e5, iso = (d: Date) => d.toISOString().slice(0, 10), isDate = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v));
 /** The dates the filters ask for: a preset ending today, this month so far, or two dates (at most two years apart). */
@@ -38,9 +37,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     db.rpc('dashboard_report', { p_from: P.from, p_to: P.to, p_platform: platform, p_account: account }),
     db.from('social_posts').select('id, caption, media_type, permalink, saves, reach, media_url').gte('posted_at', P.from).lte('posted_at', end).order('saves', { ascending: false, nullsFirst: false }).limit(5),
     db.from('competitor_moves').select('id, kind, summary, seen_at, competitors(name)').gte('seen_at', P.from).lte('seen_at', end).order('seen_at', { ascending: false }).limit(6),
-    db.from('agent_runs').select('id, occasion, stage, status, started_at').gte('started_at', P.from).lte('started_at', end).order('started_at', { ascending: false }).limit(5),
+    db.from('agent_runs').select('id, occasion, stage, status, started_at, state').gte('started_at', P.from).lte('started_at', end).order('started_at', { ascending: false }).limit(5),
     db.rpc('ad_accounts'),
   ]);
+  const live = await liveRuns(db, (runs || []).map(r => r.id));
   const accounts = ((accts || []) as { platform: string; account_id: string }[]).map(a => ({ platform: a.platform, id: a.account_id, label: a.platform === 'google' ? googleId(a.account_id) : metaId(a.account_id) }));
   const adScope = [platform ? PLATFORM[platform].label : 'Meta and Google', account ? `account ${accounts.find(a => a.id === account)?.label || account}` : null].filter(Boolean).join(', ');
   const S = (summary || { revenue: 0, prev_revenue: 0, units: 0, prev_units: 0, spend: 0, ad_revenue: 0, prev_spend: 0, prev_ad_revenue: 0, days: [], platforms: [], top: [] }) as Summary;
@@ -142,12 +142,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <section className="card s12">
           <div className="card-head"><div><h3>Recent campaign runs</h3><p className="sub">Each run moves through the team, then waits for the heads</p></div></div>
           {(runs || []).length ? <ul className="runs">{runs!.map(r => {
-            const at = STAGES.indexOf(r.stage as any);
+            const v = runSteps(r, live.has(r.id));
             return (
               <li key={r.id}>
                 <div className="run-name"><b>{r.occasion}</b><span className="sm">Started {when(r.started_at)}</span></div>
-                <Stepper steps={STAGES.map((s, i) => ({ label: STAGE_LABEL[s], state: i < at || r.stage === 'done' ? 'done' : i === at ? (r.status === 'failed' ? 'bad' : 'now') : 'todo' }))} />
-                <span className={`pill ${r.status === 'failed' ? 'bad' : r.status === 'waiting' ? 'warn' : r.stage === 'done' ? 'good' : 'acc'}`}>{r.status === 'waiting' ? 'With the heads' : r.stage === 'done' ? 'Live' : r.status}</span>
+                <Stepper steps={v.steps} />
+                <span className={`pill ${v.pill[1]}`}>{v.pill[0]}</span>
               </li>
             );
           })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No runs visible to you yet.</p></div>}

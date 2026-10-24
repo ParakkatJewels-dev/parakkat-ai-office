@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
 import { ROLE_LABEL, type AppRole } from '@/lib/roles';
-import { STAGES } from '@/lib/agents/campaign';
+import { liveRuns, runSteps } from '@/lib/agents/campaign';
 import { BUILDINGS } from '@/office/roster.mjs';
 import { Icon } from '@/components/Icon';
 import { PageHead, Tile, Avatar, Stepper, Pager, pageOf, rangeOf, when } from '@/components/ui';
@@ -16,7 +16,6 @@ const ROLES: AppRole[] = ['super_admin', 'creative_head', 'ecom_manager', 'perf_
 const PROVIDER: Record<string, string> = { shopify: 'Shopify', meta: 'Meta Ads', instagram: 'Instagram', google_ads: 'Google Ads', ga4: 'Google Analytics', triple_whale: 'Triple Whale', openai: 'OpenAI', gemini: 'Gemini', jev: 'Jev', google_trends: 'Google Trends', keyword_planner: 'Keyword Planner' };
 const PEOPLE = 20, LESSONS = 15;
 const SOURCE: Record<string, string> = { manual: 'Added by you', results: 'Learned from campaign results', analytics: 'Learned from this month\'s analytics', lead: 'Stopped by the AI team lead', report: 'From a head\'s report decision', plan: 'From a plan decision', image_review: 'From a head\'s review in the Design Studio' };
-const STAGE_LABEL: Record<string, string> = { analyse: 'Analyse', competitors: 'Competitors', plan: 'Plan', create: 'Create', review: 'Review', approval: 'Approval', done: 'Live' };
 
 const AUTOPILOT = [
   { id: 'planner', name: 'AI CMO morning planning', when: 'Daily from 9am. Reads the festival calendar, sales, stock, ads, posts, rivals and searches, and opens up to two campaigns' },
@@ -80,6 +79,7 @@ async function Overview({ db }: { db: Db }) {
     db.from('competitors').select('id', { count: 'exact', head: true }),
     db.from('autopilot_jobs').select('name, last_run_at, last_result'),
   ]);
+  const live = await liveRuns(db, (runs || []).map(r => r.id));
   const J = Object.fromEntries((jobs || []).map(j => [j.name, j]));
   const connected = (conns || []).filter(c => c.status === 'connected').length;
   const active = (runs || []).filter(r => r.status !== 'failed' && r.stage !== 'done').length;
@@ -106,15 +106,15 @@ async function Overview({ db }: { db: Db }) {
             <Icon name="rocket" size={20} /><span><b>{(a.campaigns as any)?.name}</b> is approved but not live yet.</span><Submit pending="Publishing…">Publish now</Submit></form>
         ))}
         {(runs || []).length ? <ul className="runs">{runs!.map(r => {
-          const at = STAGES.indexOf(r.stage as any);
+          const v = runSteps(r, live.has(r.id));
           return (
             <li key={r.id}>
               <div className="run-name"><b>{r.occasion}</b>{(r.state as any)?.origin && <span className="pill acc" title={(r.state as any).origin.why}>Opened by the AI CMO</span>}
                 <span className={`sm ${r.error ? 'err' : ''}`}>{r.error ? `${(r.state as any)?.retry?.at && r.status === 'running' ? `Trying again at ${when((r.state as any).retry.at)} (try ${(r.state as any).retry.n}): ` : ''}${r.error.slice(0, 120)}` : (r.state as any)?.origin?.why || `Started ${when(r.started_at)}`}</span></div>
-              <Stepper steps={STAGES.map((s, i) => ({ label: STAGE_LABEL[s], state: i < at || r.stage === 'done' ? 'done' : i === at ? (r.status === 'failed' ? 'bad' : 'now') : 'todo' }))} />
+              <Stepper steps={v.steps} />
               {r.status !== 'waiting' && r.stage !== 'done'
                 ? <form action={nextStep}><input type="hidden" name="id" value={r.id} /><Submit ghost small icon="arrow" pending="Working…">Next step</Submit></form>
-                : <span className={`pill ${r.stage === 'done' ? 'good' : 'warn'}`}>{r.stage === 'done' ? 'Live' : 'With the heads'}</span>}
+                : <span className={`pill ${v.pill[1]}`}>{v.pill[0]}</span>}
             </li>
           );
         })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No runs yet. The AI CMO opens campaigns by itself each morning when the calendar or the numbers call for one, or start one on the left.</p></div>}
