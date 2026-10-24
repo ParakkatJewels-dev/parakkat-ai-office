@@ -1,8 +1,7 @@
-import Link from 'next/link';
 import { requireUser } from '@/lib/auth/session';
 import { ROLE_LABEL } from '@/lib/roles';
-import { Tabs } from '@/components/Tabs';
-import { signOut } from '@/app/login/actions';
+import { Sidebar } from '@/components/Sidebar';
+import { TopBar } from '@/components/TopBar';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { db, name, role } = await requireUser();
@@ -16,15 +15,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     const headsLeft = (a.required_roles as string[]).filter(r => !signed.has(r));
     return role === 'super_admin' ? headsLeft.length === 0 : headsLeft.includes(role);
   }).length;
+  const waiting = (role === 'super_admin' ? 0 : reports || 0) + waitingPlans;
   return (
-    <>
-      <header className="top">
-        <Link href="/office" className="brand"><div className="mark" aria-hidden="true">P</div><div><h1>Parakkat</h1><small>AI marketing office · Jewels</small></div></Link>
-        <Tabs admin={role === 'super_admin'} waiting={(role === 'super_admin' ? 0 : reports || 0) + waitingPlans} />
-        <div className="me">{name} · {ROLE_LABEL[role]}<form action={signOut}><button className="btn ghost" type="submit">Sign out</button></form></div>
-      </header>
-      {role === 'viewer' && <p className="flash">Your account has no role yet. Ask the Super Admin to set you up as a department head.</p>}
-      <main>{children}</main>
-    </>
+    <div className="shell">
+      <TopBar name={name} role={ROLE_LABEL[role]} waiting={waiting} />
+      <Sidebar admin={role === 'super_admin'} waiting={waiting} />
+      <main className="main">
+        {role === 'viewer' && <p className="flash">Your account has no role yet. Ask the Super Admin to set you up as a department head.</p>}
+        {children}
+      </main>
+    </div>
   );
 }

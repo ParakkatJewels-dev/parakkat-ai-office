@@ -5,12 +5,14 @@ export const metadata: Metadata = { title: 'Parakkat AI Office', description: 'C
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
+        {/* pick the saved theme before first paint so the page does not flash */}
+        <script dangerouslySetInnerHTML={{ __html: "try{document.documentElement.dataset.theme=localStorage.getItem('pk-theme')||'dark'}catch(e){document.documentElement.dataset.theme='dark'}" }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Assistant:wght@400;500;600;700&display=swap" />
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Montserrat:wght@400;500;600;700&family=Assistant:wght@400;500;600;700&display=swap" />
       </head>
-      <body><div className="wrap">{children}</div></body>
+      <body>{children}</body>
     </html>
   );
 }

@@ -23,11 +23,11 @@ export default async function Admin({ searchParams }: { searchParams: Promise<{ 
       {sp.msg && <p className="note card">{sp.msg}</p>}
       {sp.error && <p className="flash">{sp.error}</p>}
       <div className="bento">
-        <form action={runCampaign} className="card s6 stack"><h3>Start a campaign</h3>
+        <form action={runCampaign} id="campaign" className="card s6 stack"><h3>Start a campaign</h3>
           <label className="field">Occasion or goal<input name="occasion" required placeholder="Diwali gold edit, wedding season, new kids range…" /></label>
           <button className="btn">Start</button>
           <p className="note">The whole team works on it: Insights and War Room reports go through their AI team leads, then Strategy, Creative House and Quality, and finally the plan comes to the heads for approval.</p></form>
-        <div className="card s6 stack"><h3>Connections</h3>
+        <div id="sync" className="card s6 stack"><h3>Connections</h3>
           <ul className="list">{(conns || []).map(c => <li key={c.provider}><div className="grow"><b>{c.provider.replace('_', ' ')}</b><span className="sm">{c.account_ref || ''}{c.last_synced_at ? ` · synced ${new Date(c.last_synced_at).toLocaleString('en-IN')}` : ''}{c.last_error ? ` · ${c.last_error.slice(0, 90)}` : ''}</span></div><span className={`pill ${c.status === 'connected' ? 'good' : c.status === 'error' ? 'bad' : ''}`}>{c.status.replace('_', ' ')}</span></li>)}</ul>
           <form action={syncNow}><button className="btn ghost">Sync now</button></form>
           <p className="note">Keys live in Vercel environment variables, never in the database. See docs/DEPLOY.md.</p></div>

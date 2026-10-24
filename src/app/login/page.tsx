@@ -3,8 +3,8 @@ import { signIn } from './actions';
 export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string; sent?: string }> }) {
   const sp = await searchParams;
   return (
-    <div style={{ maxWidth: 420, margin: '12vh auto 0' }} className="stack">
-      <div className="brand"><div className="mark" aria-hidden="true">P</div><div><h1>Parakkat</h1><small>AI marketing office · Jewels</small></div></div>
+    <div style={{ maxWidth: 420, margin: '12vh auto 0', padding: '0 16px' }} className="stack">
+      <div className="wordmark" style={{ alignSelf: 'center', textAlign: 'center' }}><b>PARAKKAT</b><small>JEWELS | MARKETING HQ</small></div>
       <form action={signIn} className="card stack">
         <h2 style={{ fontSize: 20 }}>Sign in</h2>
         {sp.error && <p className="flash">{sp.error}</p>}
