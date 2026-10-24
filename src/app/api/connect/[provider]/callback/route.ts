@@ -28,7 +28,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
     const f = await finish(p, q, redirectUri(req.nextUrl.origin, p), shop || undefined);
     await saveAccess(p, f.tokens, f.settings, f.expiresAt, user.id);
     await supabaseAdmin().from('connections').upsert(connectionRows(p, f.settings));
-    const pick = p !== 'shopify' && !(p === 'meta' ? f.settings.ad_account_id && f.settings.page_id : f.settings.customer_id);
+    const pick = p !== 'shopify' && !(p === 'meta' ? f.settings.ad_account_ids?.length && f.settings.page_id : f.settings.customer_ids?.length);
     return back('msg', `${NAME[p]} connected: ${f.summary}.${pick ? ' Choose the accounts to use below.' : ' Press Sync data now to pull it in.'}`);
   } catch (e) {
     return back('error', `${NAME[p]} could not connect. ${e instanceof Error ? e.message : String(e)}`.slice(0, 400));

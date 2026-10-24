@@ -5,6 +5,7 @@ import { has } from '@/lib/env';
 import { syncProducts, syncOrders, shopifyReady } from '@/lib/connectors/shopify';
 import { syncAdInsights, syncInstagram, metaConfig } from '@/lib/connectors/meta';
 import { syncGoogleAds, googleAdsReady } from '@/lib/connectors/google';
+import { googleId, metaId } from '@/lib/connectors/accounts.mjs';
 import { learnFromData } from './learn';
 import { emit } from './events';
 
@@ -16,13 +17,15 @@ const JOBS: { provider: string; bot: string; ready: () => Promise<string | null 
       const orders = await syncOrders(db, 30, deadline), p = await syncProducts(db, deadline);
       return `${orders} product-days of orders, ${p.count} products${p.more ? ' (more next sync, it carries on where it stopped)' : ''}`;
     } },
-  { provider: 'meta', bot: 'metaSync', ready: async () => (await metaConfig())?.account,
-    run: async db => `${await syncAdInsights(db)} ad-days` },
+  { provider: 'meta', bot: 'metaSync', ready: async () => (await metaConfig())?.accounts.map(metaId).join(', '),
+    run: async db => adDays(await syncAdInsights(db)) },
   { provider: 'instagram', bot: 'metaSync', ready: async () => (await metaConfig())?.ig,
     run: async db => `${await syncInstagram(db)} posts` },
-  { provider: 'google_ads', bot: 'googleSync', ready: async () => (await googleAdsReady())?.customer,
-    run: async db => `${await syncGoogleAds(db)} ad-days` },
+  { provider: 'google_ads', bot: 'googleSync', ready: async () => (await googleAdsReady())?.customers.map(c => googleId(c.id)).join(', '),
+    run: async db => adDays(await syncGoogleAds(db)) },
 ];
+const adDays = (r: { count: number; accounts: number; failed: string[] }) =>
+  `${r.count} ad-days from ${r.accounts} account${r.accounts === 1 ? '' : 's'}${r.failed.length ? `; could not read ${r.failed.join('; ')}` : ''}`;
 
 /** Pull fresh data from every connected platform. Each Data Hub bot reports to the Data Hub Lead. */
 export async function syncAll(db: SupabaseClient) {

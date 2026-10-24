@@ -3,6 +3,7 @@ import { APP_KEYS, appReady } from '@/lib/connectors/connect';
 import type { Platform } from '@/lib/connectors/vault';
 import { Icon } from '@/components/Icon';
 import { when } from '@/components/ui';
+import { chosen, googleId, googleLabel, metaAdLabel, metaId, pageLabel, type GoogleChoice } from '@/lib/connectors/accounts.mjs';
 import { chooseAccounts, disconnect } from './actions';
 
 const PLATFORMS: { id: Platform; name: string; what: string; envKeys: string[] }[] = [
@@ -34,27 +35,29 @@ export async function Integrations() {
 
           {c && p.id === 'meta' && (
             <form action={chooseAccounts} className="integr-pick"><input type="hidden" name="platform" value="meta" />
-              <label className="field">Ad account<select name="ad" defaultValue={s.ad_account_id || ''} className="in"><option value="">Choose…</option>
-                {(ch.ads || []).map((a: any) => <option key={a.id} value={a.id}>{a.name} ({a.id.replace('act_', '')})</option>)}</select></label>
+              <AccountChecks label="Ad accounts to sync" name="ad" picked={chosen(s.ad_account_ids, s.ad_account_id)}
+                options={(ch.ads || []).map((a: any) => ({ id: a.id, label: metaAdLabel(a) }))} />
+              <label className="field">Launch new campaigns in<select name="launch" defaultValue={s.ad_account_id || ''} className="in"><option value="">First ticked account</option>
+                {(ch.ads || []).map((a: any) => <option key={a.id} value={a.id}>{metaAdLabel(a)}</option>)}</select></label>
               <label className="field">Facebook page and Instagram<select name="page" defaultValue={s.page_id || ''} className="in"><option value="">Choose…</option>
-                {(ch.pages || []).map((x: any) => <option key={x.id} value={x.id}>{x.name}{x.ig_name ? ` · @${x.ig_name}` : ' · no Instagram linked'}</option>)}</select></label>
+                {(ch.pages || []).map((x: any) => <option key={x.id} value={x.id}>{pageLabel(x)}</option>)}</select></label>
               <button className="btn ghost sm-btn">Save</button>
             </form>
           )}
           {c && p.id === 'google' && (
             <form action={chooseAccounts} className="integr-pick"><input type="hidden" name="platform" value="google" />
               {(ch.customers || []).length ? <>
-                <label className="field">Google Ads account<select name="customer" defaultValue={s.customer_id || ''} className="in"><option value="">Choose…</option>
-                  {ch.customers.filter((x: any) => !x.manager).map((x: any) => <option key={x.id} value={x.id}>{x.name} ({x.id})</option>)}</select></label>
-                <label className="field">Through manager account<select name="login" defaultValue={s.login_customer_id || ''} className="in"><option value="">None</option>
-                  {ch.customers.filter((x: any) => x.manager).map((x: any) => <option key={x.id} value={x.id}>{x.name} ({x.id})</option>)}</select></label>
+                <AccountChecks label="Google Ads accounts to sync" name="customer" picked={chosen(s.customer_ids, s.customer_id)}
+                  options={(ch.customers as GoogleChoice[]).filter(x => !x.manager).map(x => ({ id: x.id, label: googleLabel(x, ch.customers) }))} />
+                <label className="field">Manager account, for accounts not found under one<select name="login" defaultValue={s.login_customer_id || ''} className="in"><option value="">None</option>
+                  {(ch.customers as GoogleChoice[]).filter(x => x.manager).map(x => <option key={x.id} value={x.id}>{googleLabel(x, ch.customers)}</option>)}</select></label>
               </> : <>
-                <label className="field">Google Ads account id<input name="customer" className="in" defaultValue={s.customer_id || ''} placeholder="123-456-7890" /></label>
-                <label className="field">Manager account id<input name="login" className="in" defaultValue={s.login_customer_id || ''} placeholder="Optional" /></label>
+                <label className="field">Google Ads account ids<input name="customer" className="in" defaultValue={chosen(s.customer_ids, s.customer_id).map(googleId).join(', ')} placeholder="123-456-7890, 234-567-8901" /></label>
+                <label className="field">Manager account id<input name="login" className="in" defaultValue={s.login_customer_id ? googleId(s.login_customer_id) : ''} placeholder="Optional" /></label>
               </>}
               {(ch.properties || []).length
                 ? <label className="field">Analytics property<select name="ga4" defaultValue={s.ga4_property_id || ''} className="in"><option value="">None</option>
-                    {ch.properties.map((x: any) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+                    {ch.properties.map((x: any) => <option key={x.id} value={x.id}>{x.name} · {x.id}</option>)}</select></label>
                 : <label className="field">Analytics property id<input name="ga4" className="in" defaultValue={s.ga4_property_id || ''} placeholder="Optional" /></label>}
               {s.note && <span className="sm err">Google could not list the accounts: {String(s.note).slice(0, 140)}</span>}
               <button className="btn ghost sm-btn">Save</button>
@@ -72,5 +75,17 @@ export async function Integrations() {
         </li>
       );
     })}</ul>
+  );
+}
+
+/** Tick boxes for the accounts to sync, each with its id so accounts sharing a name can be told apart. */
+function AccountChecks({ label, name, options, picked }: { label: string; name: string; options: { id: string; label: string }[]; picked: string[] }) {
+  const on = new Set(picked.map(id => metaId(id).replace(/-/g, '')));
+  return (
+    <fieldset className="field integr-checks"><legend>{label}</legend>
+      {options.length ? options.map(o => (
+        <label key={o.id} className="check"><input type="checkbox" name={name} value={o.id} defaultChecked={on.has(metaId(o.id))} /><span>{o.label}</span></label>
+      )) : <span className="sm">No accounts were found for this sign-in.</span>}
+    </fieldset>
   );
 }

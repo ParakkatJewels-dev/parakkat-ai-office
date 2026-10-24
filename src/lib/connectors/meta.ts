@@ -2,16 +2,24 @@ import 'server-only';
 import { opt } from '@/lib/env';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess } from './vault';
+import { chosen, metaId } from './accounts.mjs';
 
 export const G = () => `https://graph.facebook.com/${opt('META_API_VERSION', 'v21.0')}`;
 
-type MetaConfig = { token: string; account?: string; page?: string; ig?: string };
+/** accounts are the ad accounts to sync; account is the one new campaigns launch in. */
+type MetaConfig = { token: string; accounts: string[]; account?: string; page?: string; ig?: string };
+const actId = (id: string) => `act_${metaId(id)}`;
 /** Access connected on the Admin page, else the Vercel keys, else null. */
 export async function metaConfig(): Promise<MetaConfig | null> {
   const s = await loadAccess('meta');
-  if (s) return { token: s.tokens.access_token, account: s.settings.ad_account_id, page: s.settings.page_id, ig: s.settings.ig_user_id };
+  if (s) {
+    const st = s.settings, accounts = chosen(st.ad_account_ids, st.ad_account_id).map(actId);
+    return { token: s.tokens.access_token, accounts, account: st.ad_account_id ? actId(st.ad_account_id) : accounts[0], page: st.page_id, ig: st.ig_user_id };
+  }
   const e = process.env;
-  return e.META_ACCESS_TOKEN ? { token: e.META_ACCESS_TOKEN, account: e.META_AD_ACCOUNT_ID, page: e.META_PAGE_ID, ig: e.META_IG_USER_ID } : null;
+  // META_AD_ACCOUNT_ID may list several accounts, comma separated; the first is where campaigns launch
+  const accounts = chosen(null, e.META_AD_ACCOUNT_ID).map(actId);
+  return e.META_ACCESS_TOKEN ? { token: e.META_ACCESS_TOKEN, accounts, account: accounts[0], page: e.META_PAGE_ID, ig: e.META_IG_USER_ID } : null;
 }
 async function cfg() { const c = await metaConfig(); if (!c) throw new Error('Meta is not connected. Connect it on the Admin page.'); return c; }
 const need = (v: string | undefined, what: string) => { if (!v) throw new Error(`Choose the Meta ${what} on the Admin page.`); return v; };
@@ -36,18 +44,27 @@ async function all(path: string, params: Record<string, string>) {
 }
 const act = (list: any[] | undefined, type: string) => Number(list?.find(a => a.action_type === type)?.value ?? 0);
 
-/** Daily results per ad for the last 30 days. */
+/** Daily results per ad for the last 30 days, for every chosen ad account. One account failing does not stop the others. */
 export async function syncAdInsights(db: SupabaseClient) {
-  const rows = (await all(`${need((await cfg()).account, 'ad account')}/insights`, {
-    level: 'ad', time_increment: '1', date_preset: 'last_30d', limit: '500',
-    fields: 'ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,actions,action_values',
-  })).map(r => ({
-    day: r.date_start, platform: 'meta', ad_id: r.ad_id, ad_name: r.ad_name, campaign_id: r.campaign_id, campaign_name: r.campaign_name,
-    spend: Number(r.spend), impressions: Number(r.impressions), clicks: Number(r.clicks),
-    purchases: act(r.actions, 'purchase'), revenue: act(r.action_values, 'purchase'),
-  }));
-  if (rows.length) { const { error } = await db.from('ad_insights_daily').upsert(rows); if (error) throw error; }
-  return rows.length;
+  const c = await cfg();
+  if (!c.accounts.length) need(undefined, 'ad account');
+  let count = 0; const failed: string[] = [];
+  for (const account of c.accounts) {
+    try {
+      const rows = (await all(`${account}/insights`, {
+        level: 'ad', time_increment: '1', date_preset: 'last_30d', limit: '500',
+        fields: 'ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,actions,action_values',
+      })).map(r => ({
+        day: r.date_start, platform: 'meta', account_id: metaId(account), ad_id: r.ad_id, ad_name: r.ad_name, campaign_id: r.campaign_id, campaign_name: r.campaign_name,
+        spend: Number(r.spend), impressions: Number(r.impressions), clicks: Number(r.clicks),
+        purchases: act(r.actions, 'purchase'), revenue: act(r.action_values, 'purchase'),
+      }));
+      if (rows.length) { const { error } = await db.from('ad_insights_daily').upsert(rows); if (error) throw error; }
+      count += rows.length;
+    } catch (e) { failed.push(`${metaId(account)} (${e instanceof Error ? e.message : String(e)})`); }
+  }
+  if (failed.length === c.accounts.length) throw new Error(`Meta: ${failed.join('; ')}`);
+  return { count, accounts: c.accounts.length, failed };
 }
 
 /** Your recent Instagram posts with reach and saves, so the Post Analyst can see what sells. */

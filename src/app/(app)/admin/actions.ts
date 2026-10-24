@@ -8,6 +8,7 @@ import { syncAll } from '@/lib/agents/sync';
 import { publishApproved } from '@/lib/agents/publish';
 import { loadAccess, saveSettings, dropAccess, type Platform } from '@/lib/connectors/vault';
 import { connectionRows } from '@/lib/connectors/connect';
+import { chosen } from '@/lib/connectors/accounts.mjs';
 
 async function admin() {
   const u = await requireUser();
@@ -84,15 +85,21 @@ export async function chooseAccounts(form: FormData) {
   try {
     const p = platformOf(form), s = (await loadAccess(p))?.settings;
     if (!s) throw new Error(`Connect ${PLATFORM_NAME[p]} first.`);
-    let patch: Record<string, string | undefined>;
+    let patch: Record<string, string | string[] | undefined>;
+    // ticked boxes come as several values with one name; a typed field may hold several ids, comma separated
+    const many = (k: string) => chosen(form.getAll(k).map(String));
     if (p === 'meta') {
-      const ad = f('ad'), page = (s.choices?.pages || []).find((x: any) => x.id === f('page'));
-      if (ad && !(s.choices?.ads || []).some((x: any) => x.id === ad)) throw new Error('That ad account is not one this sign-in can reach.');
-      patch = { ad_account_id: ad, page_id: page?.id, ig_user_id: page?.ig || undefined };
+      const ads = many('ad'), page = (s.choices?.pages || []).find((x: any) => x.id === f('page'));
+      const reach = (s.choices?.ads || []).map((x: any) => x.id);
+      if (ads.some(a => !reach.includes(a))) throw new Error('One of those ad accounts is not one this sign-in can reach.');
+      // new campaigns launch in the account picked for it, or the first one ticked
+      const launch = f('launch') && ads.includes(f('launch')!) ? f('launch') : ads[0];
+      patch = { ad_account_ids: ads, ad_account_id: launch, page_id: page?.id, ig_user_id: page?.ig || undefined };
     } else if (p === 'google') {
-      const id = (k: string) => f(k)?.replace(/-/g, '');
-      patch = { customer_id: id('customer'), login_customer_id: id('login'), ga4_property_id: id('ga4') };
-      for (const [k, v] of Object.entries(patch)) if (v && !/^\d{4,12}$/.test(v)) throw new Error(`${k === 'ga4_property_id' ? 'The Analytics property' : 'A Google Ads account'} id should be digits only.`);
+      const ids = many('customer').map(v => v.replace(/-/g, '')), one = (k: string) => f(k)?.replace(/-/g, '');
+      patch = { customer_ids: ids, customer_id: undefined, login_customer_id: one('login'), ga4_property_id: one('ga4') };
+      for (const v of [...ids, patch.login_customer_id, patch.ga4_property_id] as (string | undefined)[])
+        if (v && !/^\d{4,12}$/.test(v)) throw new Error(`${v === patch.ga4_property_id ? 'The Analytics property' : 'A Google Ads account'} id should be digits only.`);
     } else throw new Error('Shopify needs no choice: it is one store.');
     await saveSettings(p, patch);
     await supabaseAdmin().from('connections').upsert(connectionRows(p, { ...s, ...patch }));
