@@ -14,6 +14,7 @@ insert into departments (id, name, building, human_head_role, ai_lead_agent) val
   ('datahub', 'Data Hub', 'Parakkat Intelligence Centre', 'super_admin', 'dataLead'),
   ('forecast', 'Forecast Lab', 'Parakkat Intelligence Centre', 'ecom_manager', 'forecaster'),
   ('qa', 'Quality and Compliance', 'Parakkat Intelligence Centre', 'super_admin', 'compliance'),
+  ('seo', 'SEO Desk', 'Parakkat Intelligence Centre', 'ecom_manager', 'seoLead'),
   ('photo', 'Photo Studio', 'Parakkat Creative House', 'creative_head', 'studioLead'),
   ('reels', 'Reels Studio', 'Parakkat Creative House', 'creative_head', 'reelsProducer'),
   ('catalog', 'Catalogue Room', 'Parakkat Creative House', 'creative_head', 'catalogLead'),
@@ -67,6 +68,10 @@ insert into agents (id, name, role_desc, department_id, is_lead, model) values
   ('compliance', 'Compliance Checker', 'Hallmark and claims rules', 'qa', true, 'Jev for scoring, GPT explains'),
   ('priceAuditor', 'Price Auditor', 'Ad prices match Shopify', 'qa', false, 'Jev for scoring'),
   ('policyChecker', 'Ad Policy Checker', 'Meta and Google ad policies', 'qa', false, 'Jev for scoring'),
+  ('seoLead', 'SEO Lead', 'Head of the SEO Desk', 'seo', true, 'OpenAI GPT, manager tier'),
+  ('trendsAnalyst', 'Google Trends Analyst', 'Rising and falling searches in Kerala', 'seo', false, 'OpenAI GPT, worker tier'),
+  ('keywordResearcher', 'Keyword Researcher', 'Search volumes from Keyword Planner', 'seo', false, 'OpenAI GPT, worker tier'),
+  ('seoWriter', 'SEO Content Writer', 'Product titles, meta descriptions, blog topics', 'seo', false, 'OpenAI GPT, worker tier'),
   ('studioLead', 'Studio Lead', 'Head of Photo Studio', 'photo', true, 'OpenAI GPT, manager tier'),
   ('photoEditor', 'Product Photo Editor', 'Cleans Shopify photos', 'photo', false, 'Gemini image model'),
   ('bgGen', 'Background Artist', 'Festive scenes behind products', 'photo', false, 'Gemini image model'),
@@ -88,5 +93,5 @@ insert into agents (id, name, role_desc, department_id, is_lead, model) values
   ('moodCurator', 'Moodboard Curator', 'Looks for each season', 'brand', false, 'Gemini image model')
 on conflict (id) do update set name = excluded.name, role_desc = excluded.role_desc, department_id = excluded.department_id, is_lead = excluded.is_lead, model = excluded.model;
 
-insert into connections (provider) values ('shopify'), ('meta'), ('instagram'), ('google_ads'), ('ga4'), ('triple_whale'), ('openai'), ('gemini'), ('jev')
+insert into connections (provider) values ('shopify'), ('meta'), ('instagram'), ('google_ads'), ('ga4'), ('triple_whale'), ('openai'), ('gemini'), ('jev'), ('google_trends'), ('keyword_planner')
 on conflict do nothing;

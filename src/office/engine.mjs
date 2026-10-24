@@ -7,7 +7,7 @@
 
 export const DEPT_COLOR = {
   board: '#b08d57', insights: '#3d6fb0', intel: '#6c4fb3', strategy: '#2b8a64', creative: '#b23a4c', social: '#d07a1f',
-  perf: '#23807a', lead: '#1c1c1c', warroom: '#6f3fa0', customer: '#2f7fa8', goldrate: '#b8913f', datahub: '#4a5568',
+  perf: '#23807a', seo: '#4f8a2b', lead: '#1c1c1c', warroom: '#6f3fa0', customer: '#2f7fa8', goldrate: '#b8913f', datahub: '#4a5568',
   forecast: '#3f8f7a', qa: '#8a6a3a', photo: '#c4566a', reels: '#d9603b', catalog: '#8a5a9e', lang: '#3a8f5c', crm: '#2b6cb0', brand: '#a8865a',
 };
 const SKIN = ['#f0c9a4', '#d7a47c', '#b77d57', '#8c5a3c'];
@@ -16,8 +16,8 @@ const STATUS_COL = { idle: '#4b8fe0', thinking: '#e89a3c', talking: '#35b07c', w
 const BUSY = new Set(['thinking', 'talking', 'walking']);
 const SEAT = [[-3, -2.6], [3, -2.6], [-3, 2.2], [3, 2.2]];
 const WH = 3.0;
-const CAMPUS_VIEW = { pos: [0, 116, 118], target: [0, 0, 6] };
-const TOP_VIEW = { pos: [0, 175, 5.01], target: [0, 0, 5] };
+const CAMPUS_VIEW = { pos: [-6, 116, 118], target: [-6, 0, 6] };
+const TOP_VIEW = { pos: [-6, 180, 5.01], target: [-6, 0, 5] };
 const ICON = {
   hq: '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3 8 9l4 12 4-12-3-6M2 9h20"/>',
   ic: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
@@ -156,7 +156,7 @@ export function createOffice(o) {
     for (let x = x1 + 3; x < x2 - 2; x += 6) if (Math.abs(x - b.ox) > 5) { box(2.2, .5, 2.2, stone, x, .05, 19.6); flat(1.9, 1.9, soil, x, .31, 19.6); plant(x, 19.6, .9); }
   });
   [0, 1, 2].forEach(i => box(7.6 - i * .8, .16, 1, stone, 0, -.22 + i * .14, 17.6 - i * .6)); // front steps of HQ
-  for (let x = -66; x <= 66; x += 12) { if (Math.abs(x) < 8) continue; cyl(.09, .12, 4.4, post, x, 1.9, 31.4, 8).castShadow = false; box(.7, .12, .7, post, x, 4.15, 31.4).castShadow = false; cyl(.22, .22, .25, bulb, x, 3.95, 31.4, 10); glowAt.push([x, 3.9, 31.4]); }
+  for (let x = -78; x <= 66; x += 12) { if (Math.abs(x) < 8) continue; cyl(.09, .12, 4.4, post, x, 1.9, 31.4, 8).castShadow = false; box(.7, .12, .7, post, x, 4.15, 31.4).castShadow = false; cyl(.22, .22, .25, bulb, x, 3.95, 31.4, 10); glowAt.push([x, 3.9, 31.4]); }
   [-1, 1].forEach(sd => { [[15, 27.5], [33, 27], [62, 28]].forEach(([x, z]) => palm(sd * x, z, .95)); });
   cyl(4.6, 4.9, .6, stone, 0, 0, 24, 40); const water = cyl(4.15, 4.15, .1, M('#3f8fbd', { roughness: .08, metalness: .25 }), 0, .32, 24, 40); water.castShadow = false;
   cyl(.55, .75, 1.4, stone, 0, .9, 24, 20); cyl(1.5, 1.2, .25, stone, 0, 1.7, 24, 24); const jet = cyl(.08, .3, 1.6, M('#d9f0fb', { transparent: true, opacity: .7, roughness: .1 }), 0, 2.6, 24, 10); jet.castShadow = false;
@@ -262,6 +262,7 @@ export function createOffice(o) {
       case 'lead': box(5, .9, .1, champagne, cx, 2.0, r.cz - 5.75); sofa(cx - 3.2, farZ, Math.PI, '#d8cfc0'); sofa(cx + 3.2, farZ, Math.PI, '#d8cfc0'); box(1.4, .4, .8, M('#3a2a20', { roughness: .35 }), cx, .2, farZ); plant(cx - 5.3, r.cz - 5.2, 1.2); plant(cx + 5.3, r.cz - 5.2, 1.2); break;
       case 'warroom': wallScreen(cx - 3.4, 2.4, 1.5, 'bars', '#ff8fa3'); wallScreen(cx, 2.8, 1.7, 'line', '#d8c3a5'); wallScreen(cx + 3.4, 2.4, 1.5, 'bars', '#5fb7ff'); break;
       case 'screens': if (top) { wallScreen(cx - 2, 2.6, 1.5); wallScreen(cx + 2, 2.6, 1.5); } else { standScreen(cx - 2.6, farZ); standScreen(cx + 2.6, farZ); } plant(cx + 5.3, farZ); break;
+      case 'seo': wallScreen(cx - 2.2, 2.6, 1.5, 'line', '#8fd16a'); wallScreen(cx + 2, 2.2, 1.5, 'bars', '#e1b452'); plant(cx + 5.3, farZ); break;
       case 'ticker': wallScreen(cx, 5, 1.4, 'line', '#e1b452'); plant(cx - 5.3, farZ); plant(cx + 5.3, farZ); break;
       case 'servers': [-4.6, -3.4, 4.6].forEach(dx => rack(cx + dx, farZ)); standScreen(cx + .4, farZ); break;
       case 'shelves': shelf(cx - 4, top ? -14.6 : farZ + .4); shelf(cx + 4, top ? -14.6 : farZ + .4); if (!occ.includes(3)) plant(seatOf(r, 3).x, seatOf(r, 3).z + 1); break;
@@ -272,6 +273,14 @@ export function createOffice(o) {
       case 'moodboard': box(3.2, 1.8, .08, M('#ffffff'), cx, 1.6, farZ); ['#1c1c1c', '#d8c3a5', '#e2d1c3', '#b08d57', '#8a5a3c', '#f4efe6'].forEach((c, i) => box(.8, .6, .02, M(c), cx - 1.05 + (i % 3) * 1.05, 1.95 - Math.floor(i / 3) * .7, farZ - .06)); box(.08, .8, .08, metal, cx, .4, farZ); plant(cx + 5.2, farZ); break;
     }
   });
+  // a lounge in any bay without a department, so a building never shows a hole
+  Object.values(B).forEach(b => { for (let c = 0; c < b.cols; c++) for (const row of [0, 1]) {
+    if (Object.values(R).some(r => r.b === b && r.col === c && r.row === row)) continue;
+    const cx = b.ox - b.half + 6 + 12 * c, cz = row ? 9 : -9, farZ = row ? cz + 5.3 : cz - 5.3;
+    flat(11.8, 11.8, floorMat.wood, cx, .01, cz); lamp({ cx, cz });
+    sofa(cx - 2.6, farZ, row ? Math.PI : 0, '#2f5d50'); sofa(cx + 2.6, farZ, row ? Math.PI : 0, '#2f5d50');
+    box(1.4, .4, .8, M('#3a2a20', { roughness: .35 }), cx, .2, cz + (row ? 2.4 : -2.4)); plant(cx - 5.2, cz); plant(cx + 5.2, cz, 1.2);
+  } });
   Object.values(B).forEach(b => { for (let x = b.ox - b.half + 3; x < b.ox + b.half; x += 12) plant(x, -2.2, .8); });
 
   // merge every static mesh into one per material: thousands of draws become a few dozen

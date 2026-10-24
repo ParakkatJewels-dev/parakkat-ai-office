@@ -2,10 +2,32 @@ import 'server-only';
 import { env, opt } from '@/lib/env';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+let cached: { token: string; until: number } | null = null;
+
+/**
+ * The Admin API token. An older custom app gives a permanent SHOPIFY_ADMIN_TOKEN. Apps made in the Shopify Dev Dashboard
+ * give SHOPIFY_CLIENT_ID and SHOPIFY_CLIENT_SECRET instead, and we trade them for a token that lasts about a day.
+ */
+async function adminToken() {
+  if (process.env.SHOPIFY_ADMIN_TOKEN) return process.env.SHOPIFY_ADMIN_TOKEN;
+  if (cached && cached.until > Date.now()) return cached.token;
+  const res = await fetch(`https://${env('SHOPIFY_STORE_DOMAIN')}/admin/oauth/access_token`, {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: env('SHOPIFY_CLIENT_ID'), client_secret: env('SHOPIFY_CLIENT_SECRET') }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok || !d.access_token) throw new Error(`Shopify token ${res.status}: ${d.error_description || d.error || 'check SHOPIFY_CLIENT_ID and SHOPIFY_CLIENT_SECRET, and that the app is installed on the store'}`);
+  cached = { token: d.access_token, until: Date.now() + Math.max(60, Number(d.expires_in || 86400) - 300) * 1000 };
+  return cached.token;
+}
+
+/** True when either kind of Shopify credential is set. */
+export const shopifyReady = () => !!process.env.SHOPIFY_STORE_DOMAIN && (!!process.env.SHOPIFY_ADMIN_TOKEN || (!!process.env.SHOPIFY_CLIENT_ID && !!process.env.SHOPIFY_CLIENT_SECRET));
+
 async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
   const res = await fetch(`https://${env('SHOPIFY_STORE_DOMAIN')}/admin/api/${opt('SHOPIFY_API_VERSION', '2025-07')}/graphql.json`, {
     method: 'POST',
-    headers: { 'X-Shopify-Access-Token': env('SHOPIFY_ADMIN_TOKEN'), 'content-type': 'application/json' },
+    headers: { 'X-Shopify-Access-Token': await adminToken(), 'content-type': 'application/json' },
     body: JSON.stringify({ query, variables }),
   });
   const data = await res.json();

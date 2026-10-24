@@ -1,6 +1,7 @@
 {
   "regions": ["bom1"],
   "crons": [
-    { "path": "/api/sync", "schedule": "30 0 * * *" }
+    { "path": "/api/sync", "schedule": "30 0 * * *" },
+    { "path": "/api/seo", "schedule": "30 1 * * 1" }
   ]
 }

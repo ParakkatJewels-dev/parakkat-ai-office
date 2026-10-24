@@ -5,18 +5,18 @@ import { STAGES } from '@/lib/agents/campaign';
 import { BUILDINGS } from '@/office/roster.mjs';
 import { Icon } from '@/components/Icon';
 import { PageHead, Tile, Avatar, Stepper, when } from '@/components/ui';
-import { setRole, setHead, addCompetitor, runCampaign, nextStep, syncNow, publishAgain } from './actions';
+import { setRole, setHead, addCompetitor, runCampaign, nextStep, syncNow, publishAgain, saveBrandBook, addLesson, retireLesson } from './actions';
 
 export const maxDuration = 300;
 const ROLES: AppRole[] = ['super_admin', 'creative_head', 'ecom_manager', 'perf_marketer', 'viewer'];
-const PROVIDER: Record<string, string> = { shopify: 'Shopify', meta: 'Meta Ads', instagram: 'Instagram', google_ads: 'Google Ads', ga4: 'Google Analytics', triple_whale: 'Triple Whale', openai: 'OpenAI', gemini: 'Gemini', jev: 'Jev' };
+const PROVIDER: Record<string, string> = { shopify: 'Shopify', meta: 'Meta Ads', instagram: 'Instagram', google_ads: 'Google Ads', ga4: 'Google Analytics', triple_whale: 'Triple Whale', openai: 'OpenAI', gemini: 'Gemini', jev: 'Jev', google_trends: 'Google Trends', keyword_planner: 'Keyword Planner' };
 const STAGE_LABEL: Record<string, string> = { analyse: 'Analyse', competitors: 'Competitors', plan: 'Plan', create: 'Create', review: 'Review', approval: 'Approval', done: 'Live' };
 
 export default async function Admin({ searchParams }: { searchParams: Promise<{ msg?: string; error?: string }> }) {
   const { db, role } = await requireUser();
   if (role !== 'super_admin') redirect('/office');
   const sp = await searchParams;
-  const [{ data: people }, { data: depts }, { data: rivals }, { data: conns }, { data: runs }, { data: stuck }, { data: agents }] = await Promise.all([
+  const [{ data: people }, { data: depts }, { data: rivals }, { data: conns }, { data: runs }, { data: stuck }, { data: agents }, { data: book }, { data: lessons }] = await Promise.all([
     db.from('profiles').select('id, full_name, role').order('created_at'),
     db.from('departments').select('id, name, building, human_head_role, ai_lead_agent').order('building'),
     db.from('competitors').select('id, name, instagram_handle, website').order('name'),
@@ -24,7 +24,10 @@ export default async function Admin({ searchParams }: { searchParams: Promise<{ 
     db.from('agent_runs').select('id, occasion, stage, status, error, started_at').order('started_at', { ascending: false }).limit(8),
     db.from('approvals').select('id, campaigns(name)').eq('status', 'approved'),
     db.from('agents').select('id, name'),
+    db.from('brand_book').select('voice, always, never, notes, updated_at').eq('id', 1).maybeSingle(),
+    db.from('lessons').select('id, department_id, source, decision, lesson, created_at').eq('active', true).order('created_at', { ascending: false }).limit(40),
   ]);
+  const DN = Object.fromEntries((depts || []).map(d => [d.id, d.name]));
   const A = Object.fromEntries((agents || []).map(a => [a.id, a.name]));
   const connected = (conns || []).filter(c => c.status === 'connected').length;
   const active = (runs || []).filter(r => r.status !== 'failed' && r.stage !== 'done').length;
@@ -45,7 +48,7 @@ export default async function Admin({ searchParams }: { searchParams: Promise<{ 
         <Tile icon="eye" tone="violet" label="Competitors watched" value={(rivals || []).length} sub="By the War Room" />
       </section>
 
-      <nav className="chips" aria-label="Sections"><a href="#campaign">Campaigns</a><a href="#sync">Connections</a><a href="#people">People</a><a href="#heads">Department heads</a><a href="#rivals">Competitors</a></nav>
+      <nav className="chips" aria-label="Sections"><a href="#campaign">Campaigns</a><a href="#sync">Connections</a><a href="#people">People</a><a href="#heads">Department heads</a><a href="#rivals">Competitors</a><a href="#memory">Learning memory</a></nav>
 
       <div className="bento">
         <form action={runCampaign} id="campaign" className="card hero s5 launch">
@@ -130,6 +133,35 @@ export default async function Admin({ searchParams }: { searchParams: Promise<{ 
           {(rivals || []).length ? <ul className="rivals">{rivals!.map(c => (
             <li key={c.id}><Avatar name={c.name} size={34} /><div><b>{c.name}</b><span className="sm">{[c.instagram_handle && '@' + c.instagram_handle, c.website].filter(Boolean).join(' · ') || 'No links yet'}</span></div></li>
           ))}</ul> : <p className="sub">No competitors yet.</p>}
+        </section>
+
+        <section id="memory" className="card s12">
+          <div className="card-head"><div><h3>Learning memory</h3><p className="sub">Every agent reads the brand book. Each team also reads its latest lessons: notes the heads wrote when accepting, sending back or rejecting work, plus any you add here. Your own notes apply to every team.</p></div></div>
+          <div className="memory">
+            <form action={saveBrandBook} className="stack">
+              <h4 className="eyebrow">Brand book {book?.updated_at && <span className="sm">· saved {new Date(book.updated_at).toLocaleDateString('en-IN')}</span>}</h4>
+              <label className="field">How we sound<textarea name="voice" rows={2} defaultValue={book?.voice} placeholder="Warm, elegant, proud of 60 years of Kerala craftsmanship. Speak to families, not just buyers." /></label>
+              <label className="field">Always<textarea name="always" rows={2} defaultValue={book?.always} placeholder="Mention BIS hallmark on gold. Say 'handcrafted in Alappuzha'. Show the Parakkat wordmark." /></label>
+              <label className="field">Never<textarea name="never" rows={2} defaultValue={book?.never} placeholder="Never say cheap, lowest price or guaranteed. No discounts on bridal sets. No competitor names." /></label>
+              <label className="field">Also know<textarea name="notes" rows={2} defaultValue={book?.notes} placeholder="Best months: Onam, Vishu, wedding season (Nov to Feb). Most buyers are 25 to 45, from Kerala and the Gulf." /></label>
+              <button className="btn"><Icon name="check" size={18} />Save brand book</button>
+            </form>
+            <div className="stack">
+              <h4 className="eyebrow">Lessons the agents follow</h4>
+              <form action={addLesson} className="addlesson">
+                <select name="dept" className="in" aria-label="Team" defaultValue="board">{(depts || []).map(d => <option key={d.id} value={d.id}>{d.id === 'board' ? 'Every team' : d.name}</option>)}</select>
+                <input name="lesson" className="in" required placeholder="e.g. Reels with a model wearing the piece beat flat product shots" aria-label="Lesson" />
+                <button className="btn ghost sm-btn"><Icon name="plus" size={16} />Add</button>
+              </form>
+              {(lessons || []).length ? <ul className="rows lessons">{lessons!.map(l => (
+                <li key={l.id}>
+                  <span className={`pill ${l.decision === 'accepted' || l.decision === 'approve' ? 'good' : l.source === 'manual' ? 'acc' : 'warn'}`}>{l.department_id === 'board' ? 'Every team' : DN[l.department_id] || l.department_id}</span>
+                  <div className="grow"><span>{l.lesson}</span><span className="sm">{l.source === 'manual' ? 'Added by you' : `From a ${l.source} decision`} · {when(l.created_at)}</span></div>
+                  <form action={retireLesson}><input type="hidden" name="id" value={l.id} /><button className="btn ghost sm-btn" aria-label="Retire this lesson">Retire</button></form>
+                </li>
+              ))}</ul> : <p className="sub">No lessons yet. They appear when heads leave notes on their decisions.</p>}
+            </div>
+          </div>
         </section>
       </div>
     </div>

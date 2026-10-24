@@ -3,9 +3,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Icon, type IconName } from './Icon';
 
-export function Sidebar({ admin, waiting }: { admin: boolean; waiting: number }) {
+export function Sidebar({ admin, waiting, seo, studio }: { admin: boolean; waiting: number; seo: boolean; studio: boolean }) {
   const path = usePathname();
-  const items: [string, string, IconName][] = [['/office', 'Office Map', 'map'], ['/dashboard', 'Dashboard', 'chart'], ['/approvals', 'Approvals', 'check'], ...(admin ? [['/admin', 'Admin', 'settings'] as [string, string, IconName]] : [])];
+  const items = ([
+    ['/office', 'Office Map', 'map', true], ['/dashboard', 'Dashboard', 'chart', true], ['/approvals', 'Approvals', 'check', true], ['/agents', 'Agents', 'users', true],
+    ['/seo', 'SEO', 'search', seo], ['/studio', 'Design Studio', 'spark', studio], ['/admin', 'Admin', 'settings', admin],
+  ] as [string, string, IconName, boolean][]).filter(i => i[3]);
   return (
     <nav className="side" aria-label="Views">
       {items.map(([href, label, icon]) => (
