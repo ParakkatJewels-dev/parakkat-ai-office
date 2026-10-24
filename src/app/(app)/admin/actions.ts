@@ -11,6 +11,7 @@ import { loadAccess, saveSettings, dropAccess, type Platform } from '@/lib/conne
 import { connectionRows } from '@/lib/connectors/connect';
 import { chosen } from '@/lib/connectors/accounts.mjs';
 import { errText } from '@/lib/errors';
+import { setPaused } from '@/lib/pause';
 
 async function admin() {
   const u = await requireUser();
@@ -50,6 +51,13 @@ export async function nextStep(form: FormData) {
   await admin();
   try { await advance(supabaseAdmin(), String(form.get('id'))); } catch (e) { await fail(e); }
   await done();
+}
+export async function togglePause(form: FormData) {
+  const { user } = await admin();
+  const on = form.get('pause') === '1';
+  try { await setPaused(on, user.id); } catch (e) { await fail(e); }
+  revalidatePath('/', 'layout');
+  await done(on ? 'Paused. The agents stop at their next step, make no AI or API calls and publish nothing until you resume.' : 'Resumed. The agents carry on from where they stopped at the next minute.');
 }
 export async function syncNow() {
   await admin();

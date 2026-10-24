@@ -231,6 +231,7 @@ a.clip:hover b{color:var(--accent)}
 .conn-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
 .banner{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:6px;background:var(--accent-soft);color:var(--ink);margin-bottom:10px;flex-wrap:wrap}
 .banner svg{color:var(--accent)} .banner span{flex:1;min-width:200px}
+.banner.paused{background:rgba(242,180,83,.14);border:1px solid rgba(242,180,83,.35)} .banner.paused svg{color:var(--warn)}
 .inline{display:flex;gap:6px;align-items:center;margin:0;flex:none}
 .inline select{padding:7px 10px;max-width:190px}
 .sm-btn{padding:7px 12px;font-size:13px}

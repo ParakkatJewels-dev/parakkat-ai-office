@@ -1,13 +1,17 @@
 import 'server-only';
 import { env, opt } from '@/lib/env';
 import { recordUsage } from '@/lib/usage';
+import { checkPause } from '@/lib/pause';
 
+// Google retires model names for new projects; these are the current ones (ai.google.dev/gemini-api/docs/models)
+const TEXT = () => opt('GEMINI_TEXT_MODEL', 'gemini-3.8-flash');
 const URL = (m: string) => `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`;
 
 type Part = { text?: string; inlineData?: { mimeType: string; data: string } };
 
 async function generate(model: string, parts: Part[], imageOut: boolean, aspectRatio?: string, json = false, system?: string) {
   const generationConfig = imageOut ? { responseModalities: ['TEXT', 'IMAGE'], ...(aspectRatio ? { imageConfig: { aspectRatio } } : {}) } : json ? { responseMimeType: 'application/json' } : undefined;
+  await checkPause();
   const t0 = Date.now();
   const res = await fetch(URL(model), {
     method: 'POST',
@@ -34,7 +38,7 @@ export async function imagePart(url: string): Promise<Part> {
  */
 export async function bannerImage(prompt: string, productPhotos: string[], aspectRatio?: string, photoParts?: Part[]): Promise<{ data: Buffer; mimeType: string }> {
   const photos = photoParts || await Promise.all(productPhotos.slice(0, 3).map(imagePart));
-  const parts = await generate(opt('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image'), [
+  const parts = await generate(opt('GEMINI_IMAGE_MODEL', 'gemini-3.1-flash-image'), [
     { text: `${prompt}\nKeep every piece of jewellery exactly as in the attached product photos: same design, stones, colour and proportions. Do not invent jewellery.` },
     ...photos,
   ], true, aspectRatio);
@@ -45,19 +49,19 @@ export async function bannerImage(prompt: string, productPhotos: string[], aspec
 
 /** Plain text from Gemini, used by the trend and festival agents. */
 export async function geminiText(prompt: string): Promise<string> {
-  const parts = await generate(opt('GEMINI_TEXT_MODEL', 'gemini-2.5-flash'), [{ text: prompt }], false);
+  const parts = await generate(TEXT(), [{ text: prompt }], false);
   return parts.map(p => p.text || '').join('').trim();
 }
 
 /** Ask Gemini about images (a finished design next to the product photos) and get JSON back. */
 export async function geminiJSON<T>(prompt: string, images: Part[]): Promise<T> {
-  const parts = await generate(opt('GEMINI_TEXT_MODEL', 'gemini-2.5-flash'), [{ text: `${prompt}\nReply with one JSON object only.` }, ...images], false, undefined, true);
+  const parts = await generate(TEXT(), [{ text: `${prompt}\nReply with one JSON object only.` }, ...images], false, undefined, true);
   const text = parts.map(p => p.text || '').join('').trim();
   try { return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as T; } catch { throw new Error(`Gemini returned text that is not JSON: ${text.slice(0, 200)}`); }
 }
 /** The agents' text work on Gemini, used when OpenAI cannot answer (or when LLM_PROVIDER=gemini). */
 export async function geminiChat<T>(tier: 'manager' | 'worker', system: string, user: string): Promise<T> {
-  const m = tier === 'manager' ? opt('GEMINI_MANAGER_MODEL', opt('GEMINI_TEXT_MODEL', 'gemini-2.5-flash')) : opt('GEMINI_TEXT_MODEL', 'gemini-2.5-flash');
+  const m = tier === 'manager' ? opt('GEMINI_MANAGER_MODEL', TEXT()) : TEXT();
   const parts = await generate(m, [{ text: user }], false, undefined, true, `${system}\nReply with one JSON object only.`);
   const text = parts.map(p => p.text || '').join('').trim();
   try { return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as T; } catch { throw new Error(`Gemini returned text that is not JSON: ${text.slice(0, 200)}`); }

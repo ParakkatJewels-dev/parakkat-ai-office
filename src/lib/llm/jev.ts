@@ -2,6 +2,7 @@ import 'server-only';
 import { has } from '@/lib/env';
 import { chatJSON } from './openai';
 import { recordUsage } from '@/lib/usage';
+import { checkPause } from '@/lib/pause';
 
 /** One typed question for Jev: pick one of the criteria keys. */
 export type Choice = { instructions: string; criteria: Record<string, string> };
@@ -12,6 +13,7 @@ export type Answer = { choice: string; confidence: number; probabilities: Record
  * Until JEV_API_KEY is set, an OpenAI worker answers the same questions so nothing else has to change.
  */
 export async function classify<K extends string>(state: string, questions: Record<K, Choice>): Promise<Record<K, Answer>> {
+  await checkPause();
   if (has('JEV_API_KEY')) {
     const res = await fetch('https://api.typesafe.ai/v1/systemone', {
       method: 'POST',
