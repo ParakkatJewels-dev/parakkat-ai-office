@@ -2,12 +2,14 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { publishCampaign, metaConfig } from '@/lib/connectors/meta';
 import { emit } from './events';
+import { checkPause } from '@/lib/pause';
 
 /**
  * Put an approved plan live. Called only after decide_approval returned 'approved', which the database
  * allows only for the Super Admin once every required head has approved.
  */
 export async function publishApproved(db: SupabaseClient, approvalId: string, siteUrl = 'https://parakkatjewels.com') {
+  await checkPause();
   const { data: a } = await db.from('approvals').select('id, status, campaign_id').eq('id', approvalId).single();
   if (!a || a.status !== 'approved') throw new Error('Only a plan the Super Admin approved can be published.');
   const { data: c } = await db.from('campaigns').select().eq('id', a.campaign_id).single();

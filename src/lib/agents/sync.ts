@@ -9,6 +9,7 @@ import { googleId, metaId } from '@/lib/connectors/accounts.mjs';
 import { learnFromData } from './learn';
 import { emit } from './events';
 import { errText } from '@/lib/errors';
+import { checkPause, isPaused } from '@/lib/pause';
 
 // ready() says whether a platform can be reached, from access connected on the Admin page or from Vercel keys, and names the account
 const JOBS: { provider: string; bot: string; ready: () => Promise<string | null | undefined>; run: (db: SupabaseClient, deadline: number) => Promise<string> }[] = [
@@ -30,6 +31,7 @@ const adDays = (r: { count: number; accounts: number; failed: string[] }) =>
 
 /** Pull fresh data from every connected platform. Each Data Hub bot reports to the Data Hub Lead. */
 export async function syncAll(db: SupabaseClient) {
+  await checkPause();
   // one sync at a time: two at once spend Shopify's query budget twice over and both get throttled
   const holder = randomUUID();
   const { data: got, error } = await db.rpc('acquire_job_lock', { p_name: 'sync', p_holder: holder, p_seconds: 300 });
@@ -43,6 +45,7 @@ async function syncLocked(db: SupabaseClient) {
   // the request may run for 300 seconds; each platform gets until about two and a half minutes in, then saves its place
   const deadline = Date.now() + 150_000;
   for (const j of JOBS) {
+    if (await isPaused()) { results[j.provider] = 'paused'; continue; }
     let ref: string | null | undefined;
     try { ref = await j.ready(); } catch { ref = null; }
     if (!ref) { results[j.provider] = 'not connected'; continue; }

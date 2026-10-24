@@ -13,6 +13,7 @@ import { loadMemory, pastResults } from './memory';
 import type { AppRole } from '@/lib/roles';
 import { errText } from '@/lib/errors';
 import { withUsage } from '@/lib/usage';
+import { Paused } from '@/lib/pause';
 
 /** A campaign run moves one stage per call to advance(), so each step fits in a single serverless call. */
 export const STAGES = ['analyse', 'competitors', 'plan', 'create', 'review', 'approval', 'done'] as const;
@@ -59,6 +60,8 @@ export async function advance(db: SupabaseClient, runId: string) {
     await db.from('agent_runs').update({ stage: next, state, status: next === 'done' ? 'waiting' : 'running' }).eq('id', runId);
     return next;
   } catch (e) {
+    // paused mid-step: the run keeps its stage and does this step again after Resume
+    if (e instanceof Paused) return run.stage;
     const msg = errText(e);
     await db.from('agent_runs').update({ status: 'failed', error: msg, state }).eq('id', runId);
     await emit(db, runId, 'feedback', 'cmo', `The ${run.stage} step failed: ${msg.slice(0, 180)}`);

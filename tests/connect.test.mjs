@@ -9,7 +9,9 @@ test('tokens round-trip and do not open with another key', () => {
   assert.ok(!box.includes('abc'));
   assert.deepEqual(open(box, k), { access_token: 'abc', refresh_token: 'def' });
   assert.throws(() => open(box, keyFrom('other-key')));
-  assert.throws(() => open(box.replace(/.$/, c => (c === 'A' ? 'B' : 'A')), k));
+  // change the first character of the ciphertext: every bit of it counts (the last base64 character may carry padding bits)
+  const at = box.lastIndexOf('.') + 1;
+  assert.throws(() => open(box.slice(0, at) + (box[at] === 'A' ? 'B' : 'A') + box.slice(at + 1), k));
 });
 
 test('store names become myshopify domains, anything else is refused', () => {

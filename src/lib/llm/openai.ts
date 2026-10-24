@@ -2,6 +2,7 @@ import 'server-only';
 import { has, opt } from '@/lib/env';
 import { recordUsage } from '@/lib/usage';
 import { geminiChat } from './gemini';
+import { checkPause } from '@/lib/pause';
 
 export type Tier = 'manager' | 'worker';
 const model = (tier: Tier) => tier === 'manager' ? opt('OPENAI_MANAGER_MODEL', 'gpt-4.1') : opt('OPENAI_WORKER_MODEL', 'gpt-4.1-mini');
@@ -50,6 +51,7 @@ async function openaiJSON<T>(tier: Tier, system: string, user: string): Promise<
  * and OpenAI is skipped for ten minutes, so the agents never stall on one provider.
  */
 export async function chatJSON<T>(tier: Tier, system: string, user: string): Promise<T> {
+  await checkPause();
   const providers = order();
   if (!providers.length) throw new Error('No text model is set up. Add OPENAI_API_KEY or GEMINI_API_KEY in Vercel > Project Settings > Environment Variables.');
   let last: unknown;

@@ -9,7 +9,7 @@ import { PageHead, Tile, Avatar, Stepper, Pager, pageOf, rangeOf, when } from '@
 import { Integrations } from './Integrations';
 import { SyncButton } from './SyncButton';
 import { Locked, Submit } from '@/components/forms';
-import { setRole, setHead, addCompetitor, runCampaign, nextStep, syncNow, publishAgain, saveBrandBook, addLesson, retireLesson } from './actions';
+import { setRole, setHead, addCompetitor, runCampaign, nextStep, syncNow, togglePause, publishAgain, saveBrandBook, addLesson, retireLesson } from './actions';
 
 export const maxDuration = 300;
 const ROLES: AppRole[] = ['super_admin', 'creative_head', 'ecom_manager', 'perf_marketer', 'viewer'];
@@ -42,12 +42,14 @@ type Tab = typeof TABS[number]['id'];
 export default async function Admin({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { db, role } = await requireUser();
   if (role !== 'super_admin') redirect('/office');
+  const { data: sys } = await db.from('system_state').select('paused').eq('id', 1).maybeSingle();
   const sp = await searchParams, tab: Tab = TABS.some(t => t.id === sp.tab) ? sp.tab as Tab : 'overview';
   const href = (t: Tab) => t === 'overview' ? '/admin' : `/admin?tab=${t}`;
 
   return (
     <div className="page">
       <PageHead title="Admin" sub="Start campaigns, connect the platforms, and decide who heads each department.">
+        {!sys?.paused && <form action={togglePause}><input type="hidden" name="pause" value="1" /><Submit ghost icon="pause" pending="Pausing…">Pause all agents</Submit></form>}
         <form action={syncNow}><SyncButton /></form>
       </PageHead>
       {sp.msg && <p className="flash ok">{sp.msg}</p>}

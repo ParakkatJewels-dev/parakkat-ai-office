@@ -2,6 +2,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { canWrite, chatJSON } from '@/lib/llm/openai';
+import { isPaused, Paused } from '@/lib/pause';
 import { errText } from '@/lib/errors';
 import { withUsage } from '@/lib/usage';
 import { emit } from './events';
@@ -41,6 +42,7 @@ const JOBS: Job[] = [
 
 /** Run the most overdue job, if any is due. One at a time, so a slow sync never overlaps the next tick. */
 export async function runAutopilot(db: SupabaseClient, now = new Date()) {
+  if (await isPaused(true)) return 'paused';
   const { data: rows } = await db.from('autopilot_jobs').select('name, last_run_at');
   const last = Object.fromEntries((rows || []).map(r => [r.name, r.last_run_at ? Date.parse(r.last_run_at) : 0]));
   const h = istHour(now);
@@ -58,7 +60,14 @@ export async function runAutopilot(db: SupabaseClient, now = new Date()) {
     await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: now.toISOString(), last_result: 'running' });
     await loadMemory(db);
     result = await withUsage({ feature: `autopilot:${job.name}` }, () => job.run(db));
-  } catch (e) { result = `failed: ${errText(e)}`; }
+  } catch (e) {
+    if (e instanceof Paused) {
+      // stopped by the pause switch: the job counts as not run, so it is due again after Resume
+      await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: last[job.name] ? new Date(last[job.name]).toISOString() : null, last_result: 'paused' });
+      return { job: job.name, result: 'paused' };
+    }
+    result = `failed: ${errText(e)}`;
+  }
   finally { await db.rpc('release_job_lock', { p_name: 'autopilot', p_holder: holder }); }
   await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: now.toISOString(), last_result: result.slice(0, 500) });
   return { job: job.name, result };

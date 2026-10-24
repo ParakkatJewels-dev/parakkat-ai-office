@@ -1,6 +1,7 @@
 import 'server-only';
 import { opt } from '@/lib/env';
 import { recordUsage } from '@/lib/usage';
+import { checkPause } from '@/lib/pause';
 
 export type Point = { date: string; value: number };
 export type TrendResult = { series: Record<string, Point[]>; rising: Record<string, { query: string; value: string }[]> };
@@ -18,6 +19,7 @@ export async function googleTrends(terms: string[]): Promise<TrendResult> {
 
 async function viaSerpApi(kw: string[], geo: string, key: string): Promise<TrendResult> {
   const call = async (p: Record<string, string>) => {
+    await checkPause();
     void recordUsage({ provider: 'serpapi', model: 'google_trends', agent: 'trendsAnalyst' });
     const r = await fetch(`https://serpapi.com/search.json?${new URLSearchParams({ engine: 'google_trends', geo, date: 'today 3-m', api_key: key, ...p })}`);
     const d = await r.json(); if (!r.ok || d.error) throw new Error(`SerpApi ${r.status}: ${d.error || 'error'}`);
