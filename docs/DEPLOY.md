@@ -23,13 +23,15 @@ About 30 minutes. You need admin access to Supabase, Vercel, Shopify, Meta Busin
 
 ## 3. Let campaigns move on their own
 
-Each campaign advances one stage per call to `/api/agents/tick`. Schedule it every minute from Supabase (**Database > Extensions**: enable `pg_cron` and `pg_net`, then in SQL Editor):
+Each campaign advances one stage per call to `/api/agents/tick`. Schedule it every minute from Supabase (**Database > Extensions**: enable `pg_cron` and `pg_net`, then in SQL Editor). Keep the secret in Vault so it never sits in the job text:
 
 ```sql
+select vault.create_secret('<same value as CRON_SECRET in Vercel>', 'parakkat_cron_secret');
 select cron.schedule('parakkat-agents', '* * * * *', $$
   select net.http_post(
     url := 'https://<your-app>.vercel.app/api/agents/tick',
-    headers := jsonb_build_object('authorization', 'Bearer <CRON_SECRET>')
+    headers := jsonb_build_object('authorization', 'Bearer ' ||
+      (select decrypted_secret from vault.decrypted_secrets where name = 'parakkat_cron_secret'))
   ) $$);
 ```
 
