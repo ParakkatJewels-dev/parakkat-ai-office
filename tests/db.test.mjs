@@ -30,6 +30,7 @@ before(async () => {
   await db.exec(read('supabase/migrations/20261024000300_memory.sql'));
   await db.exec(read('supabase/migrations/20261024000400_scale.sql'));
   await db.exec(read('supabase/migrations/20261024000500_learn_from_leads.sql'));
+  await db.exec(read('supabase/migrations/20261024000600_platform_credentials.sql'));
   // what Supabase grants signed-in users by default
   await db.exec(`grant usage on schema public, auth to authenticated; grant all on all tables in schema public to authenticated; grant execute on function auth.uid() to authenticated;`);
   for (const [k, id] of Object.entries(U)) await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [id, { full_name: k }]);
@@ -150,4 +151,14 @@ test("an AI team lead's rejection becomes a lesson for that department", async (
   const l = (await as('creative', `select lesson, source from lessons where source = 'lead'`)).rows;
   assert.ok(l.some(x => /brassy/.test(x.lesson)));
   assert.equal((await as('perf', `select 1 from lessons where source = 'lead'`)).rows.length, 0);
+});
+
+test('saved platform access is out of reach for everyone signed in, the Super Admin included', async () => {
+  await db.exec(`insert into platform_credentials (provider, secret) values ('meta', 'sealed')`);
+  // the migration revokes access and turns on row-level security with no policies; either one alone keeps it hidden
+  // (this harness grants every table to signed-in users after the migrations, so here it is row-level security that holds)
+  for (const who of ['admin', 'creative']) {
+    const rows = await as(who, 'select secret from platform_credentials').then(r => r.rows, () => []);
+    assert.equal(rows.length, 0);
+  }
 });

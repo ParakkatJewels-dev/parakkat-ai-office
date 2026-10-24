@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { chatJSON } from '@/lib/llm/openai';
 import { bannerImage } from '@/lib/llm/gemini';
 import { classify } from '@/lib/llm/jev';
-import { competitorInstagram } from '@/lib/connectors/meta';
+import { competitorInstagram, metaConfig } from '@/lib/connectors/meta';
 import { has } from '@/lib/env';
 import { emit } from './events';
 import { persona } from './people';
@@ -85,7 +85,7 @@ const STEP: Record<Exclude<Stage, 'done'>, (db: SupabaseClient, run: Run, s: Run
   // The War Room reads competitors' Instagram, scores how much each move matters, and reports through the War Room Lead.
   async competitors(db, run, s) {
     const { data: rivals } = await db.from('competitors').select('id, name, instagram_handle').not('instagram_handle', 'is', null).limit(8);
-    if (!rivals?.length || !has('META_ACCESS_TOKEN', 'META_IG_USER_ID')) { s.competitors = []; await emit(db, run.id, 'say', 'warLead', 'No competitors to scan yet. Add them on the Competitors page.', 'intelLead'); return; }
+    if (!rivals?.length || !(await metaConfig())?.ig) { s.competitors = []; await emit(db, run.id, 'say', 'warLead', 'No competitors to scan yet. Add them on the Competitors page.', 'intelLead'); return; }
     await emit(db, run.id, 'think', 'igScout', `Reading ${rivals.length} competitors' latest posts`);
     const lines: string[] = [];
     for (const c of rivals) {

@@ -1,17 +1,45 @@
 import 'server-only';
 import { env, opt } from '@/lib/env';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { loadAccess, saveAccess, type Saved } from './vault';
 
 let cached: { token: string; until: number } | null = null;
+type Store = { domain: string; saved: Saved | null };
+
+/** The store connected on the Admin page, else the one in Vercel, else null. */
+async function store(): Promise<Store | null> {
+  const s = await loadAccess('shopify');
+  if (s?.settings.shop) return { domain: s.settings.shop, saved: s };
+  return process.env.SHOPIFY_STORE_DOMAIN ? { domain: process.env.SHOPIFY_STORE_DOMAIN, saved: null } : null;
+}
+
+/** The store domain when there is a way in: a store connected from the app, or either kind of Vercel credential. */
+export async function shopifyReady() {
+  const s = await store(); if (!s) return null;
+  return s.saved || process.env.SHOPIFY_ADMIN_TOKEN || (process.env.SHOPIFY_CLIENT_ID && process.env.SHOPIFY_CLIENT_SECRET) ? s.domain : null;
+}
 
 /**
- * The Admin API token. An older custom app gives a permanent SHOPIFY_ADMIN_TOKEN. Apps made in the Shopify Dev Dashboard
- * give SHOPIFY_CLIENT_ID and SHOPIFY_CLIENT_SECRET instead, and we trade them for a token that lasts about a day.
+ * The Admin API token. A store connected from the app has its own token, renewed here when Shopify made it an expiring one.
+ * Otherwise an older custom app gives a permanent SHOPIFY_ADMIN_TOKEN, and Dev Dashboard apps give SHOPIFY_CLIENT_ID and
+ * SHOPIFY_CLIENT_SECRET, which we trade for a token that lasts about a day.
  */
-async function adminToken() {
+async function adminToken(s: Store) {
+  if (s.saved) {
+    const t = s.saved.tokens;
+    if (!t.refresh_token || !s.saved.expires_at || Date.parse(s.saved.expires_at) - 300_000 > Date.now()) return t.access_token;
+    const res = await fetch(`https://${s.domain}/admin/oauth/access_token`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ client_id: env('SHOPIFY_CLIENT_ID'), client_secret: env('SHOPIFY_CLIENT_SECRET'), grant_type: 'refresh_token', refresh_token: t.refresh_token }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.access_token) throw new Error(`Shopify token refresh ${res.status}: ${d.error_description || d.error || 'reconnect Shopify on the Admin page'}`);
+    await saveAccess('shopify', { access_token: d.access_token, refresh_token: d.refresh_token || t.refresh_token }, s.saved.settings, d.expires_in ? new Date(Date.now() + d.expires_in * 1000) : null);
+    return d.access_token as string;
+  }
   if (process.env.SHOPIFY_ADMIN_TOKEN) return process.env.SHOPIFY_ADMIN_TOKEN;
   if (cached && cached.until > Date.now()) return cached.token;
-  const res = await fetch(`https://${env('SHOPIFY_STORE_DOMAIN')}/admin/oauth/access_token`, {
+  const res = await fetch(`https://${s.domain}/admin/oauth/access_token`, {
     method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'client_credentials', client_id: env('SHOPIFY_CLIENT_ID'), client_secret: env('SHOPIFY_CLIENT_SECRET') }),
   });
@@ -21,13 +49,11 @@ async function adminToken() {
   return cached.token;
 }
 
-/** True when either kind of Shopify credential is set. */
-export const shopifyReady = () => !!process.env.SHOPIFY_STORE_DOMAIN && (!!process.env.SHOPIFY_ADMIN_TOKEN || (!!process.env.SHOPIFY_CLIENT_ID && !!process.env.SHOPIFY_CLIENT_SECRET));
-
 async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-  const res = await fetch(`https://${env('SHOPIFY_STORE_DOMAIN')}/admin/api/${opt('SHOPIFY_API_VERSION', '2025-07')}/graphql.json`, {
+  const s = await store(); if (!s) throw new Error('Shopify is not connected. Connect it on the Admin page.');
+  const res = await fetch(`https://${s.domain}/admin/api/${opt('SHOPIFY_API_VERSION', '2025-07')}/graphql.json`, {
     method: 'POST',
-    headers: { 'X-Shopify-Access-Token': await adminToken(), 'content-type': 'application/json' },
+    headers: { 'X-Shopify-Access-Token': await adminToken(s), 'content-type': 'application/json' },
     body: JSON.stringify({ query, variables }),
   });
   const data = await res.json();

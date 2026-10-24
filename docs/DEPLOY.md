@@ -37,7 +37,25 @@ select cron.schedule('parakkat-agents', '* * * * *', $$
 
 Without it, use **Run next step** on the Admin page.
 
-## 4. Platform keys
+## 4. Connect the platforms
+
+The Super Admin connects Shopify, Meta and Google from **Admin > Connections** by signing in to each platform and choosing the accounts. Each platform only offers that sign-in to an app registered with it, so first register one app per platform and put its own id and secret in Vercel. Add these redirect URLs to each app exactly:
+
+- Meta: `https://parakkat-ai-office.vercel.app/api/connect/meta/callback`
+- Google: `https://parakkat-ai-office.vercel.app/api/connect/google/callback`
+- Shopify: `https://parakkat-ai-office.vercel.app/api/connect/shopify/callback`
+
+| Platform | Register the app | Vercel variables |
+| --- | --- | --- |
+| Meta | developers.facebook.com > Create app (Business type) > add Facebook Login for Business and the Marketing API, add the redirect URL above under Valid OAuth Redirect URIs. People with a role on the app and admin rights on the ad account, page and Instagram account can connect without App Review. Optionally create a Login for Business configuration with a system-user token, which does not expire | `META_APP_ID`, `META_APP_SECRET`, optional `META_LOGIN_CONFIG_ID` |
+| Google | Google Cloud > APIs & Services: switch on the Google Ads API, Google Analytics Data API and Google Analytics Admin API; create an OAuth client (Web application) with the redirect URL above; set the consent screen to In production. The developer token comes from Google Ads > Tools > API Center (Basic access for Keyword Planner) | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_ADS_DEVELOPER_TOKEN` |
+| Shopify | Shopify Dev Dashboard > create an app with Admin API scopes `read_products`, `read_orders`, `read_inventory`, add the redirect URL above as an allowed redirection URL | `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` |
+
+The access each sign-in gives is saved in Supabase encrypted with AES-256-GCM, in a table no signed-in user can read. The key comes from `CREDENTIALS_KEY` when it is set, otherwise from `SUPABASE_SERVICE_ROLE_KEY`; if either changes, connect the platforms again. Meta user sign-ins last about 60 days and the Admin page warns ten days before.
+
+## 5. Platform keys by hand (optional)
+
+Everything below still works and is used when a platform has not been connected from the Admin page.
 
 | Platform | Where | Variables |
 | --- | --- | --- |
@@ -50,7 +68,7 @@ Without it, use **Run next step** on the Admin page.
 | OpenAI / Gemini | platform.openai.com and aistudio.google.com API keys | `OPENAI_API_KEY`, `GEMINI_API_KEY` |
 | Jev | TypeSafe AI | `JEV_API_KEY` (optional; OpenAI answers until then) |
 
-Secrets live only in Vercel. The database stores which accounts are connected, never the keys.
+Keys set here live only in Vercel. Access connected from the Admin page is stored encrypted in Supabase, as described above.
 
 ## What is live and what is next
 

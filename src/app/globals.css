@@ -221,6 +221,13 @@ a.clip:hover b{color:var(--accent)}
 .conns{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
 .conns li{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);min-width:0;border-left:3px solid var(--line-2)}
 .conns li.connected{border-left-color:var(--good)} .conns li.error{border-left-color:var(--bad)}
+.integr{list-style:none;margin:0 0 18px;padding:0;display:flex;flex-direction:column;gap:10px}
+.integr>li{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:6px;background:var(--panel-2);border:1px solid var(--line)}
+.integr-top{display:flex;align-items:center;gap:12px} .integr-top .grow{display:flex;flex-direction:column;min-width:0}
+.integr-pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;align-items:end;margin:0}
+.integr-pick .field{margin:0} .integr-pick .sm{grid-column:1/-1}
+.integr .tile-ic{--tone:#1fc7a4;width:38px;height:38px} .integr .grow{flex:1} .integr .sm{font-size:12.5px;color:var(--muted)} #sync h4.eyebrow{margin:0 0 10px}
+.integr-act{display:flex;flex-wrap:wrap;gap:8px;align-items:center} .integr-act .inline input{min-width:220px}
 .conn-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
 .banner{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:6px;background:var(--accent-soft);color:var(--ink);margin-bottom:10px;flex-wrap:wrap}
 .banner svg{color:var(--accent)} .banner span{flex:1;min-width:200px}

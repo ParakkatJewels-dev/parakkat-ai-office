@@ -5,6 +5,7 @@ import { STAGES } from '@/lib/agents/campaign';
 import { BUILDINGS } from '@/office/roster.mjs';
 import { Icon } from '@/components/Icon';
 import { PageHead, Tile, Avatar, Stepper, Pager, pageOf, rangeOf, when } from '@/components/ui';
+import { Integrations } from './Integrations';
 import { setRole, setHead, addCompetitor, runCampaign, nextStep, syncNow, publishAgain, saveBrandBook, addLesson, retireLesson } from './actions';
 
 export const maxDuration = 300;
@@ -45,7 +46,7 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
       </PageHead>
 
       <section className="tiles" aria-label="Summary">
-        <Tile icon="plug" label="Connections live" value={`${connected}/${(conns || []).length}`} sub={connected === (conns || []).length ? 'Everything connected' : 'Some still need keys'} />
+        <Tile icon="plug" label="Connections live" value={`${connected}/${(conns || []).length}`} sub={connected === (conns || []).length ? 'Everything connected' : 'Connect the rest below'} />
         <Tile icon="rocket" tone="amber" label="Campaigns in progress" value={active} sub={`${(stuck || []).length} approved, waiting to publish`} />
         <Tile icon="users" tone="blue" label="People" value={peopleCount || 0} sub={`${noRole || 0} without a role`} />
         <Tile icon="eye" tone="violet" label="Competitors watched" value={(rivals || []).length} sub="By the War Room" />
@@ -63,7 +64,9 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
         </form>
 
         <section id="sync" className="card s7">
-          <div className="card-head"><div><h3>Connections</h3><p className="sub">Keys live in Vercel environment variables, never in the database.</p></div></div>
+          <div className="card-head"><div><h3>Connections</h3><p className="sub">Connect each platform by signing in to it. The access is saved encrypted and only the server can read it.</p></div></div>
+          <Integrations />
+          <h4 className="eyebrow">What the agents can reach</h4>
           <ul className="conns">{(conns || []).map(c => (
             <li key={c.provider} className={c.status}>
               <div className="conn-top"><b>{PROVIDER[c.provider] || c.provider.replace('_', ' ')}</b><span className={`pill ${c.status === 'connected' ? 'good' : c.status === 'error' ? 'bad' : ''}`}>{c.status.replace('_', ' ')}</span></div>
