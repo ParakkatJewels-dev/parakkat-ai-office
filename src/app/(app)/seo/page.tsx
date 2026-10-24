@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
 import { headsDept } from '@/lib/auth/depts';
 import { Icon } from '@/components/Icon';
+import { Submit } from '@/components/forms';
 import { PageHead, Tile, Avatar, Pager, pageOf, rangeOf, inr, when } from '@/components/ui';
 import { runSeoNow } from './actions';
 
@@ -47,7 +48,7 @@ export default async function Seo({ searchParams }: { searchParams: Promise<Reco
       {sp.msg && <p className="flash ok">{sp.msg}</p>}
       {sp.error && <p className="flash">{sp.error}</p>}
       <PageHead title="SEO" sub="What people in Kerala search for, from Google Trends and Google Ads Keyword Planner. The SEO Desk checks every Monday, and the Campaign Strategist uses it when planning.">
-        <form action={runSeoNow}><button className="btn"><Icon name="sync" size={18} />Run the SEO check now</button></form>
+        <form action={runSeoNow}><Submit icon="sync" pending="Checking searches…">Run the SEO check now</Submit></form>
       </PageHead>
 
       <section className="tiles" aria-label="Summary">

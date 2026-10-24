@@ -7,7 +7,7 @@ import { normalizeShop } from '@/lib/connectors/oauth-core.mjs';
 import type { Platform } from '@/lib/connectors/vault';
 
 const PLATFORMS: Platform[] = ['meta', 'google', 'shopify'];
-const back = (req: NextRequest, key: 'msg' | 'error', text: string) => NextResponse.redirect(new URL(`/admin?${key}=${encodeURIComponent(text)}#sync`, req.url));
+const back = (req: NextRequest, key: 'msg' | 'error', text: string) => NextResponse.redirect(new URL(`/admin?tab=connections&${key}=${encodeURIComponent(text)}`, req.url));
 
 /** Sends the Super Admin to the platform's own sign-in page. Only the Super Admin can connect platforms. */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {

@@ -10,8 +10,8 @@ type Fmt = { id: string; label: string; ratio: string; size: string };
 function Submit() {
   const { pending } = useFormStatus();
   return (
-    <button className="btn" disabled={pending} aria-live="polite">
-      <Icon name={pending ? 'clock' : 'spark'} size={18} />{pending ? 'Designing… this takes about a minute' : 'Make the design'}
+    <button className={`btn ${pending ? 'busy' : ''}`} disabled={pending} aria-live="polite" aria-busy={pending}>
+      {pending ? <span className="spin" aria-hidden="true" /> : <Icon name="spark" size={18} />}{pending ? 'Designing… this takes about a minute' : 'Make the design'}
     </button>
   );
 }

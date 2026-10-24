@@ -32,6 +32,8 @@ before(async () => {
   await db.exec(read('supabase/migrations/20261024000500_learn_from_leads.sql'));
   await db.exec(read('supabase/migrations/20261024000600_platform_credentials.sql'));
   await db.exec(read('supabase/migrations/20261024000700_sync_lock.sql'));
+  await db.exec(read('supabase/migrations/20261024000800_ad_account_column.sql'));
+  await db.exec(read('supabase/migrations/20261024000900_dashboard_filters.sql'));
   // what Supabase grants signed-in users by default
   await db.exec(`grant usage on schema public, auth to authenticated; grant all on all tables in schema public to authenticated; grant execute on function auth.uid() to authenticated;`);
   for (const [k, id] of Object.entries(U)) await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [id, { full_name: k }]);
@@ -174,4 +176,19 @@ test('only one sync holds the lock until it lets go', async () => {
   assert.equal(await take('second'), true);
   await db.exec(`update job_locks set until = now() - interval '1 second'`); // an expired lease can be taken over
   assert.equal(await take('third'), true);
+});
+
+test('dashboard filters by dates, platform and ad account, and compares with the days just before', async () => {
+  await db.exec(`insert into ad_insights_daily (day, platform, account_id, ad_id, spend, revenue) values
+    ('2031-10-10', 'meta', '111', 'f1', 100, 400), ('2031-10-11', 'meta', '222', 'f2', 50, 100),
+    ('2031-10-12', 'google', '9319022443', 'g1', 30, 90), ('2031-10-05', 'meta', '111', 'f0', 70, 70);`);
+  const r = async (...args) => (await as('admin', 'select dashboard_report($1, $2, $3, $4) r', args)).rows[0].r;
+  const all = await r('2031-10-08', '2031-10-14', null, null);
+  assert.equal(Number(all.spend), 180); assert.equal(Number(all.prev_spend), 70);
+  assert.equal(Number((await r('2031-10-08', '2031-10-14', 'meta', null)).spend), 150);
+  const one = await r('2031-10-08', '2031-10-14', 'meta', '111');
+  assert.equal(Number(one.spend), 100); assert.equal(Number(one.ad_revenue), 400);
+  const accts = (await as('admin', 'select * from ad_accounts()')).rows.map(x => `${x.platform}:${x.account_id}`);
+  assert.deepEqual(accts, ['google:9319022443', 'meta:111', 'meta:222']);
+  await db.exec(`delete from ad_insights_daily where ad_id in ('f0', 'f1', 'f2', 'g1')`);
 });

@@ -3,27 +3,46 @@ import { requireUser } from '@/lib/auth/session';
 import { STAGES } from '@/lib/agents/campaign';
 import { Icon } from '@/components/Icon';
 import { PageHead, Tile, Stepper, inr, when } from '@/components/ui';
+import { googleId, metaId } from '@/lib/connectors/accounts.mjs';
+import { Filters } from './Filters';
 
 const PLATFORM: Record<string, { label: string; color: string }> = { meta: { label: 'Meta', color: '#3d6fb0' }, google: { label: 'Google', color: '#1fc7a4' } };
 const STAGE_LABEL: Record<string, string> = { analyse: 'Analyse', competitors: 'Competitors', plan: 'Plan', create: 'Create', review: 'Review', approval: 'Approval', done: 'Live' };
 
-/** Change against the 30 days before, as "+12%" or "-4%". */
-const delta = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}% vs last 30 days` : 'last 30 days';
+const DAY = 864e5, iso = (d: Date) => d.toISOString().slice(0, 10), isDate = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v));
+/** The dates the filters ask for: a preset ending today, this month so far, or two dates (at most two years apart). */
+function period(sp: Record<string, string | undefined>) {
+  const today = new Date(), to = iso(today), range = sp.range || '30';
+  if (range === 'mtd') return { from: `${to.slice(0, 8)}01`, to, label: 'this month so far' };
+  if (range === 'custom' && isDate(sp.from) && isDate(sp.to) && sp.from! <= sp.to!) {
+    const from = Date.parse(sp.to!) - Date.parse(sp.from!) > 730 * DAY ? iso(new Date(Date.parse(sp.to!) - 730 * DAY)) : sp.from!;
+    const f = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    return { from, to: sp.to!, label: `${f(from)} to ${f(sp.to!)}` };
+  }
+  const n = ['7', '90'].includes(range) ? Number(range) : 30;
+  return { from: iso(new Date(today.getTime() - (n - 1) * DAY)), to, label: `the last ${n} days` };
+}
 
 type Summary = {
   revenue: number; prev_revenue: number; units: number; prev_units: number; spend: number; ad_revenue: number; prev_spend: number; prev_ad_revenue: number;
   days: [string, number][]; platforms: { platform: string; spend: number; revenue: number }[]; top: { id: number; revenue: number; title: string | null; image_url: string | null }[];
 };
 
-export default async function Dashboard() {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { db, name } = await requireUser();
-  // totals are summed in the database (dashboard_summary), so they stay right however many order and ad rows there are
-  const [{ data: summary }, { data: posts }, { data: moves }, { data: runs }] = await Promise.all([
-    db.rpc('dashboard_summary', { p_days: 30 }),
-    db.from('social_posts').select('id, caption, media_type, permalink, saves, reach, media_url').order('saves', { ascending: false, nullsFirst: false }).limit(5),
-    db.from('competitor_moves').select('id, kind, summary, seen_at, competitors(name)').order('seen_at', { ascending: false }).limit(6),
-    db.from('agent_runs').select('id, occasion, stage, status, started_at').order('started_at', { ascending: false }).limit(5),
+  const sp = await searchParams, P = period(sp);
+  const platform = sp.platform === 'meta' || sp.platform === 'google' ? sp.platform : null, account = sp.account && /^[\w-]{1,40}$/.test(sp.account) ? sp.account : null;
+  const end = `${P.to}T23:59:59.999Z`, delta = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}% vs the days before` : P.label;
+  // totals are summed in the database (dashboard_report), so they stay right however many order and ad rows there are
+  const [{ data: summary }, { data: posts }, { data: moves }, { data: runs }, { data: accts }] = await Promise.all([
+    db.rpc('dashboard_report', { p_from: P.from, p_to: P.to, p_platform: platform, p_account: account }),
+    db.from('social_posts').select('id, caption, media_type, permalink, saves, reach, media_url').gte('posted_at', P.from).lte('posted_at', end).order('saves', { ascending: false, nullsFirst: false }).limit(5),
+    db.from('competitor_moves').select('id, kind, summary, seen_at, competitors(name)').gte('seen_at', P.from).lte('seen_at', end).order('seen_at', { ascending: false }).limit(6),
+    db.from('agent_runs').select('id, occasion, stage, status, started_at').gte('started_at', P.from).lte('started_at', end).order('started_at', { ascending: false }).limit(5),
+    db.rpc('ad_accounts'),
   ]);
+  const accounts = ((accts || []) as { platform: string; account_id: string }[]).map(a => ({ platform: a.platform, id: a.account_id, label: a.platform === 'google' ? googleId(a.account_id) : metaId(a.account_id) }));
+  const adScope = [platform ? PLATFORM[platform].label : 'Meta and Google', account ? `account ${accounts.find(a => a.id === account)?.label || account}` : null].filter(Boolean).join(', ');
   const S = (summary || { revenue: 0, prev_revenue: 0, units: 0, prev_units: 0, spend: 0, ad_revenue: 0, prev_spend: 0, prev_ad_revenue: 0, days: [], platforms: [], top: [] }) as Summary;
   const revenue = Number(S.revenue), units = Number(S.units), spend = Number(S.spend), adRev = Number(S.ad_revenue);
   const prevSpend = Number(S.prev_spend), prevRoas = prevSpend ? Number(S.prev_ad_revenue) / prevSpend : 0;
@@ -46,23 +65,25 @@ export default async function Dashboard() {
   return (
     <div className="page">
       <PageHead title={`${hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening'}, ${name.split(' ')[0]}`}
-        sub={`Here is how Parakkat Jewels did over the last 30 days. ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}.`}>
+        sub={`Here is how Parakkat Jewels did over ${P.label}. ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}.`}>
         <Link href="/office" className="btn ghost"><Icon name="map" size={18} />Office map</Link>
         <Link href="/approvals" className="btn"><Icon name="check" size={18} />Approvals</Link>
       </PageHead>
+
+      <Filters accounts={accounts} from={P.from} to={P.to} />
 
       <section className="tiles" aria-label="Key numbers">
         <Tile icon="rupee" label="Shopify revenue" value={inr(revenue)} sub={delta(revenue, Number(S.prev_revenue))} />
         <Tile icon="bag" tone="amber" label="Items sold" value={units.toLocaleString('en-IN')} sub={delta(units, Number(S.prev_units))} />
         <Tile icon="megaphone" tone="blue" label="Ad spend" value={inr(spend)} sub={delta(spend, prevSpend)} />
-        <Tile icon="trend" tone="violet" label="Return on ad spend" value={spend ? `${roas.toFixed(1)}x` : '–'} sub={prevRoas ? `${roas >= prevRoas ? 'Up' : 'Down'} from ${prevRoas.toFixed(1)}x` : 'Meta and Google combined'} />
+        <Tile icon="trend" tone="violet" label="Return on ad spend" value={spend ? `${roas.toFixed(1)}x` : '–'} sub={prevRoas ? `${roas >= prevRoas ? 'Up' : 'Down'} from ${prevRoas.toFixed(1)}x` : adScope} />
       </section>
 
       <div className="bento">
         <section className="card s8">
-          <div className="card-head"><div><h3>Revenue by day</h3><p className="sub">Shopify orders, last 30 days</p></div><b className="card-num">{inr(revenue)}</b></div>
+          <div className="card-head"><div><h3>Revenue by day</h3><p className="sub">Shopify orders, {P.label}</p></div><b className="card-num">{inr(revenue)}</b></div>
           {days.length > 1 ? (
-            <svg viewBox={`0 0 ${W} ${H + 22}`} className="chart" role="img" aria-label={`Daily revenue for the last 30 days, peaking at ${inr(max)}`}>
+            <svg viewBox={`0 0 ${W} ${H + 22}`} className="chart" role="img" aria-label={`Daily revenue for ${P.label}, peaking at ${inr(max)}`}>
               <defs><linearGradient id="rev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--accent)" stopOpacity=".32" /><stop offset="1" stopColor="var(--accent)" stopOpacity="0" /></linearGradient></defs>
               {[0, .5, 1].map(f => <g key={f}><line x1="0" x2={W} y1={Y(max * f)} y2={Y(max * f)} className="grid" /><text x={W} y={Y(max * f) - 5} textAnchor="end" className="axis">{inr(max * f)}</text></g>)}
               <polygon points={`0,${H - 8} ${line} ${W},${H - 8}`} fill="url(#rev)" />
@@ -74,7 +95,7 @@ export default async function Dashboard() {
         </section>
 
         <section className="card s4">
-          <div className="card-head"><div><h3>Ad spend by platform</h3><p className="sub">Last 30 days</p></div></div>
+          <div className="card-head"><div><h3>Ad spend by platform</h3><p className="sub">{adScope}, {P.label}</p></div></div>
           {split.length ? (
             <div className="donut">
               <svg viewBox="0 0 100 100" role="img" aria-label={split.map(([p, v]) => `${PLATFORM[p]?.label || p} ${inr(v)}`).join(', ')}>
@@ -86,11 +107,11 @@ export default async function Dashboard() {
                 return <li key={p}><i style={{ background: PLATFORM[p]?.color || '#888' }} /><b>{PLATFORM[p]?.label || p}</b><span className="num">{inr(v)}</span><small>{Math.round((v / spend) * 100)}% · {(rev / v || 0).toFixed(1)}x return</small></li>;
               })}</ul>
             </div>
-          ) : <div className="empty"><Icon name="megaphone" size={26} /><p>No ad spend synced yet. Connect Meta or Google Ads on the Admin page.</p></div>}
+          ) : <div className="empty"><Icon name="megaphone" size={26} /><p>{platform || account ? 'No ad spend for these filters.' : 'No ad spend synced yet. Connect Meta or Google Ads on the Admin page.'}</p></div>}
         </section>
 
         <section className="card s4">
-          <div className="card-head"><div><h3>Top products</h3><p className="sub">By revenue</p></div></div>
+          <div className="card-head"><div><h3>Top products</h3><p className="sub">By revenue, {P.label}</p></div></div>
           {top.length ? <ul className="rows">{top.map((t, i) => (
             <li key={t.id}>
               {t.image_url ? <img src={t.image_url} alt="" className="thumb" loading="lazy" decoding="async" /> : <span className="thumb rank">{i + 1}</span>}
@@ -101,7 +122,7 @@ export default async function Dashboard() {
         </section>
 
         <section className="card s4">
-          <div className="card-head"><div><h3>Posts people saved</h3><p className="sub">Instagram, most saved first</p></div></div>
+          <div className="card-head"><div><h3>Posts people saved</h3><p className="sub">Instagram posts from {P.label}, most saved first</p></div></div>
           {(posts || []).length ? <ul className="rows">{posts!.map(p => (
             <li key={p.id}>
               {p.media_url && p.media_type !== 'VIDEO' ? <img src={p.media_url} alt="" className="thumb" loading="lazy" decoding="async" /> : <span className="thumb"><Icon name="heart" size={18} /></span>}
