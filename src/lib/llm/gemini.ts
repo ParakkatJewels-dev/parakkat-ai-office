@@ -6,18 +6,18 @@ const URL = (m: string) => `https://generativelanguage.googleapis.com/v1beta/mod
 
 type Part = { text?: string; inlineData?: { mimeType: string; data: string } };
 
-async function generate(model: string, parts: Part[], imageOut: boolean, aspectRatio?: string, json = false) {
+async function generate(model: string, parts: Part[], imageOut: boolean, aspectRatio?: string, json = false, system?: string) {
   const generationConfig = imageOut ? { responseModalities: ['TEXT', 'IMAGE'], ...(aspectRatio ? { imageConfig: { aspectRatio } } : {}) } : json ? { responseMimeType: 'application/json' } : undefined;
   const t0 = Date.now();
   const res = await fetch(URL(model), {
     method: 'POST',
     headers: { 'x-goog-api-key': env('GEMINI_API_KEY'), 'content-type': 'application/json' },
-    body: JSON.stringify({ contents: [{ role: 'user', parts }], ...(generationConfig ? { generationConfig } : {}) }),
+    body: JSON.stringify({ ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}), contents: [{ role: 'user', parts }], ...(generationConfig ? { generationConfig } : {}) }),
   });
-  if (!res.ok) { await recordUsage({ provider: 'gemini', model, ok: false, ms: Date.now() - t0 }); throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`); }
+  if (!res.ok) { await recordUsage({ provider: 'gemini', model, system, ok: false, ms: Date.now() - t0 }); throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`); }
   const data = await res.json();
   const um = data.usageMetadata || {};
-  await recordUsage({ provider: 'gemini', model, input: um.promptTokenCount, output: (um.candidatesTokenCount || 0) + (um.thoughtsTokenCount || 0), ms: Date.now() - t0 });
+  await recordUsage({ provider: 'gemini', model, system, input: um.promptTokenCount, output: (um.candidatesTokenCount || 0) + (um.thoughtsTokenCount || 0), ms: Date.now() - t0 });
   return (data.candidates?.[0]?.content?.parts ?? []) as Part[];
 }
 
@@ -52,6 +52,13 @@ export async function geminiText(prompt: string): Promise<string> {
 /** Ask Gemini about images (a finished design next to the product photos) and get JSON back. */
 export async function geminiJSON<T>(prompt: string, images: Part[]): Promise<T> {
   const parts = await generate(opt('GEMINI_TEXT_MODEL', 'gemini-2.5-flash'), [{ text: `${prompt}\nReply with one JSON object only.` }, ...images], false, undefined, true);
+  const text = parts.map(p => p.text || '').join('').trim();
+  try { return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as T; } catch { throw new Error(`Gemini returned text that is not JSON: ${text.slice(0, 200)}`); }
+}
+/** The agents' text work on Gemini, used when OpenAI cannot answer (or when LLM_PROVIDER=gemini). */
+export async function geminiChat<T>(tier: 'manager' | 'worker', system: string, user: string): Promise<T> {
+  const m = tier === 'manager' ? opt('GEMINI_MANAGER_MODEL', opt('GEMINI_TEXT_MODEL', 'gemini-2.5-flash')) : opt('GEMINI_TEXT_MODEL', 'gemini-2.5-flash');
+  const parts = await generate(m, [{ text: user }], false, undefined, true, `${system}\nReply with one JSON object only.`);
   const text = parts.map(p => p.text || '').join('').trim();
   try { return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as T; } catch { throw new Error(`Gemini returned text that is not JSON: ${text.slice(0, 200)}`); }
 }
