@@ -1,9 +1,13 @@
 // The 3D Parakkat campus. Framework-free so the same file runs in the Next.js app and the prototype page.
 // THREE and OrbitControls are passed in, so the caller decides how three.js is loaded.
 //
+// The streets, traffic, flats, hills and sky around it live in world.mjs.
+//
 // Speed: everything that never moves is merged into one mesh per material after the scene is built, each person is five
 // meshes, shadows refresh every third frame, and labels are placed every other frame. If frames still run slow the
 // renderer lowers its resolution and then drops shadows.
+
+import { buildWorld, istHours } from './world.mjs';
 
 export const DEPT_COLOR = {
   board: '#b08d57', insights: '#3d6fb0', intel: '#6c4fb3', strategy: '#2b8a64', creative: '#b23a4c', social: '#d07a1f',
@@ -66,9 +70,8 @@ export function createOffice(o) {
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
   renderer.outputEncoding = THREE.sRGBEncoding; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   const scene = new THREE.Scene();
-  const SKY_DAY = '#cfdfeb', SKY_NIGHT = '#0b1512';
-  scene.background = new THREE.Color(SKY_DAY); scene.fog = new THREE.Fog(SKY_DAY, 140, 300);
-  const camera = new THREE.PerspectiveCamera(38, 16 / 9, .5, 600);
+  scene.background = new THREE.Color('#cfdfeb'); scene.fog = new THREE.Fog('#cfdfeb', 140, 300); // the sky in world.mjs takes these over
+  const camera = new THREE.PerspectiveCamera(38, 16 / 9, 1.5, 1000); // near plane well inside minDistance keeps depth precise at campus distance
   camera.position.set(...CAMPUS_VIEW.pos);
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(...CAMPUS_VIEW.target); controls.enableDamping = true; controls.minPolarAngle = .08; controls.maxPolarAngle = 1.47; controls.minDistance = 6; controls.maxDistance = 330; controls.screenSpacePanning = false;
@@ -91,7 +94,7 @@ export function createOffice(o) {
   const cyl = (rt, rb, h, mat, x, y, z, seg = 16, parent) => { const m = sh(new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat)); m.position.set(x, y, z); (parent || stat).add(m); return m; };
   const flat = (w, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat); m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.receiveShadow = true; stat.add(m); return m; };
   const tex = (draw, w = 256, h = 256, rep = [1, 1]) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); t.anisotropy = 4; return t; };
-  const screens = [], lamps = [], flags = [], cars = [];
+  const screens = [], lamps = [], flags = [];
   const pot = M('#ece6da', { roughness: .6 }), leafC = M('#3f7a3a', { roughness: .8 }), leafD = M('#55964a', { roughness: .8 });
 
   // Merges geometries into one, baking each matrix in; with colours it writes a vertex colour attribute instead of uvs.
@@ -132,14 +135,14 @@ export function createOffice(o) {
   const paving = tex((g, w, h) => { g.fillStyle = '#c4b9a7'; g.fillRect(0, 0, w, h); for (let i = 0; i < 900; i++) { const v = 170 + rnd() * 40 | 0; g.fillStyle = `rgba(${v},${v - 4},${v - 10},.35)`; g.fillRect(rnd() * w, rnd() * h, 3, 3); } g.strokeStyle = '#b9b1a3'; g.lineWidth = 2; for (let i = 0; i <= w; i += 32) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, h); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(w, i); g.stroke(); } }, 256, 256, [36, 5]);
   const pave = M('#fff', { map: paving, roughness: .95 });
   flat(148, 17, pave, 0, -.29, 24.5); // plaza in front of all three buildings
-  flat(220, 3, M('#bfb8ab', { roughness: .95 }), 0, -.29, 34.5); // pavement
-  box(220, .25, .3, M('#9c968b'), 0, -.2, 36);
-  flat(520, 8, M('#2f3236', { roughness: .9 }), 0, -.31, 40); // road
-  const dash = M('#e8e2cf'); for (let x = -250; x < 250; x += 7) flat(3.2, .22, dash, x, -.3, 40);
-  box(220, .25, .3, M('#9c968b'), 0, -.2, 44); flat(220, 2.4, M('#bfb8ab', { roughness: .95 }), 0, -.29, 45.4);
+  flat(208, 3, M('#bfb8ab', { roughness: .95 }), 0, -.29, 34.5); // pavement, stopping at the avenues
+  box(208, .25, .3, M('#9c968b'), 0, -.2, 36);
+  flat(1120, 8, M('#2f3236', { roughness: .9 }), 0, -.3, 40); // road
+  const dash = M('#e8e2cf'); for (let x = -550; x < 550; x += 7) if (Math.abs(Math.abs(x) - 110) > 7) flat(3.2, .22, dash, x, -.285, 40);
+  box(208, .25, .3, M('#9c968b'), 0, -.2, 44); flat(208, 2.4, M('#bfb8ab', { roughness: .95 }), 0, -.29, 45.4);
 
   const trunk = M('#6b4b33'), leafA = M('#3f6e30'), leafB = M('#4e8239'), leafE = M('#2f5a2a');
-  const tree = (x, z, s = 1) => { cyl(.18 * s, .25 * s, 2.2 * s, trunk, x, 1.1 * s - .3, z, 6); for (let i = 0; i < 3; i++) { const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry((1.5 - i * .3) * s, 1), [leafA, leafB, leafE][(i + Math.abs(x | 0)) % 3])); m.position.set(x + (rnd() - .5) * .6 * s, (2.4 + i * .9) * s - .3, z + (rnd() - .5) * .6 * s); stat.add(m); } };
+  const tree = (x, z, s = 1) => { if (Math.abs(x) > 101 && Math.abs(x) < 119) return; cyl(.18 * s, .25 * s, 2.2 * s, trunk, x, 1.1 * s - .3, z, 6); for (let i = 0; i < 3; i++) { const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry((1.5 - i * .3) * s, 1), [leafA, leafB, leafE][(i + Math.abs(x | 0)) % 3])); m.position.set(x + (rnd() - .5) * .6 * s, (2.4 + i * .9) * s - .3, z + (rnd() - .5) * .6 * s); stat.add(m); } };
   const palm = (x, z, s = 1) => { for (let i = 0; i < 6; i++) cyl(.16 * s, .2 * s, .9 * s, trunk, x + i * .12 * s, (.15 + i * .85) * s, z, 6).rotation.z = -.08; for (let k = 0; k < 8; k++) { const f = sh(new THREE.Mesh(new THREE.ConeGeometry(.35 * s, 3.2 * s, 4), leafB)); f.position.set(x + .7 * s, 5.3 * s, z); f.rotation.set(Math.PI / 2 - .5, k / 8 * Math.PI * 2, 0, 'YXZ'); f.translateY(1.4 * s); stat.add(f); } };
   // woods behind and beside the campus, a tree line beyond the road
   for (let x = -108; x <= 108; x += 7) { tree(x + (rnd() - .5) * 4, -24 - rnd() * 4, .9 + rnd() * .5); tree(x + (rnd() - .5) * 4, -32 - rnd() * 6, 1 + rnd() * .5); }
@@ -153,7 +156,7 @@ export function createOffice(o) {
   Object.values(B).forEach(b => {
     const x1 = b.ox - b.half, x2 = b.ox + b.half;
     [[x1 + 1, b.ox - 4], [b.ox + 4, x2 - 1]].forEach(([a, c]) => { box(c - a, .9, 1.1, hedge, (a + c) / 2, .2, 16.4); box(c - a, .35, 1.6, stone, (a + c) / 2, -.12, 16.4); });
-    for (let x = x1 + 3; x < x2 - 2; x += 6) if (Math.abs(x - b.ox) > 5) { box(2.2, .5, 2.2, stone, x, .05, 19.6); flat(1.9, 1.9, soil, x, .31, 19.6); plant(x, 19.6, .9); }
+    for (let x = x1 + 3; x < x2 - 2; x += 6) if (Math.abs(x - b.ox) > 5) { box(2.2, .5, 2.2, stone, x, .05, 19.6); flat(1.9, 1.9, soil, x, .34, 19.6); plant(x, 19.6, .9); }
   });
   [0, 1, 2].forEach(i => box(7.6 - i * .8, .16, 1, stone, 0, -.22 + i * .14, 17.6 - i * .6)); // front steps of HQ
   for (let x = -78; x <= 66; x += 12) { if (Math.abs(x) < 8) continue; cyl(.09, .12, 4.4, post, x, 1.9, 31.4, 8).castShadow = false; box(.7, .12, .7, post, x, 4.15, 31.4).castShadow = false; cyl(.22, .22, .25, bulb, x, 3.95, 31.4, 10); glowAt.push([x, 3.9, 31.4]); }
@@ -174,6 +177,9 @@ export function createOffice(o) {
   };
   const corridorTex = tex((g, w, h) => { g.fillStyle = '#e8e5de'; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(0,0,0,.07)'; for (let i = 0; i < w; i += 64) g.fillRect(i, 0, 2, h); g.fillRect(0, h / 2, w, 2); }, 256, 64, [12, 1]);
   const corridorM = M('#fff', { map: corridorTex, roughness: .5 });
+  // the runner's champagne edging is painted into its texture: thin strips of geometry break into dashes from afar
+  const runnerTex = tex((g, w, h) => { g.fillStyle = '#1c1c1c'; g.fillRect(0, 0, w, h); g.fillStyle = '#d8c3a5'; g.fillRect(0, h * .02, w, h * .075); g.fillRect(0, h * .905, w, h * .075); }, 64, 128);
+  const runnerM = M('#fff', { map: runnerTex, roughness: .9 });
 
   /* ---------- buildings ---------- */
   const plaster = M('#f4f2ee', { roughness: .9 }), frameM = M('#1c1c1c', { roughness: .4, metalness: .5 }), champagne = M('#d8c3a5', { roughness: .35, metalness: .55 }), plinth = M('#cfcac0', { roughness: .9 });
@@ -187,8 +193,9 @@ export function createOffice(o) {
   roster.BUILDINGS.forEach(b0 => {
     const b = B[b0.id], { ox, half } = b, W = half * 2;
     box(W + 2, .32, 32, plinth, ox, -.16, 0);
-    flat(W, 6, corridorM, ox, .012, 0);
-    flat(W - 1, 1.6, M('#1c1c1c', { roughness: .95 }), ox, .02, 0); flat(W - 1, .12, champagne, ox, .025, .74); flat(W - 1, .12, champagne, ox, .025, -.74);
+    // floor layers sit a few centimetres apart: closer than that, they flicker against each other from the campus view
+    flat(W, 6, corridorM, ox, .04, 0);
+    flat(W - 1, 1.6, runnerM, ox, .07, 0);
     box(W + .4, WH, .3, plaster, ox, WH / 2, -15.15);
     [-1, 1].forEach(sd => { box(.3, WH, 12.3, plaster, ox + sd * (half + .15), WH / 2, -9.15); box(.3, WH, 12.3, plaster, ox + sd * (half + .15), WH / 2, 9.15); });
     pane(ox - half, 15, ox - 3, 15, 1.2); pane(ox + 3, 15, ox + half, 15, 1.2);
@@ -202,8 +209,8 @@ export function createOffice(o) {
   for (let i = 0; i < sorted.length - 1; i++) {
     const x1 = sorted[i].ox + sorted[i].half, x2 = sorted[i + 1].ox - sorted[i + 1].half, cx = (x1 + x2) / 2, len = x2 - x1;
     flat(len + .6, 6, corridorM, cx, -.02, 0); box(len + .6, .3, 6.4, plinth, cx, -.2, 0);
-    flat(len + .6, 1.6, M('#1c1c1c', { roughness: .95 }), cx, .0, 0);
-    [-9, 9].forEach(z => { box(len - 1.2, .5, 9, stone, cx, -.05, z); flat(len - 1.8, 8.4, soil, cx, .21, z); plant(cx, z - 2.5, 1.1); plant(cx, z + 2.5, .9); });
+    flat(len + .6, 1.6, runnerM, cx, .03, 0);
+    [-9, 9].forEach(z => { box(len - 1.2, .5, 9, stone, cx, -.05, z); flat(len - 1.8, 8.4, soil, cx, .24, z); plant(cx, z - 2.5, 1.1); plant(cx, z + 2.5, .9); });
     [-1, 1].forEach(sd => { cyl(.05, .05, 2.4, post, cx + sd * (len / 2 - .4), 1.1, 3.4, 6).castShadow = false; cyl(.05, .05, 2.4, post, cx + sd * (len / 2 - .4), 1.1, -3.4, 6).castShadow = false; });
   }
 
@@ -227,7 +234,7 @@ export function createOffice(o) {
     box(.08, .35, .08, metal, x, .95, z + 1.3); box(1.1, .66, .05, metal, x, 1.42, z + 1.3);
     const s = new THREE.Mesh(screenGeo.clone(), screenMat()); s.position.set(x, 1.42, z + 1.27); s.rotation.y = Math.PI; stat.add(s);
     box(.8, .03, .26, white, x, .8, z + .8); box(.12, .14, .12, mug, x - .9, .85, z + .9);
-    box(.62, .1, .58, fabric, x, .5, z - .05); box(.62, .7, .1, fabric, x, .9, z - .38); cyl(.04, .04, .45, metal, x, .25, z - .05, 6); cyl(.32, .32, .04, metal, x, .03, z - .05, 10);
+    box(.62, .1, .58, fabric, x, .5, z - .05); box(.62, .7, .1, fabric, x, .9, z - .38); cyl(.04, .04, .45, metal, x, .25, z - .05, 6); cyl(.32, .32, .04, metal, x, .07, z - .05, 10);
   }
   function plant(x, z, s = 1) { cyl(.28 * s, .22 * s, .55 * s, pot, x, .27 * s, z, 12); for (let i = 0; i < 5; i++) { const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(.32 * s, 0), i % 2 ? leafC : leafD)); m.position.set(x + (rnd() - .5) * .4 * s, (.8 + rnd() * .6) * s, z + (rnd() - .5) * .4 * s); m.scale.y = 1.5; stat.add(m); } }
   const bezel = M('#16181d', { metalness: .4, roughness: .3 });
@@ -247,7 +254,7 @@ export function createOffice(o) {
     const occ = people.filter(p => p.homeRoom === r).map(p => p.seat);
     const top = r.row === 0, farZ = top ? r.cz - 5.3 : r.cz + 5.3, cx = r.cx;
     [0, 1, 2, 3].forEach(s => { if (occ.includes(s) || (s !== 3 && r.decor !== 'board')) { const p = seatOf(r, s); desk(p.x, p.z); } });
-    flat(11.8, 11.8, floorMat[r.floor] || floorMat.oak, cx, .01, r.cz);
+    flat(11.8, 11.8, floorMat[r.floor] || floorMat.oak, cx, .04, r.cz);
     lamp(r);
     switch (r.decor) {
       case 'board': box(6, .08, 2, M('#3a2a20', { roughness: .4 }), cx + 1, .76, r.cz + 2.6); box(5.2, .7, .4, metal, cx + 1, .37, r.cz + 2.6);
@@ -277,11 +284,14 @@ export function createOffice(o) {
   Object.values(B).forEach(b => { for (let c = 0; c < b.cols; c++) for (const row of [0, 1]) {
     if (Object.values(R).some(r => r.b === b && r.col === c && r.row === row)) continue;
     const cx = b.ox - b.half + 6 + 12 * c, cz = row ? 9 : -9, farZ = row ? cz + 5.3 : cz - 5.3;
-    flat(11.8, 11.8, floorMat.wood, cx, .01, cz); lamp({ cx, cz });
+    flat(11.8, 11.8, floorMat.wood, cx, .04, cz); lamp({ cx, cz });
     sofa(cx - 2.6, farZ, row ? Math.PI : 0, '#2f5d50'); sofa(cx + 2.6, farZ, row ? Math.PI : 0, '#2f5d50');
     box(1.4, .4, .8, M('#3a2a20', { roughness: .35 }), cx, .2, cz + (row ? 2.4 : -2.4)); plant(cx - 5.2, cz); plant(cx + 5.2, cz, 1.2);
   } });
   Object.values(B).forEach(b => { for (let x = b.ox - b.half + 3; x < b.ox + b.half; x += 12) plant(x, -2.2, .8); });
+
+  // roads, traffic, people, flats, hills and the sky around the campus (its static parts join the merge below)
+  const world = buildWorld({ THREE, scene, stat, M, tex, colored, mix, lamps, rnd, sun, hemi, renderer });
 
   // merge every static mesh into one per material: thousands of draws become a few dozen
   (function mergeStatic() {
@@ -301,17 +311,6 @@ export function createOffice(o) {
   const glowGeo = new THREE.BufferGeometry(); glowGeo.setAttribute('position', new THREE.Float32BufferAttribute(glowAt.flat(), 3));
   const glow = new THREE.Points(glowGeo, new THREE.PointsMaterial({ map: glowTex, size: 4.5, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   glow.visible = false; scene.add(glow);
-
-  // cars on the road
-  const lightM = M('#fff8e0', { emissive: '#ffe6a8', emissiveIntensity: 0 }), tailM = M('#7a1010', { emissive: '#ff2a2a', emissiveIntensity: 0 }); lamps.push({ mat: lightM, on: 1.6 }, { mat: tailM, on: 1.2 });
-  const BOXG = new THREE.BoxGeometry(1, 1, 1), WHEEL = new THREE.CylinderGeometry(.42, .42, .3, 12);
-  [['#c9ccd1', -60, 38, 1, 7], ['#1f2328', 40, 42, -1, 6], ['#8e1d23', -150, 38, 1, 8.5]].forEach(([col, x, z, dir, v]) => {
-    const g = new THREE.Group();
-    g.add(colored([[BOXG, col, 0, .62, 0, 0, [4.4, .7, 1.9]], [BOXG, '#202833', -.2, 1.22, 0, 0, [2.4, .62, 1.7]], [BOXG, col, -.2, 1.55, 0, 0, [2.3, .06, 1.72]],
-      ...[[-1.4, -.85], [1.4, -.85], [-1.4, .85], [1.4, .85]].map(([a, c]) => [WHEEL, '#121212', a, .42, c, Math.PI / 2])]));
-    [-.62, .62].forEach(c => { const h = new THREE.Mesh(BOXG, lightM); h.scale.set(.06, .18, .4); h.position.set(2.21, .72, c); g.add(h); const t = new THREE.Mesh(BOXG, tailM); t.scale.set(.06, .16, .36); t.position.set(-2.21, .72, c); g.add(t); });
-    g.position.set(x, -.3, z); g.rotation.y = dir > 0 ? 0 : Math.PI; scene.add(g); cars.push({ g, dir, v });
-  });
 
   /* ---------- people: a body and four limbs each, in vertex colours ---------- */
   const folderM = M('#d8c3a5', { roughness: .4 });
@@ -448,7 +447,8 @@ export function createOffice(o) {
   function frame(now) {
     raf = requestAnimationFrame(frame);
     const raw = (now - last) / 1000, dt = Math.min(.05, raw); last = now;
-    if (!paused) { T += dt * speed; people.forEach(p => step(p, dt * speed)); cars.forEach(c => { c.g.position.x += c.dir * c.v * dt * (reduce ? 0 : 1); if (Math.abs(c.g.position.x) > 130) c.g.position.x = -c.dir * 130; }); }
+    if (!paused) { T += dt * speed; people.forEach(p => step(p, dt * speed)); if (!reduce) world.update(dt, T, night); }
+    if (lapse) { lapseH = (lapseH + raw * 24 / 90) % 24; if (frameNo % 2 === 0) applySky(); } else if ((skyAge += raw) > 1) { skyAge = 0; applySky(); }
     if (!visible) return;
     frameNo++;
     people.forEach(p => pose(p, T));
@@ -524,17 +524,28 @@ export function createOffice(o) {
     const vw = view === '2d' ? TOP_VIEW : CAMPUS_VIEW;
     fly = { t: 0, ft: controls.target.clone(), fp: camera.position.clone(), tt: new THREE.Vector3(...vw.target), tp: new THREE.Vector3(...fit(vw)) };
   }
-  function setNight(n) {
-    night = n; const sky = new THREE.Color(n ? SKY_NIGHT : SKY_DAY); scene.background = sky; scene.fog.color = sky;
-    sun.intensity = n ? .4 : 2.1; sun.color.set(n ? '#a9bde8' : '#fff1d6'); hemi.intensity = n ? .36 : .75; hemi.color.set(n ? '#8fa6c9' : '#e3f0ff'); hemi.groundColor.set(n ? '#2e3528' : '#8a7a5c');
+  // the sky follows the time in Kerala; the theme switch and the sky button can jump it, or run a day in 90 seconds
+  let skyOffset = 0, lapse = false, lapseH = 12, skyAge = 0;
+  const hourNow = () => lapse ? lapseH : (istHours() + skyOffset) % 24;
+  function applySky(force) {
+    const n = world.skyAt(hourNow()); if (n === night && !force) return;
+    night = n;
     lamps.forEach(l => { if (l.isLight) l.intensity = n ? 2.6 : 0; else l.mat.emissiveIntensity = n ? (l.on || 1.4) : 0; });
-    screens.forEach(s => { s.emissiveIntensity = n ? 1.0 : .55; }); glow.visible = n; renderer.toneMappingExposure = n ? 1.15 : 1.05;
+    screens.forEach(s => { s.emissiveIntensity = n ? 1.0 : .55; }); glow.visible = n;
     renderer.shadowMap.needsUpdate = true;
   }
+  function setTime(h) {
+    lapse = h === 'lapse';
+    if (lapse) lapseH = hourNow(); else skyOffset = h == null ? 0 : ((h - istHours()) % 24 + 24) % 24;
+    applySky(true);
+  }
+  const setNight = n => setTime(n ? 20.5 : 12.5);
   const api = {
     people, byId: P, rooms: R, buildings: B, sleep,
     get paused() { return paused; }, setPaused(v) { paused = v; }, get speed() { return speed; }, setSpeed(v) { speed = v; },
-    get night() { return night; }, setNight, flyTo, focus, select, orbit, pan,
+    get night() { return night; }, setNight, setTime, flyTo, focus, select, orbit, pan,
+    /** The hour shown in Kerala time, whether it is the live clock or a time-lapse, and tonight's moon. */
+    sky() { return { hour: hourNow(), live: !lapse && skyOffset === 0, lapse, moon: world.moon }; },
     get view() { return view; }, setView,
     /** Width in pixels covered by a panel on the right; the scene centres itself in the rest. */
     setInset(px) { inset = px || 0; resize(); if (untouched && !fly && view === '3d') camera.position.set(...fit(CAMPUS_VIEW)); },
@@ -553,7 +564,7 @@ export function createOffice(o) {
     setQuest(id, v) { const p = P[id]; if (!p) return; p.quest = v; if (p.sitting && !p.bubble) p.status = v ? 'waiting' : 'idle'; p.task = v ? 'Waiting on an approval' : 'Nothing waiting'; markDirty(p); },
     dispose() { cancelAnimationFrame(raf); canvas.removeEventListener('keydown', onKey); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); document.removeEventListener('fullscreenchange', onFs); controls.dispose(); renderer.dispose(); labels.innerHTML = ''; },
   };
-  setNight(!!o.night);
+  applySky(true);
   return api;
 }
 
