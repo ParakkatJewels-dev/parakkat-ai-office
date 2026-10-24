@@ -119,7 +119,7 @@ export default async function Usage({ searchParams }: { searchParams: Promise<Re
         </section>
 
         <section className="card s6">
-          <div className="card-head"><div><h3>Budget and exchange rate</h3><p className="sub">The Budget Guard warns you once a month when spend reaches the alert level.</p></div></div>
+          <div className="card-head"><div><h3>Budget and exchange rate</h3><p className="sub">The Budget Guard warns you once a month at the alert level, and pauses every agent when the month's spend reaches the budget. Raising the budget or pressing Resume carries on.</p></div></div>
           <Locked key={`${fx}-${budget}-${alertPct}`} action={saveBilling} saved={!!settings} className="stack billing" label="Save">
             <label className="field">Rupees per US dollar<input name="usd_inr" className="in" defaultValue={String(fx)} inputMode="decimal" /></label>
             <label className="field">Monthly budget in rupees<input name="budget" className="in" defaultValue={budget ? String(budget) : ''} placeholder="e.g. 15000" inputMode="numeric" /></label>

@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     db.from('reports').select('id', { count: 'exact', head: true }).eq('status', 'with_head'),
     db.from('approvals').select('id, required_roles, approval_steps(role, decision)').eq('status', 'pending').limit(500),
     db.from('departments').select('id, human_head_role').in('id', ['seo', 'creative']),
-    db.from('system_state').select('paused, paused_at').eq('id', 1).maybeSingle(),
+    db.from('system_state').select('paused, paused_at, reason').eq('id', 1).maybeSingle(),
   ]);
   const leads = (d: string) => role === 'super_admin' || (heads || []).some(h => h.id === d && h.human_head_role === role);
   const waitingPlans = (plans || []).filter(a => {
@@ -32,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {sys?.paused && (
           <div className="banner paused" role="status">
             <Icon name="pause" size={20} />
-            <span><b>The agents are paused</b>{sys.paused_at ? ` since ${when(sys.paused_at)}` : ''}. No AI or API calls, no syncs and nothing published until the Super Admin resumes them.</span>
+            <span><b>{sys.reason === 'budget' ? 'Monthly budget reached: the agents are paused' : 'The agents are paused'}</b>{sys.paused_at ? ` since ${when(sys.paused_at)}` : ''}. No AI or API calls, no syncs and nothing published until the Super Admin resumes them.</span>
             {role === 'super_admin' && <form action={togglePause}><input type="hidden" name="pause" value="0" /><Submit small icon="play" pending="Resuming…">Resume</Submit></form>}
           </div>
         )}

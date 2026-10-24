@@ -25,7 +25,8 @@ const BUILDING_COL: Record<string, string> = { hq: '#22c79f', ic: '#3b82f6', ch:
 const ago = (t: number, now: number) => { const m = Math.round((now - t) / 6e4); return m < 1 ? 'now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
 const initials = (n: string) => n.replace(' AI', '').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
-export default function OfficeClient({ me, role, initial }: { me: string; role: AppRole; initial: AgentEvent[] }) {
+export default function OfficeClient({ me, role, initial, seen: seen0 }: { me: string; role: AppRole; initial: AgentEvent[]; seen: Record<string, number> }) {
+  const seen = useRef<Record<string, number>>({ ...seen0 });
   const world = useRef<HTMLDivElement>(null), canvas = useRef<HTMLCanvasElement>(null), labels = useRef<HTMLDivElement>(null);
   const [office, setOffice] = useState<Office>(null);
   const [items, setItems] = useState<Item[]>(() => initial.map(fromEvent));
@@ -67,7 +68,7 @@ export default function OfficeClient({ me, role, initial }: { me: string; role: 
   // live numbers for the occupancy card
   useEffect(() => {
     if (!office) return;
-    const tick = () => { setStats(office.stats()); setNow(Date.now()); setSky(office.sky()); };
+    const tick = () => { setStats(office.stats(seen.current)); setNow(Date.now()); setSky(office.sky()); };
     tick(); const t = setInterval(tick, 1500); return () => clearInterval(t);
   }, [office]);
 
@@ -87,7 +88,8 @@ export default function OfficeClient({ me, role, initial }: { me: string; role: 
     };
     const ch = supabaseBrowser().channel('agent_events')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agent_events' }, ({ new: e }: { new: unknown }) => {
-        setItems(list => [fromEvent(e as AgentEvent), ...list].slice(0, 120)); play(e as AgentEvent);
+        const ev = e as AgentEvent; if (ev.from_agent) seen.current[ev.from_agent] = Date.parse(ev.at) || Date.now();
+        setItems(list => [fromEvent(ev), ...list].slice(0, 120)); play(ev);
       }).subscribe();
     return () => { supabaseBrowser().removeChannel(ch); };
   }, [office]);
@@ -116,7 +118,7 @@ export default function OfficeClient({ me, role, initial }: { me: string; role: 
                   <circle cx="52" cy="52" r={R} fill="none" stroke="var(--track)" strokeWidth="9" />
                   <circle cx="52" cy="52" r={R} fill="none" stroke="url(#occ)" strokeWidth="9" strokeLinecap="round" strokeDasharray={`${C * pct / 100} ${C}`} transform="rotate(-90 52 52)" style={{ transition: 'stroke-dasharray .6s' }} />
                 </svg>
-                <div><div className="occ-num">{stats ? `${stats.active}/${stats.total}` : '–'}</div><div className="occ-sub">Staff active now</div></div>
+                <div><div className="occ-num">{stats ? `${stats.active}/${stats.total}` : '–'}</div><div className="occ-sub">AI staff working now</div></div>
                 <div className="occ-pct">{pct}%</div>
               </div>
               <ul className="bars">
