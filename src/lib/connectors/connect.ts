@@ -78,7 +78,7 @@ export async function finish(p: Platform, params: URLSearchParams, redirectUri: 
       client_id: env('GOOGLE_OAUTH_CLIENT_ID'), client_secret: env('GOOGLE_OAUTH_CLIENT_SECRET'), code, redirect_uri: redirectUri, grant_type: 'authorization_code' }) }), 'Google sign-in');
     if (!tok.refresh_token) throw new Error('Google did not return lasting access. Remove the app under myaccount.google.com/permissions and connect again.');
     const access = tok.access_token || await accessToken(tok.refresh_token);
-    const v = opt('GOOGLE_ADS_API_VERSION', 'v21'), h = { authorization: `Bearer ${access}`, ...devToken(), 'content-type': 'application/json' };
+    const v = opt('GOOGLE_ADS_API_VERSION', 'v26'), h = { authorization: `Bearer ${access}`, ...devToken(), 'content-type': 'application/json' };
     // the Ads accounts this person can open, with names where Google gives them
     const customers: (Option & { manager: boolean })[] = []; let note: string | undefined;
     try {

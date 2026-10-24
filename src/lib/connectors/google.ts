@@ -37,7 +37,7 @@ async function adsHeaders() {
   return { authorization: `Bearer ${await accessToken(c.refresh)}`, ...devToken(), 'content-type': 'application/json',
     ...(c.login ? { 'login-customer-id': c.login.replace(/-/g, '') } : {}) };
 }
-const adsUrl = async (path: string) => `https://googleads.googleapis.com/${opt('GOOGLE_ADS_API_VERSION', 'v21')}/customers/${need((await cfg()).customer, 'Ads account').replace(/-/g, '')}${path}`;
+const adsUrl = async (path: string) => `https://googleads.googleapis.com/${opt('GOOGLE_ADS_API_VERSION', 'v26')}/customers/${need((await cfg()).customer, 'Ads account').replace(/-/g, '')}${path}`;
 
 /** Daily results per ad for the last 30 days (Google Ads API, GAQL). */
 export async function syncGoogleAds(db: SupabaseClient) {
