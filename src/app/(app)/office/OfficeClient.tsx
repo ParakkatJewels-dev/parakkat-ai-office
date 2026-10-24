@@ -36,7 +36,6 @@ export default function OfficeClient({ me, role, initial }: { me: string; role: 
   const [view, setView] = useState<'2d' | '3d'>('3d');
   const [stats, setStats] = useState<Stats | null>(null);
   const [sky, setSky] = useState<Sky | null>(null), [skyStep, setSkyStep] = useState(0);
-  const [demo, setDemo] = useState(initial.length === 0);
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState('');
   const admin = role === 'super_admin';
@@ -72,22 +71,6 @@ export default function OfficeClient({ me, role, initial }: { me: string; role: 
     tick(); const t = setInterval(tick, 1500); return () => clearInterval(t);
   }, [office]);
 
-  // demo story when nothing has happened yet; it also fills the activity list, filtered like the real one
-  useEffect(() => {
-    if (!office || !demo) return;
-    let alive = true, n = 0;
-    Promise.all([import('@/office/demo.mjs'), import('@/office/roster.mjs')]).then(([{ createDemo }, { canSee }]) => {
-      if (!alive) return;
-      const log = (p: Person, text: string, _kind?: string, to?: Person) => {
-        if (!alive || !p || !canSee(me, { fromDept: p.dept, toDept: to?.dept })) return;
-        setItems(list => [{ key: 'd' + n++, at: Date.now(), from: p.id, to: to?.id || null, text }, ...list].slice(0, 120));
-      };
-      const d = createDemo(office, { log, stage: () => {}, changed: () => {} });
-      d.state.role = me; d.start();
-    });
-    return () => { alive = false; };
-  }, [office, demo, me]);
-
   // live: play each new event in the office, one queue per agent so nobody is in two places at once
   useEffect(() => {
     if (!office) return;
@@ -104,11 +87,10 @@ export default function OfficeClient({ me, role, initial }: { me: string; role: 
     };
     const ch = supabaseBrowser().channel('agent_events')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agent_events' }, ({ new: e }: { new: unknown }) => {
-        if (demo) { setDemo(false); setItems([]); }
         setItems(list => [fromEvent(e as AgentEvent), ...list].slice(0, 120)); play(e as AgentEvent);
       }).subscribe();
     return () => { supabaseBrowser().removeChannel(ch); };
-  }, [office, demo]);
+  }, [office]);
 
   useEffect(() => { office?.setQuest(me, false); }, [office, me]);
   useEffect(() => { office?.setInset(panel ? 336 : 0); try { localStorage.setItem('pk-chat', panel ? '1' : '0'); } catch {} }, [panel, office]);
@@ -123,8 +105,6 @@ export default function OfficeClient({ me, role, initial }: { me: string; role: 
       <div className="world" ref={world}>
         {error ? <div className="empty" style={{ margin: '110px 20px' }}>{error}</div> : <canvas ref={canvas} aria-label="3D Parakkat campus with AI staff at work" />}
         <div id="labels" ref={labels} />
-
-        {demo && <div className="float demo-note">Demo story · live agent work will replace it</div>}
 
         {panel && (
           <aside className="rail float" aria-label="Office status">
