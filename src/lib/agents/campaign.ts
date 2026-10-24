@@ -20,6 +20,26 @@ const RETRY_MIN = [1, 2, 5, 15, 30, 60];
 
 export const STAGES = ['analyse', 'competitors', 'plan', 'create', 'review', 'approval', 'done'] as const;
 type Stage = (typeof STAGES)[number];
+const STAGE_LABEL: Record<Stage, string> = { analyse: 'Analyse', competitors: 'Competitors', plan: 'Plan', create: 'Create', review: 'Review', approval: 'Approval', done: 'Live' };
+
+/** Runs whose campaign is really live on the ad platforms (published after the Super Admin's approval). */
+export async function liveRuns(db: SupabaseClient, ids: string[]) {
+  if (!ids.length) return new Set<string>();
+  const { data } = await db.from('campaigns').select('run_id').in('run_id', ids).eq('status', 'live');
+  return new Set((data || []).map(c => c.run_id as string));
+}
+
+/**
+ * The steps a run shows. A run that has finished its own work sits at Approval until the heads sign and it is
+ * published; only then is Live ticked.
+ */
+export function runSteps(r: { stage: string; status: string; state?: unknown }, live: boolean) {
+  const retrying = !!(r.state as RunState | undefined)?.retry && r.status === 'running';
+  const at = r.stage === 'done' ? (live ? STAGES.length : STAGES.indexOf('approval')) : STAGES.indexOf(r.stage as Stage);
+  const steps = STAGES.map((s, i) => ({ label: STAGE_LABEL[s], state: (i < at ? 'done' : i === at ? (r.status === 'failed' || retrying ? 'bad' : 'now') : 'todo') as 'done' | 'now' | 'bad' | 'todo' }));
+  const pill = live ? ['Live', 'good'] : r.stage === 'done' ? ['With the heads', 'warn'] : retrying ? ['Trying again', 'bad'] : r.status === 'failed' ? ['Failed', 'bad'] : ['In progress', 'acc'];
+  return { steps, pill: pill as [string, string] };
+}
 
 /** What the heads read before deciding: why, for what, the data behind it, how it runs, and what it should bring in. */
 export type Proposal = {
