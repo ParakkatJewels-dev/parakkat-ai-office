@@ -39,3 +39,39 @@ export function Stepper({ steps }: { steps: { label: string; state: 'done' | 'no
 
 export const inr = (n: number) => n >= 1e7 ? `₹${(n / 1e7).toFixed(2)}Cr` : n >= 1e5 ? `₹${(n / 1e5).toFixed(1)}L` : `₹${Math.round(n).toLocaleString('en-IN')}`;
 export const when = (d: string | null | undefined) => d ? new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+
+type Params = Record<string, string | string[] | undefined>;
+/** The page a list is on, from its own search param (lists on one screen page separately). */
+export const pageOf = (sp: Params, param = 'page') => Math.max(1, Math.min(10000, parseInt(String(sp[param] ?? '1'), 10) || 1));
+/** The inclusive row range Supabase's .range() takes for that page. */
+export const rangeOf = (page: number, size: number) => [(page - 1) * size, page * size - 1] as const;
+
+/**
+ * Previous and next links under a long list. Pass total when the list was counted, or hasMore when it was read
+ * one row past the page (cheaper on big tables like the event log). Other search params are kept.
+ */
+export function Pager({ sp, param = 'page', page, size, total, hasMore, anchor, shown }: {
+  sp: Params; param?: string; page: number; size: number; total?: number | null; hasMore?: boolean; anchor?: string; shown: number;
+}) {
+  const pages = total != null ? Math.max(1, Math.ceil(total / size)) : null;
+  const more = pages != null ? page < pages : !!hasMore;
+  if (page === 1 && !more) return null;
+  const href = (n: number) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v != null && k !== param && k !== 'msg' && k !== 'error') q.set(k, String(v));
+    if (n > 1) q.set(param, String(n));
+    const s = q.toString();
+    return `?${s}${anchor ? `#${anchor}` : ''}`;
+  };
+  const from = shown ? (page - 1) * size + 1 : 0, to = (page - 1) * size + shown;
+  return (
+    <nav className="pager" aria-label="Pages">
+      <span className="sm">{shown ? `${from.toLocaleString('en-IN')}–${to.toLocaleString('en-IN')}` : 'None'}{total != null ? ` of ${total.toLocaleString('en-IN')}` : ''}</span>
+      <div className="pager-btns">
+        {page > 1 ? <a className="btn ghost sm-btn" href={href(page - 1)} rel="prev">Previous</a> : <span className="btn ghost sm-btn" aria-disabled="true">Previous</span>}
+        {pages != null && <span className="sm">Page {page} of {pages}</span>}
+        {more ? <a className="btn ghost sm-btn" href={href(page + 1)} rel="next">Next</a> : <span className="btn ghost sm-btn" aria-disabled="true">Next</span>}
+      </div>
+    </nav>
+  );
+}

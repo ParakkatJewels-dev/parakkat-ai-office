@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Icon } from '@/components/Icon';
 import { orderDesign } from './actions';
@@ -17,9 +17,27 @@ function Submit() {
 }
 
 /** The order form: format, brief, headline, language, and up to three Shopify products to build around. */
-export function StudioForm({ products, formats }: { products: Product[]; formats: Fmt[] }) {
+export function StudioForm({ products, more: firstMore, formats }: { products: Product[]; more: boolean; formats: Fmt[] }) {
   const [q, setQ] = useState(''), [picked, setPicked] = useState<number[]>([]), [fmt, setFmt] = useState(formats[0].id);
-  const shown = useMemo(() => { const s = q.trim().toLowerCase(); return (s ? products.filter(p => p.title.toLowerCase().includes(s)) : products).slice(0, 60); }, [q, products]);
+  // products load a page at a time from /api/products as you search or ask for more; picks are remembered across searches
+  const [list, setList] = useState(products), [more, setMore] = useState(firstMore), [page, setPage] = useState(0), [busy, setBusy] = useState(false);
+  const known = useRef(new Map(products.map(p => [p.id, p])));
+  const load = async (search: string, n: number) => {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/products?q=${encodeURIComponent(search)}&page=${n}`);
+      if (!r.ok) return;
+      const j: { products: Product[]; more: boolean } = await r.json();
+      j.products.forEach(p => known.current.set(p.id, p));
+      setList(l => n ? [...l, ...j.products] : j.products); setMore(j.more); setPage(n);
+    } finally { setBusy(false); }
+  };
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    const t = setTimeout(() => load(q.trim(), 0), 250); return () => clearTimeout(t);
+  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = [...picked.map(id => known.current.get(id)!).filter(Boolean), ...list.filter(p => !picked.includes(p.id))];
   const toggle = (id: number) => setPicked(p => p.includes(id) ? p.filter(x => x !== id) : p.length < 3 ? [...p, id] : p);
 
   return (
@@ -43,14 +61,15 @@ export function StudioForm({ products, formats }: { products: Product[]; formats
 
       <fieldset className="picker"><legend className="eyebrow">Products to feature <span>{picked.length}/3</span></legend>
         <input className="in" value={q} onChange={e => setQ(e.target.value)} placeholder="Search Shopify products…" aria-label="Search products" />
-        {products.length ? <ul>{shown.map(p => (
+        {shown.length ? <ul aria-busy={busy}>{shown.map(p => (
           <li key={p.id}>
             <label className={picked.includes(p.id) ? 'on' : ''}>
               <input type="checkbox" name="product" value={p.id} checked={picked.includes(p.id)} onChange={() => toggle(p.id)} disabled={!picked.includes(p.id) && picked.length >= 3} />
-              <img src={p.image_url} alt="" loading="lazy" /><span>{p.title}</span>
+              <img src={p.image_url} alt="" loading="lazy" decoding="async" /><span>{p.title}</span>
             </label>
           </li>
-        ))}</ul> : <p className="sub">No products with photos yet. Sync Shopify from the Admin page first.</p>}
+        ))}</ul> : <p className="sub">{q ? `No products match "${q}".` : 'No products with photos yet. Sync Shopify from the Admin page first.'}</p>}
+        {more && <button type="button" className="btn ghost sm-btn more" disabled={busy} onClick={() => load(q.trim(), page + 1)}>{busy ? 'Loading…' : 'Show more products'}</button>}
       </fieldset>
       <Submit />
     </form>
