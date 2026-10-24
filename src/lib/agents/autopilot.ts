@@ -1,8 +1,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { has } from '@/lib/env';
-import { chatJSON } from '@/lib/llm/openai';
+import { canWrite, chatJSON } from '@/lib/llm/openai';
 import { errText } from '@/lib/errors';
 import { withUsage } from '@/lib/usage';
 import { emit } from './events';
@@ -141,7 +140,7 @@ async function planner(db: SupabaseClient) {
 
   const cal = upcoming(new Date(), 75);
   let picks: { occasion: string; why: string }[] = [];
-  if (has('OPENAI_API_KEY')) {
+  if (canWrite()) {
     const [{ data: sold }, { data: before }, { data: adRows }, { data: posts }, { data: moves }, { data: rising }] = await Promise.all([
       db.rpc('sales_by_product', { p_since: daysAgo(14), p_limit: 15 }),
       db.rpc('sales_by_product', { p_since: daysAgo(28), p_limit: 40 }),

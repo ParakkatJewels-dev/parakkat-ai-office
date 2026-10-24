@@ -1,7 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { bannerImage, geminiJSON, imagePart } from '@/lib/llm/gemini';
-import { chatJSON } from '@/lib/llm/openai';
+import { canWrite, chatJSON } from '@/lib/llm/openai';
 import { has } from '@/lib/env';
 import { headsDept } from '@/lib/auth/depts';
 import { emit } from './events';
@@ -46,7 +46,7 @@ export async function makeDesign(db: SupabaseClient, o: { format: Format; brief:
   const maker = f.maker, lead = teamLead(byId[maker].room) || 'creativeDirector', head = HUMAN_HEAD[byId[maker].room];
   try {
     let headline = o.headline.trim();
-    if (!headline && has('OPENAI_API_KEY')) {
+    if (!headline && canWrite()) {
       await emit(db, null, 'think', 'copywriter', `Writing a headline for a ${f.label.toLowerCase()}`);
       headline = (await withUsage({ feature: 'design' }, () => chatJSON<{ headline: string }>('worker', persona('copywriter', `Write one headline of at most 6 words in ${LANGS[o.language]}. Shape: {"headline": "..."}`), `${o.brief}\nProducts: ${(prods || []).map(p => p.title).join(', ')}`))).headline;
     }
