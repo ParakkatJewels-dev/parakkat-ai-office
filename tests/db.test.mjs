@@ -35,6 +35,7 @@ before(async () => {
   await db.exec(read('supabase/migrations/20261024000800_ad_account_column.sql'));
   await db.exec(read('supabase/migrations/20261024000900_dashboard_filters.sql'));
   await db.exec(read('supabase/migrations/20261024001000_autopilot.sql'));
+  await db.exec(read('supabase/migrations/20261024001100_reviews_usage.sql'));
   // what Supabase grants signed-in users by default
   await db.exec(`grant usage on schema public, auth to authenticated; grant all on all tables in schema public to authenticated; grant execute on function auth.uid() to authenticated;`);
   for (const [k, id] of Object.entries(U)) await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [id, { full_name: k }]);
@@ -192,4 +193,27 @@ test('dashboard filters by dates, platform and ad account, and compares with the
   const accts = (await as('admin', 'select * from ad_accounts()')).rows.map(x => `${x.platform}:${x.account_id}`);
   assert.deepEqual(accts, ['google:9319022443', 'meta:111', 'meta:222']);
   await db.exec(`delete from ad_insights_daily where ad_id in ('f0', 'f1', 'f2', 'g1')`);
+});
+
+test('usage sums by model, agent and run, and only the Super Admin can read it', async () => {
+  await db.exec(`insert into api_usage (at, provider, model, agent_id, dept, feature, input_tokens, output_tokens, cost_usd) values
+    ('2031-01-02', 'openai', 'gpt-4.1', 'cmo', 'board', 'autopilot:planner', 1000, 500, 0.006),
+    ('2031-01-02', 'openai', 'gpt-4.1-mini', 'sales', 'insights', 'campaign', 2000, 100, 0.001),
+    ('2031-01-03', 'gemini', 'gemini-2.5-flash-image', 'designer', 'creative', 'design', 300, 1290, 0.039);`);
+  const r = (await as('admin', `select usage_report('2031-01-01', '2031-01-31') r`)).rows[0].r;
+  assert.equal(r.calls, 3); assert.equal(Number(r.cost_usd).toFixed(3), '0.046'); assert.equal(Number(r.images), 1);
+  assert.equal(r.by_model[0].model, 'gemini-2.5-flash-image');
+  assert.equal(r.by_day.length, 2);
+  const seen = (await as('creative', `select count(*)::int n from api_usage where at >= '2031-01-01'`)).rows[0].n;
+  assert.equal(seen, 0, 'heads cannot read usage');
+  await db.exec(`delete from api_usage where at >= '2031-01-01'`);
+});
+
+test('AI images from the studio and from campaigns show in one list with their review', async () => {
+  const { rows: [d] } = await db.query(`insert into designs (format, brief, image_path, status) values ('post', 'Onam test', 'x/1.png', 'ready') returning id`);
+  await db.query(`insert into image_reviews (source, item_id, verdict, note) values ('design', $1, 'bad', 'stones look plastic')`, [d.id]);
+  const rows = (await as('creative', `select source, verdict, review from ai_images where id = $1`, [d.id])).rows;
+  assert.deepEqual(rows, [{ source: 'design', verdict: 'bad', review: 'stones look plastic' }]);
+  assert.equal((await as('perf', `select count(*)::int n from ai_images where id = $1`, [d.id])).rows[0].n, 0, 'only creative heads and admin see designs');
+  await db.query(`delete from image_reviews where item_id = $1`, [d.id]); await db.query(`delete from designs where id = $1`, [d.id]);
 });

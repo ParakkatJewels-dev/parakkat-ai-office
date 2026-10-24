@@ -484,3 +484,52 @@ main .bento.dim{opacity:.6;transition:opacity .2s}
 .autopilot li{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);min-width:0}
 .autopilot .grow{display:flex;flex-direction:column;gap:2px} .autopilot .sm{font-size:12.5px;color:var(--muted)} .autopilot .err{color:var(--bad)}
 .run-name .pill{align-self:flex-start;margin:2px 0}
+/* proposal report on a campaign plan */
+.proposal{border:1px solid var(--line);border-radius:6px;padding:10px 14px;background:var(--panel-2)}
+.proposal summary{cursor:pointer;font-weight:700;font-size:14px;padding:2px 0}
+.proposal .impact{margin:10px 0 6px} .proposal .basis{color:var(--muted);margin:0 0 8px}
+.prop{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px 14px;margin:8px 0 0;font-size:13.5px;line-height:1.5}
+.prop dt{color:var(--muted);font-weight:600} .prop dd{margin:0} .prop ul,.prop ol{margin:0;padding-left:18px}
+.datalist{list-style:none;padding:0!important;display:flex;flex-direction:column;gap:4px} .datalist .pill{margin-right:6px}
+@media (max-width:680px){.prop{grid-template-columns:minmax(0,1fr)} .prop dt{margin-top:6px}}
+/* Design Studio gallery and reviews */
+.studio.one{grid-template-columns:minmax(0,720px)}
+.seg-row{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:6px;overflow:hidden}
+.seg a{padding:6px 12px;font-size:13px;text-decoration:none;color:var(--muted);border-right:1px solid var(--line-2)} .seg a:last-child{border-right:0}
+.seg a:hover{color:var(--ink)} .seg a.on{background:var(--accent-soft);color:var(--ink);font-weight:600}
+.gallery .art{position:relative}
+.verdict{position:absolute;top:8px;left:8px;font-size:12px;font-weight:700;padding:3px 8px;border-radius:4px;color:#fff}
+.verdict.good{background:var(--good)} .verdict.bad{background:var(--bad)}
+.gallery li.rv-good{border-color:color-mix(in srgb,var(--good) 45%,var(--line))} .gallery li.rv-bad{border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+.review{display:flex;flex-direction:column;gap:8px;margin-top:4px;padding-top:10px;border-top:1px solid var(--line)}
+.verdicts{display:flex;gap:6px}
+.verdicts label{flex:1;cursor:pointer} .verdicts input{position:absolute;opacity:0;pointer-events:none}
+.verdicts span{display:block;text-align:center;padding:6px 0;border:1px solid var(--line-2);border-radius:6px;font-size:13px;font-weight:600;transition:background .15s,border-color .15s}
+.verdicts .vg input:checked+span{background:color-mix(in srgb,var(--good) 18%,transparent);border-color:var(--good)}
+.verdicts .vb input:checked+span{background:color-mix(in srgb,var(--bad) 18%,transparent);border-color:var(--bad)}
+.verdicts input:focus-visible+span{outline:2px solid var(--accent);outline-offset:1px}
+.review textarea{font-size:13px}
+.review.is-locked .verdicts label{cursor:default} .review.is-locked .verdicts input:not(:checked)+span{opacity:.45}
+.review .saved-note{font-size:12px;line-height:1.35}
+/* Usage and billing */
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th{text-align:left;font-size:12px;font-weight:600;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line)}
+.tbl td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top} .tbl tr:last-child td{border-bottom:0}
+.tbl td b{display:block;font-weight:600} .tbl td .sm{display:block;font-size:12px;color:var(--muted)}
+.tbl .r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums} .tbl tr.bad td{color:var(--bad)}
+.tbl-wrap{overflow-x:auto} .tbl.log{min-width:760px}
+.tbl.prices td{padding:4px 0}
+.bars{display:flex;align-items:flex-end;gap:3px;height:180px;padding-top:8px}
+.bars span{flex:1;height:100%;display:flex;align-items:flex-end;min-width:3px} .bars i{display:block;width:100%;background:var(--accent);border-radius:2px 2px 0 0;opacity:.85}
+.bars span:hover i{opacity:1}
+.budget{display:flex;flex-direction:column;gap:6px;margin:-4px 0 16px}
+.budget .progress{height:8px;position:relative;overflow:visible} .budget .progress i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.budget .progress i.warn{background:var(--warn)} .budget .progress i.bad{background:var(--bad)}
+.budget .progress b{position:absolute;top:-3px;width:2px;height:14px;background:var(--ink);opacity:.6}
+.fixed-row,.price-row{display:grid;grid-template-columns:minmax(0,1.3fr) 90px minmax(0,1.6fr) auto;gap:8px;align-items:center;width:100%}
+.price-row{grid-template-columns:minmax(0,1.2fr) 80px 80px 80px minmax(0,2fr) auto}
+.fixed-row.add,.price-row.add{margin-top:10px} .rows li .fixed-row{flex:1}
+.in.num{text-align:right;font-variant-numeric:tabular-nums}
+.card-num small{font-size:12px;color:var(--muted);font-weight:500;margin-left:2px}
+@media (max-width:680px){.fixed-row,.price-row{grid-template-columns:minmax(0,1fr) 90px} .price-row .in:not(.num),.fixed-row .in:not(.num){grid-column:1/-1}}

@@ -8,6 +8,7 @@ import { emit } from './events';
 import { loadMemory, memoryFor } from './memory';
 import { byId, persona, teamLead, HUMAN_HEAD } from './people';
 import { errText } from '@/lib/errors';
+import { withUsage } from '@/lib/usage';
 
 /** What the Design Studio can make, with the shape Gemini draws it in. */
 export const FORMATS = {
@@ -47,7 +48,7 @@ export async function makeDesign(db: SupabaseClient, o: { format: Format; brief:
     let headline = o.headline.trim();
     if (!headline && has('OPENAI_API_KEY')) {
       await emit(db, null, 'think', 'copywriter', `Writing a headline for a ${f.label.toLowerCase()}`);
-      headline = (await chatJSON<{ headline: string }>('worker', persona('copywriter', `Write one headline of at most 6 words in ${LANGS[o.language]}. Shape: {"headline": "..."}`), `${o.brief}\nProducts: ${(prods || []).map(p => p.title).join(', ')}`)).headline;
+      headline = (await withUsage({ feature: 'design' }, () => chatJSON<{ headline: string }>('worker', persona('copywriter', `Write one headline of at most 6 words in ${LANGS[o.language]}. Shape: {"headline": "..."}`), `${o.brief}\nProducts: ${(prods || []).map(p => p.title).join(', ')}`))).headline;
     }
     await emit(db, null, 'think', maker, `Designing a ${f.label.toLowerCase()}: ${o.brief.slice(0, 80)}`);
     const parts = await Promise.all(photos.map(imagePart));
@@ -57,7 +58,7 @@ Look: luxurious and warm, deep green or black with champagne-gold accents, soft 
 ${text}${fix ? `\nFix this from the last attempt: ${fix}` : ''}
 ${memoryFor(byId[maker].room)}`;
 
-    let img = await bannerImage(prompt(), photos, f.ratio, parts), check: Check = { ok: true, note: '' };
+    let img = await withUsage({ feature: 'design', agent: maker }, () => bannerImage(prompt(), photos, f.ratio, parts)), check: Check = { ok: true, note: '' };
     for (let attempt = 1; ; attempt++) {
       await emit(db, null, 'think', lead, `Checking the ${f.label.toLowerCase()} against the product photos`);
       check = await geminiJSON<Check>(`You are ${byId[lead].name}, checking a design before the ${byId[head].name} sees it. The first image is the design; the others are the real product photos.
@@ -65,7 +66,7 @@ ok is false if the jewellery differs from the photos (shape, stones, colour), an
 Shape: {"ok": true|false, "note": "one sentence"}`, [{ inlineData: { mimeType: img.mimeType, data: img.data.toString('base64') } }, ...parts]);
       if (check.ok || attempt === 2) break;
       await emit(db, null, 'feedback', lead, `Redo: ${check.note}`, maker);
-      img = await bannerImage(prompt(check.note), photos, f.ratio, parts);
+      img = await withUsage({ feature: 'design', agent: maker }, () => bannerImage(prompt(check.note), photos, f.ratio, parts));
     }
     const path = `designs/${d.id}.${img.mimeType.split('/')[1] || 'png'}`;
     const up = await db.storage.from('creatives').upload(path, img.data, { contentType: img.mimeType, upsert: true });

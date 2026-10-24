@@ -1,5 +1,6 @@
 import 'server-only';
 import { env, opt } from '@/lib/env';
+import { recordUsage } from '@/lib/usage';
 
 const URL = (m: string) => `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`;
 
@@ -7,13 +8,16 @@ type Part = { text?: string; inlineData?: { mimeType: string; data: string } };
 
 async function generate(model: string, parts: Part[], imageOut: boolean, aspectRatio?: string, json = false) {
   const generationConfig = imageOut ? { responseModalities: ['TEXT', 'IMAGE'], ...(aspectRatio ? { imageConfig: { aspectRatio } } : {}) } : json ? { responseMimeType: 'application/json' } : undefined;
+  const t0 = Date.now();
   const res = await fetch(URL(model), {
     method: 'POST',
     headers: { 'x-goog-api-key': env('GEMINI_API_KEY'), 'content-type': 'application/json' },
     body: JSON.stringify({ contents: [{ role: 'user', parts }], ...(generationConfig ? { generationConfig } : {}) }),
   });
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  if (!res.ok) { await recordUsage({ provider: 'gemini', model, ok: false, ms: Date.now() - t0 }); throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`); }
   const data = await res.json();
+  const um = data.usageMetadata || {};
+  await recordUsage({ provider: 'gemini', model, input: um.promptTokenCount, output: (um.candidatesTokenCount || 0) + (um.thoughtsTokenCount || 0), ms: Date.now() - t0 });
   return (data.candidates?.[0]?.content?.parts ?? []) as Part[];
 }
 
