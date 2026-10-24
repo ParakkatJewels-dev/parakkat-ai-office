@@ -10,6 +10,13 @@ type Office = any; // the engine is plain JS; see src/office/engine.mjs for its 
 type Stats = { total: number; active: number; buildings: { id: string; name: string; total: number; active: number }[] };
 type Item = { key: string; at: number; from: string | null; to: string | null; text: string };
 type Person = { id: string; name: string; dept: string; room: string; human?: boolean };
+type Sky = { hour: number; live: boolean; lapse: boolean; moon: { name: string; lit: number } };
+// the sky button steps through: live Kerala time, a day in 90 seconds, then sunrise, midday, sunset and night
+const SKY_STEPS: { id: string; label: string; set: number | 'lapse' | null }[] = [
+  { id: 'live', label: 'Live time', set: null }, { id: 'lapse', label: 'Day in 90 s', set: 'lapse' }, { id: 'rise', label: 'Sunrise', set: 6.3 },
+  { id: 'noon', label: 'Midday', set: 12.5 }, { id: 'set', label: 'Sunset', set: 18.25 }, { id: 'night', label: 'Night', set: 21.5 },
+];
+const clock = (h: number) => { const m = Math.floor((h % 1) * 60), hh = Math.floor(h) % 24; return `${hh % 12 || 12}:${String(m).padStart(2, '0')} ${hh < 12 ? 'am' : 'pm'}`; };
 
 const who = (e: AgentEvent) => e.from_agent || e.payload?.from_person || null;
 const whom = (e: AgentEvent) => e.to_agent || e.payload?.to_person || null;
@@ -28,6 +35,7 @@ export default function OfficeClient({ me, role, initial }: { me: string; role: 
   const [all, setAll] = useState(false);
   const [view, setView] = useState<'2d' | '3d'>('3d');
   const [stats, setStats] = useState<Stats | null>(null);
+  const [sky, setSky] = useState<Sky | null>(null), [skyStep, setSkyStep] = useState(0);
   const [demo, setDemo] = useState(initial.length === 0);
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState('');
@@ -60,7 +68,7 @@ export default function OfficeClient({ me, role, initial }: { me: string; role: 
   // live numbers for the occupancy card
   useEffect(() => {
     if (!office) return;
-    const tick = () => { setStats(office.stats()); setNow(Date.now()); };
+    const tick = () => { setStats(office.stats()); setNow(Date.now()); setSky(office.sky()); };
     tick(); const t = setInterval(tick, 1500); return () => clearInterval(t);
   }, [office]);
 
@@ -181,6 +189,12 @@ export default function OfficeClient({ me, role, initial }: { me: string; role: 
           <button type="button" className="sq" aria-label="Full screen" onClick={cam(o => o.fullscreen())}><Icon name="expand" size={18} /></button>
           <button type="button" className="sq" aria-pressed={panel} aria-label={panel ? 'Hide side panel' : 'Show side panel'} onClick={() => setPanel(p => !p)}><Icon name="panel" size={18} /></button>
         </div>
+
+        <button type="button" className="skychip float" title={sky ? `${sky.moon.name} tonight, ${sky.moon.lit}% lit. Click for ${SKY_STEPS[(skyStep + 1) % SKY_STEPS.length].label.toLowerCase()}.` : 'Sky'}
+          aria-label={`Sky: ${SKY_STEPS[skyStep].label}. Change`} onClick={() => { const n = (skyStep + 1) % SKY_STEPS.length; setSkyStep(n); office?.setTime(SKY_STEPS[n].set); setSky(office?.sky()); }}>
+          <Icon name={sky && (sky.hour < 6.1 || sky.hour > 18.6) ? 'moon' : 'sun'} size={18} />
+          <span><b>{sky ? clock(sky.hour) : '–'}</b><small>{SKY_STEPS[skyStep].id === 'live' ? (sky && (sky.hour < 6.1 || sky.hour > 18.6) ? sky.moon.name : 'Kerala time') : SKY_STEPS[skyStep].label}</small></span>
+        </button>
 
         <p className="float hint">Drag to move · right-drag to turn · scroll to zoom</p>
       </div>
