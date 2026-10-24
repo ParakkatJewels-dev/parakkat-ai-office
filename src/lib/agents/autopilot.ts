@@ -4,12 +4,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { has } from '@/lib/env';
 import { chatJSON } from '@/lib/llm/openai';
 import { errText } from '@/lib/errors';
+import { withUsage } from '@/lib/usage';
 import { emit } from './events';
 import { persona } from './people';
 import { loadMemory } from './memory';
 import { startCampaign } from './campaign';
 import { syncAll } from './sync';
 import { upcoming, covered } from './occasions.mjs';
+import { runSeo } from './seo';
 
 /**
  * The agents' own schedule. The every-minute tick calls runAutopilot(), which runs the one job most overdue:
@@ -34,6 +36,8 @@ const JOBS: Job[] = [
   { name: 'sales', every: 1.5 * H, hours: [8, 22], run: sales },
   { name: 'ads', every: 1.5 * H, hours: [8, 22], run: ads },
   { name: 'rivals', every: 3 * H, hours: [9, 21], run: rivals },
+  { name: 'seo', every: 7 * 24 * H, hours: [6, 22], run: async db => { const r = await runSeo(db); return `${r.keywords} search terms${r.problems.length ? `; ${r.problems.join('; ')}` : ''}`; } },
+  { name: 'budget', every: 20 * H, hours: [9, 21], run: budget },
 ];
 
 /** Run the most overdue job, if any is due. One at a time, so a slow sync never overlaps the next tick. */
@@ -54,7 +58,7 @@ export async function runAutopilot(db: SupabaseClient, now = new Date()) {
     // mark it first: a job that fails waits for its next turn instead of retrying every minute
     await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: now.toISOString(), last_result: 'running' });
     await loadMemory(db);
-    result = await job.run(db);
+    result = await withUsage({ feature: `autopilot:${job.name}` }, () => job.run(db));
   } catch (e) { result = `failed: ${errText(e)}`; }
   finally { await db.rpc('release_job_lock', { p_name: 'autopilot', p_holder: holder }); }
   await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: now.toISOString(), last_result: result.slice(0, 500) });
@@ -76,10 +80,13 @@ async function stock(db: SupabaseClient) {
   const { data } = await db.rpc('sales_by_product', { p_since: daysAgo(30), p_limit: 40 });
   const rows = (data || []) as { title: string | null; inventory: number | null; units: number }[];
   if (!rows.length) { await emit(db, null, 'say', 'picker', 'No sales synced yet, so no stock to check.', 'strategist'); return 'no sales'; }
-  const low = rows.filter(r => r.inventory != null && r.inventory <= 3 && Number(r.units) > 0);
-  if (low.length) await emit(db, null, 'feedback', 'picker', `Running low: ${low.slice(0, 5).map(r => `${r.title} (${r.inventory} left, ${r.units} sold this month)`).join('; ')}. I will keep these out of new plans until restocked.`, 'ecomManager');
+  // jewellery is often one of a kind, so a single piece left is normal; flag sold-out best sellers and last pieces of repeat sellers
+  const out = rows.filter(r => r.inventory != null && r.inventory <= 0), last = rows.filter(r => r.inventory === 1 && Number(r.units) >= 3);
+  const low = [...out, ...last];
+  if (low.length) await emit(db, null, 'feedback', 'picker', [out.length && `Sold out: ${out.slice(0, 4).map(r => `${r.title} (${r.units} sold this month)`).join('; ')}`,
+    last.length && `Last piece of a repeat seller: ${last.slice(0, 3).map(r => `${r.title} (${r.units} sold)`).join('; ')}`].filter(Boolean).join('. ') + '. I will keep these out of new plans until restocked.', 'ecomManager');
   else await emit(db, null, 'say', 'picker', `Stock is fine on all ${rows.length} best sellers.`, 'strategist');
-  return `${low.length} low of ${rows.length}`;
+  return `${out.length} sold out, ${last.length} last pieces, of ${rows.length}`;
 }
 
 /** Sales Analyst: yesterday against the two weeks before. */
@@ -174,4 +181,24 @@ Shape: {"proposals": [{"occasion": "short campaign name, e.g. Dhanteras gold coi
   }
   if (!opened.length) await emit(db, null, 'say', 'cmo', 'Nothing new to open today. The open campaigns and the calendar are covered.');
   return opened.length ? `opened: ${opened.join(', ')}` : 'nothing new';
+}
+
+/** Budget Guard: the month's AI and API spend plus plans against the budget set on the Usage page. Warns once a month. */
+async function budget(db: SupabaseClient) {
+  const { data: b } = await db.from('billing_settings').select('usd_inr, monthly_budget_inr, alert_pct, alerted_month').eq('id', 1).maybeSingle();
+  if (!b?.monthly_budget_inr) return 'no budget set';
+  const now = new Date(), month = now.toISOString().slice(0, 7), dim = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getDate(), dom = now.getUTCDate();
+  const [{ data: u }, { data: f }] = await Promise.all([
+    db.rpc('usage_report', { p_from: `${month}-01`, p_to: now.toISOString().slice(0, 10) }),
+    db.from('fixed_costs').select('monthly_usd').eq('active', true),
+  ]);
+  const fixed = (f || []).reduce((s, x) => s + Number(x.monthly_usd), 0), fx = Number(b.usd_inr), usage = Number(u?.cost_usd || 0);
+  const spent = (usage + fixed * dom / dim) * fx, projected = ((usage / dom) * dim + fixed) * fx, cap = Number(b.monthly_budget_inr);
+  const line = `${inr(spent)} spent this month of ${inr(cap)}, heading for ${inr(projected)}`;
+  if ((spent >= cap * b.alert_pct / 100 || projected > cap) && b.alerted_month !== month) {
+    await emit(db, null, 'feedback', 'budgetGuard', `Running costs: ${line}. See Usage and billing.`, 'superAdmin');
+    await db.from('billing_settings').update({ alerted_month: month }).eq('id', 1);
+    return `alerted: ${line}`;
+  }
+  return line;
 }

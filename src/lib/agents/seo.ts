@@ -8,6 +8,7 @@ import { loadMemory } from './memory';
 import { persona } from './people';
 import { fileReport } from './review';
 import { errText } from '@/lib/errors';
+import { withUsage } from '@/lib/usage';
 
 const BASE_SEEDS = ['gold necklace', 'temple jewellery', 'bridal jewellery', 'diamond ring', 'gold bangles', 'kerala jewellery'];
 const msg = errText;
@@ -27,11 +28,15 @@ async function seeds(db: SupabaseClient) {
  * product title and description fixes. Each report goes through the SEO Lead before the E-com Manager sees it.
  */
 export async function runSeo(db: SupabaseClient) {
+  return withUsage({ feature: 'seo' }, () => seoCheck(db));
+}
+async function seoCheck(db: SupabaseClient) {
   // one check at a time: a second press while one runs would race it on the same keywords
   const { count: busy } = await db.from('agent_runs').select('id', { count: 'exact', head: true }).eq('kind', 'seo').eq('status', 'running').gte('started_at', new Date(Date.now() - 10 * 6e4).toISOString());
   if (busy) throw new Error('An SEO check is already running. It finishes in a few minutes.');
   const { data: run, error } = await db.from('agent_runs').insert({ kind: 'seo', occasion: 'Weekly SEO check', stage: 'seo' }).select().single();
   if (error) throw error;
+  return withUsage({ run_id: run.id }, async () => {
   await loadMemory(db);
   const terms = await seeds(db), now = new Date().toISOString(), rows = new Map<string, Record<string, unknown>>();
   const row = (k: string) => { const key = k.toLowerCase(); if (!rows.has(key)) rows.set(key, { keyword: key, source: [] as string[], rising: false, updated_at: now }); return rows.get(key)!; };
@@ -113,6 +118,7 @@ Shape: {"title": "one-line summary", "body": "..."}`), ctx);
     await db.from('agent_runs').update({ status: 'failed', error: msg(e).slice(0, 500), finished_at: new Date().toISOString() }).eq('id', run.id);
     throw e;
   }
+  });
 }
 
 /** Lines the Campaign Strategist reads when planning: rising searches and the biggest terms. */

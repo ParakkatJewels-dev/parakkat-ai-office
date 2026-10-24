@@ -15,17 +15,19 @@ export const maxDuration = 300;
 const ROLES: AppRole[] = ['super_admin', 'creative_head', 'ecom_manager', 'perf_marketer', 'viewer'];
 const PROVIDER: Record<string, string> = { shopify: 'Shopify', meta: 'Meta Ads', instagram: 'Instagram', google_ads: 'Google Ads', ga4: 'Google Analytics', triple_whale: 'Triple Whale', openai: 'OpenAI', gemini: 'Gemini', jev: 'Jev', google_trends: 'Google Trends', keyword_planner: 'Keyword Planner' };
 const PEOPLE = 20, LESSONS = 15;
-const SOURCE: Record<string, string> = { manual: 'Added by you', results: 'Learned from campaign results', analytics: 'Learned from this month\'s analytics', lead: 'Stopped by the AI team lead', report: 'From a head\'s report decision', plan: 'From a plan decision' };
+const SOURCE: Record<string, string> = { manual: 'Added by you', results: 'Learned from campaign results', analytics: 'Learned from this month\'s analytics', lead: 'Stopped by the AI team lead', report: 'From a head\'s report decision', plan: 'From a plan decision', image_review: 'From a head\'s review in the Design Studio' };
 const STAGE_LABEL: Record<string, string> = { analyse: 'Analyse', competitors: 'Competitors', plan: 'Plan', create: 'Create', review: 'Review', approval: 'Approval', done: 'Live' };
 
 const AUTOPILOT = [
   { id: 'planner', name: 'AI CMO morning planning', when: 'Daily from 9am. Reads the festival calendar, sales, stock, ads, posts, rivals and searches, and opens up to two campaigns' },
   { id: 'sync', name: 'Data sync', when: 'Every 6 hours. Shopify, Meta, Instagram and Google Ads' },
   { id: 'festivals', name: 'Festival Calendar Keeper', when: 'Daily. Tells the CMO what is coming and when planning should start' },
-  { id: 'stock', name: 'Product Picker: stock check', when: 'Hourly, 8am to 10pm. Best sellers running low' },
+  { id: 'stock', name: 'Product Picker: stock check', when: 'Hourly, 8am to 10pm. Sold-out best sellers and last pieces of repeat sellers' },
   { id: 'sales', name: 'Sales Analyst: daily pulse', when: 'Every 90 minutes, 8am to 10pm. Yesterday against the two weeks before' },
   { id: 'ads', name: 'Ads Analyst and Budget Guard', when: 'Every 90 minutes, 8am to 10pm. Spend, return, and ads losing money' },
   { id: 'rivals', name: 'Competitor Scout', when: 'Every 3 hours, 9am to 9pm. This week\'s competitor moves' },
+  { id: 'seo', name: 'SEO Desk weekly check', when: 'Weekly. Google Trends and Keyword Planner, then title and description fixes' },
+  { id: 'budget', name: 'Budget Guard: running costs', when: 'Daily. Warns you once a month when AI and API spend nears the budget on Usage and billing' },
 ];
 
 const TABS = [

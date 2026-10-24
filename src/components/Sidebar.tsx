@@ -7,7 +7,7 @@ export function Sidebar({ admin, waiting, seo, studio }: { admin: boolean; waiti
   const path = usePathname();
   const items = ([
     ['/office', 'Office Map', 'map', true], ['/dashboard', 'Dashboard', 'chart', true], ['/approvals', 'Approvals', 'check', true], ['/agents', 'Agents', 'users', true],
-    ['/seo', 'SEO', 'search', seo], ['/studio', 'Design Studio', 'spark', studio], ['/admin', 'Admin', 'settings', admin],
+    ['/seo', 'SEO', 'search', seo], ['/studio', 'Design Studio', 'spark', studio], ['/usage', 'Usage and billing', 'rupee', admin], ['/admin', 'Admin', 'settings', admin],
   ] as [string, string, IconName, boolean][]).filter(i => i[3]);
   return (
     <nav className="side" aria-label="Views">

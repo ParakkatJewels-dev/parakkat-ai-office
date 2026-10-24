@@ -3,6 +3,7 @@ import { ROLE_LABEL, type AppRole } from '@/lib/roles';
 import { decideReport, decideApproval } from './actions';
 import { Icon } from '@/components/Icon';
 import { Submit } from '@/components/forms';
+import type { Proposal } from '@/lib/agents/campaign';
 import { PageHead, Tile, Avatar, Stepper, Pager, pageOf, rangeOf, inr, when } from '@/components/ui';
 
 export const maxDuration = 300; // publishing to Meta happens in the approve action
@@ -96,7 +97,8 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
                   <div><small>Channels</small><b>{c.channels.join(', ')}</b></div>
                 </div>
                 {c.plan.split && <p className="sub">{c.plan.split}</p>}
-                {(c.plan.reasons || []).length > 0 && <ul className="reasons">{c.plan.reasons.map((r: string) => <li key={r}>{r}</li>)}</ul>}
+                {c.plan.report ? <ProposalReport r={c.plan.report} />
+                  : (c.plan.reasons || []).length > 0 && <ul className="reasons">{c.plan.reasons.map((r: string) => <li key={r}>{r}</li>)}</ul>}
                 {c.plan.ai_review && <blockquote className="lead-note"><Avatar name="CMO AI" dept="board" size={28} /><div><b>AI CMO <span>reviewed the plan</span></b><p>{c.plan.ai_review}</p></div></blockquote>}
                 {c.creatives?.length > 0 && <div className="copy">{c.creatives.map((x: any) => <p key={x.id}><span className="pill">{x.language.toUpperCase()}</span> <b>{x.headline}</b> {x.body}</p>)}</div>}
                 <h4 className="eyebrow">Sign-off</h4>
@@ -129,5 +131,30 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
         <Pager sp={sp} param="dp" page={dp} size={DECIDED} total={doneCount} shown={(doneReports || []).length} anchor="decided" />
       </section>}
     </div>
+  );
+}
+
+/** Why, for what, the data behind it, how it runs, and what it should bring in, so a head can decide without asking. */
+function ProposalReport({ r }: { r: Proposal }) {
+  const m = r.impact;
+  return (
+    <details className="proposal" open>
+      <summary>Proposal report</summary>
+      <div className="facts impact">
+        <div><small>Budget</small><b>{inr(m.budget_total)}</b></div>
+        <div><small>Expected sales</small><b>{m.revenue_low != null ? `${inr(m.revenue_low)} to ${inr(m.revenue_high!)}` : 'Not enough data'}</b></div>
+        <div><small>Return on ad spend</small><b>{m.roas_basis != null ? `${m.roas_basis.toFixed(1)}x` : '–'}</b></div>
+        <div><small>Pieces, about</small><b>{m.units ?? '–'}</b></div>
+      </div>
+      <p className="sm basis">{m.basis}</p>
+      <dl className="prop">
+        <dt>Why now</dt><dd>{r.why}</dd>
+        <dt>What it is for</dt><dd>{r.goal}</dd>
+        {r.data_used.length > 0 && <><dt>Based on</dt><dd><ul className="datalist">{r.data_used.map((d, i) => <li key={i}><span className="pill">{d.source}</span>{d.finding}</li>)}</ul></dd></>}
+        {r.how.length > 0 && <><dt>How it runs</dt><dd><ol>{r.how.map((h, i) => <li key={i}>{h}</li>)}</ol></dd></>}
+        {r.risks.length > 0 && <><dt>Risks</dt><dd><ul>{r.risks.map((h, i) => <li key={i}>{h}</li>)}</ul></dd></>}
+        {r.measure && <><dt>How we will judge it</dt><dd>{r.measure}</dd></>}
+      </dl>
+    </details>
   );
 }

@@ -1,6 +1,7 @@
 import 'server-only';
 import { has } from '@/lib/env';
 import { chatJSON } from './openai';
+import { recordUsage } from '@/lib/usage';
 
 /** One typed question for Jev: pick one of the criteria keys. */
 export type Choice = { instructions: string; criteria: Record<string, string> };
@@ -17,6 +18,7 @@ export async function classify<K extends string>(state: string, questions: Recor
       headers: { authorization: `Bearer ${process.env.JEV_API_KEY}`, 'content-type': 'application/json' },
       body: JSON.stringify({ state, model: 'jev-latest', questions: Object.fromEntries(Object.entries(questions).map(([k, q]) => [k, { type: 'choice', ...(q as Choice) }])) }),
     });
+    await recordUsage({ provider: 'jev', model: 'jev-latest', ok: res.ok, units: 1 });
     if (!res.ok) throw new Error(`Jev ${res.status}: ${(await res.text()).slice(0, 300)}`);
     const data = await res.json();
     return data.answers as Record<K, Answer>;

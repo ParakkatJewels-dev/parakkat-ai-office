@@ -12,14 +12,20 @@ import { seoBrief } from './seo';
 import { loadMemory, pastResults } from './memory';
 import type { AppRole } from '@/lib/roles';
 import { errText } from '@/lib/errors';
+import { withUsage } from '@/lib/usage';
 
 /** A campaign run moves one stage per call to advance(), so each step fits in a single serverless call. */
 export const STAGES = ['analyse', 'competitors', 'plan', 'create', 'review', 'approval', 'done'] as const;
 type Stage = (typeof STAGES)[number];
 
+/** What the heads read before deciding: why, for what, the data behind it, how it runs, and what it should bring in. */
+export type Proposal = {
+  why: string; goal: string; data_used: { source: string; finding: string }[]; how: string[]; risks: string[]; measure: string;
+  impact: { budget_total: number; roas_basis: number | null; revenue_low: number | null; revenue_high: number | null; units: number | null; basis: string };
+};
 type Plan = {
   name: string; occasion: string; headline: string; sub: string; product_ids: number[]; budget_daily: number; days: number;
-  channels: string[]; split: string; audiences: string; reasons: string[];
+  channels: string[]; split: string; audiences: string; reasons: string[]; report?: Proposal;
 };
 type RunState = { origin?: { by: string; why: string }; insights?: string[]; competitors?: string[]; plan?: Plan; campaign_id?: string; creative_ids?: string[]; review?: string };
 type Run = { id: string; occasion: string | null; stage: Stage; state: RunState };
@@ -47,7 +53,8 @@ export async function advance(db: SupabaseClient, runId: string) {
   const state = { ...run.state };
   try {
     await loadMemory(db);
-    await STEP[run.stage](db, run, state);
+    const step = STEP[run.stage];
+    await withUsage({ run_id: runId, feature: 'campaign' }, () => step(db, run, state));
     const next = STAGES[STAGES.indexOf(run.stage) + 1];
     await db.from('agent_runs').update({ stage: next, state, status: next === 'done' ? 'waiting' : 'running' }).eq('id', runId);
     return next;
@@ -57,6 +64,41 @@ export async function advance(db: SupabaseClient, runId: string) {
     await emit(db, runId, 'feedback', 'cmo', `The ${run.stage} step failed: ${msg.slice(0, 180)}`);
     throw e;
   }
+}
+
+/**
+ * The proposal report. The money is worked out here from Parakkat's own last 30 days (return on ad spend and the
+ * average value of an item sold), so the forecast is never a number the model made up; the Budget Forecaster explains it
+ * and the Strategist writes why, for what, which data it rests on, how it runs and what could go wrong.
+ */
+async function proposal(db: SupabaseClient, run: Run, s: RunState, plan: Plan, picked: { title: string; price: number | null; inventory: number | null }[]): Promise<Proposal> {
+  const to = new Date().toISOString().slice(0, 10), from = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+  const { data: r } = await db.rpc('dashboard_report', { p_from: from, p_to: to, p_platform: null, p_account: null });
+  const spend = Number(r?.spend || 0), adRev = Number(r?.ad_revenue || 0), rev = Number(r?.revenue || 0), units = Number(r?.units || 0);
+  const roas = spend > 0 ? adRev / spend : null, perUnit = units > 0 ? rev / units : null;
+  const total = Math.round(plan.budget_daily * plan.days);
+  const low = roas ? Math.round(total * roas * 0.75) : null, high = roas ? Math.round(total * roas * 1.25) : null;
+  const basis = roas
+    ? `Our ads returned ${roas.toFixed(1)}x over the last 30 days (${inr(adRev)} from ${inr(spend)}). At ${inr(total)} that is about ${inr(low!)} to ${inr(high!)}, allowing 25% either way.${perUnit ? ` At our average of ${inr(perUnit)} per item sold, about ${Math.round(((low! + high!) / 2) / perUnit)} pieces.` : ''}`
+    : 'No ad results synced for the last 30 days, so there is no return to forecast from yet. Connect Meta or Google Ads and sync.';
+  const facts = [
+    `Occasion: ${run.occasion}${s.origin ? ` (opened by the AI CMO: ${s.origin.why})` : ''}`,
+    `Plan: ${JSON.stringify({ ...plan, report: undefined })}`,
+    `Products picked: ${picked.map(p => `${p.title} ${p.price ? inr(p.price) : ''} (${p.inventory ?? '?'} in stock)`).join('; ')}`,
+    `Last 30 days: Shopify ${inr(rev)} from ${units} items; ads ${inr(spend)} spent, ${inr(adRev)} back${roas ? ` (${roas.toFixed(1)}x)` : ''}`,
+    `Forecast (already worked out, quote it, do not change it): ${basis}`,
+    `Reports from Insights Lab:\n${(s.insights || []).join('\n\n') || 'none forwarded'}`,
+    `War Room:\n${(s.competitors || []).join('\n') || 'none'}`,
+  ].join('\n\n');
+  const w = await chatJSON<Omit<Proposal, 'impact'>>('manager', persona('strategist', `Write the proposal report the department heads read before approving this campaign.
+Every claim must come from the facts given; name the source of each (Shopify, Meta Ads, Google Ads, Instagram, War Room, SEO Desk, festival calendar).
+Shape: {"why": "2 sentences: the reason to run this now", "goal": "what it is for, in one sentence with a number where possible",
+"data_used": [{"source": "...", "finding": "the number or fact used"}], "how": ["4 to 6 steps: channels, audiences, creatives, timeline, budget split"],
+"risks": ["2 or 3 things that could go wrong and how we would notice"], "measure": "how we will judge it after it runs"}`), facts);
+  return {
+    why: w.why || '', goal: w.goal || '', data_used: (w.data_used || []).slice(0, 8), how: (w.how || []).slice(0, 8), risks: (w.risks || []).slice(0, 4), measure: w.measure || '',
+    impact: { budget_total: total, roas_basis: roas, revenue_low: low, revenue_high: high, units: roas && perUnit ? Math.round(((low! + high!) / 2) / perUnit) : null, basis },
+  };
 }
 
 const STEP: Record<Exclude<Stage, 'done'>, (db: SupabaseClient, run: Run, s: RunState) => Promise<void>> = {
@@ -99,7 +141,7 @@ const STEP: Record<Exclude<Stage, 'done'>, (db: SupabaseClient, run: Run, s: Run
         const ig = await competitorInstagram(c.instagram_handle!);
         const recent = (ig.media?.data || []).map((m: any) => `${m.timestamp?.slice(0, 10)} ${m.media_type} likes ${m.like_count}: ${(m.caption || '').slice(0, 140)}`).join('\n');
         const move = await chatJSON<{ kind: string; summary: string }>('worker', persona('igScout', 'Name the single most important move in these posts. kind is one of offer, creative, product, price, channel. Shape: {"kind": "...", "summary": "one sentence"}'), `${c.name} (@${c.instagram_handle}), ${ig.followers_count} followers:\n${recent}`);
-        const score = await classify(`${c.name}: ${move.summary}`, { impact: { instructions: 'How much should Parakkat Jewels react to this competitor move this week?', criteria: { high: 'directly targets our customers or festival', medium: 'worth watching', low: 'no action needed' } } });
+        const score = await withUsage({ agent: 'igScout' }, () => classify(`${c.name}: ${move.summary}`, { impact: { instructions: 'How much should Parakkat Jewels react to this competitor move this week?', criteria: { high: 'directly targets our customers or festival', medium: 'worth watching', low: 'no action needed' } } }));
         await db.from('competitor_moves').insert({ competitor_id: c.id, kind: move.kind, summary: move.summary, score: score.impact.confidence, raw: { impact: score.impact.choice } });
         lines.push(`${c.name} [${score.impact.choice}]: ${move.summary}`);
       } catch (e) { lines.push(`${c.name}: could not read (${e instanceof Error ? e.message.slice(0, 80) : 'error'})`); }
@@ -124,6 +166,8 @@ Shape: {"name": "...", "occasion": "...", "headline": "max 5 words", "sub": "max
     plan.product_ids = (plan.product_ids || []).filter(id => ok.has(id)).slice(0, 6);
     if (!plan.product_ids.length) throw new Error('The plan picked no in-stock products. Sync Shopify first.');
     s.plan = plan;
+    await emit(db, run.id, 'think', 'budgetForecaster', 'Working out what this plan should bring in, from our own last 30 days');
+    plan.report = await proposal(db, run, s, plan, (stock || []).filter(p => plan.product_ids.includes(p.id)));
     await emit(db, run.id, 'walk', 'strategist', `Brief: ${plan.name}. ${plan.split}`, 'creativeDirector');
   },
 
@@ -143,7 +187,7 @@ Shape: {"name": "...", "occasion": "...", "headline": "max 5 words", "sub": "max
     s.creative_ids = [];
     if (photos.length && has('GEMINI_API_KEY')) {
       await emit(db, run.id, 'think', 'designer', 'Generating banners from the Shopify photos');
-      const img = await bannerImage(`Luxury ${p.occasion} jewellery banner for Parakkat Jewels, 1080x1080. Elegant black and warm champagne palette, soft studio light, festive Kerala touches. Space for the headline "${p.headline}".`, photos);
+      const img = await withUsage({ agent: 'designer' }, () => bannerImage(`Luxury ${p.occasion} jewellery banner for Parakkat Jewels, 1080x1080. Elegant black and warm champagne palette, soft studio light, festive Kerala touches. Space for the headline "${p.headline}".`, photos));
       const path = `${camp.id}/banner-1.${img.mimeType.split('/')[1] || 'png'}`;
       const up = await db.storage.from('creatives').upload(path, img.data, { contentType: img.mimeType, upsert: true });
       if (up.error) throw up.error;
@@ -163,10 +207,10 @@ Shape: {"name": "...", "occasion": "...", "headline": "max 5 words", "sub": "max
     const { data: crs } = await db.from('creatives').select('id, headline, body').eq('campaign_id', s.campaign_id!);
     const text = (crs || []).map(c => `${c.headline}\n${c.body}`).join('\n---\n');
     await emit(db, run.id, 'think', 'compliance', 'Checking hallmark, purity and price claims');
-    const q = await classify(text, {
+    const q = await withUsage({ agent: 'compliance' }, () => classify(text, {
       claims: { instructions: 'Do these jewellery ads make any unverifiable claim (purity, hallmark, discount, "lowest price")?', criteria: { clean: 'no risky claims', risky: 'at least one claim needs proof or rewording' } },
       policy: { instructions: 'Would Meta or Google ad policy likely reject this copy?', criteria: { ok: 'likely approved', reject: 'likely rejected' } },
-    });
+    }));
     const flags = [q.claims.choice === 'risky' && 'a claim needs proof or rewording', q.policy.choice === 'reject' && 'ad policy risk'].filter(Boolean);
     await emit(db, run.id, flags.length ? 'feedback' : 'say', 'compliance', flags.length ? `Flagged: ${flags.join(', ')}` : 'Compliance checks pass.', 'creativeDirector');
     await emit(db, run.id, 'say', 'budgetGuard', `Daily cap ${inr(p.budget_daily)} for ${p.days} days, total ${inr(p.budget_daily * p.days)}.`, 'perfLead');
