@@ -10,40 +10,37 @@ const STAGE_LABEL: Record<string, string> = { analyse: 'Analyse', competitors: '
 /** Change against the 30 days before, as "+12%" or "-4%". */
 const delta = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}% vs last 30 days` : 'last 30 days';
 
+type Summary = {
+  revenue: number; prev_revenue: number; units: number; prev_units: number; spend: number; ad_revenue: number; prev_spend: number; prev_ad_revenue: number;
+  days: [string, number][]; platforms: { platform: string; spend: number; revenue: number }[]; top: { id: number; revenue: number; title: string | null; image_url: string | null }[];
+};
+
 export default async function Dashboard() {
   const { db, name } = await requireUser();
-  const day = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
-  const since = day(30), prevSince = day(60);
-  const [{ data: orders }, { data: products }, { data: ads }, { data: posts }, { data: moves }, { data: runs }] = await Promise.all([
-    db.from('orders_daily').select('day, product_id, units, revenue').gte('day', prevSince),
-    db.from('products').select('id, title, image_url'),
-    db.from('ad_insights_daily').select('day, platform, spend, revenue, purchases').gte('day', prevSince),
+  // totals are summed in the database (dashboard_summary), so they stay right however many order and ad rows there are
+  const [{ data: summary }, { data: posts }, { data: moves }, { data: runs }] = await Promise.all([
+    db.rpc('dashboard_summary', { p_days: 30 }),
     db.from('social_posts').select('id, caption, media_type, permalink, saves, reach, media_url').order('saves', { ascending: false, nullsFirst: false }).limit(5),
     db.from('competitor_moves').select('id, kind, summary, seen_at, competitors(name)').order('seen_at', { ascending: false }).limit(6),
     db.from('agent_runs').select('id, occasion, stage, status, started_at').order('started_at', { ascending: false }).limit(5),
   ]);
-  const cur = (orders || []).filter(o => o.day >= since), prev = (orders || []).filter(o => o.day < since);
-  const curAds = (ads || []).filter(a => a.day >= since), prevAds = (ads || []).filter(a => a.day < since);
-  const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((s, x) => s + f(x), 0);
-  const revenue = sum(cur, o => Number(o.revenue)), units = sum(cur, o => o.units);
-  const spend = sum(curAds, a => Number(a.spend)), adRev = sum(curAds, a => Number(a.revenue));
-  const prevSpend = sum(prevAds, a => Number(a.spend)), prevRoas = prevSpend ? sum(prevAds, a => Number(a.revenue)) / prevSpend : 0;
+  const S = (summary || { revenue: 0, prev_revenue: 0, units: 0, prev_units: 0, spend: 0, ad_revenue: 0, prev_spend: 0, prev_ad_revenue: 0, days: [], platforms: [], top: [] }) as Summary;
+  const revenue = Number(S.revenue), units = Number(S.units), spend = Number(S.spend), adRev = Number(S.ad_revenue);
+  const prevSpend = Number(S.prev_spend), prevRoas = prevSpend ? Number(S.prev_ad_revenue) / prevSpend : 0;
   const roas = spend ? adRev / spend : 0;
 
   // revenue chart: one point per day, area under a line
-  const byDay = new Map<string, number>(); cur.forEach(o => byDay.set(o.day, (byDay.get(o.day) || 0) + Number(o.revenue)));
-  const days = [...byDay].sort(([a], [b]) => a.localeCompare(b)), max = Math.max(1, ...days.map(d => d[1]));
+  const days = S.days.map(([d, v]) => [d, Number(v)] as [string, number]), max = Math.max(1, ...days.map(d => d[1]));
   const W = 720, H = 220, X = (i: number) => (i / Math.max(1, days.length - 1)) * W, Y = (v: number) => H - 8 - (v / max) * (H - 28);
   const line = days.map(([, v], i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
   const short = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
   // ad spend split by platform
-  const split = Object.entries(curAds.reduce<Record<string, number>>((m, a) => ({ ...m, [a.platform]: (m[a.platform] || 0) + Number(a.spend) }), {})).sort((a, b) => b[1] - a[1]);
+  const split = S.platforms.map(p => [p.platform, Number(p.spend), Number(p.revenue)] as const);
   let acc = 0; const C = 2 * Math.PI * 42;
 
-  const prod = new Map((products || []).map(p => [p.id, p]));
-  const top = [...cur.reduce((m, o) => m.set(o.product_id, (m.get(o.product_id) || 0) + Number(o.revenue)), new Map<number, number>())].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const topMax = top[0]?.[1] || 1;
+  const top = S.top.map(t => ({ ...t, revenue: Number(t.revenue) }));
+  const topMax = top[0]?.revenue || 1;
   const hr = new Date().getHours();
 
   return (
@@ -55,8 +52,8 @@ export default async function Dashboard() {
       </PageHead>
 
       <section className="tiles" aria-label="Key numbers">
-        <Tile icon="rupee" label="Shopify revenue" value={inr(revenue)} sub={delta(revenue, sum(prev, o => Number(o.revenue)))} />
-        <Tile icon="bag" tone="amber" label="Items sold" value={units.toLocaleString('en-IN')} sub={delta(units, sum(prev, o => o.units))} />
+        <Tile icon="rupee" label="Shopify revenue" value={inr(revenue)} sub={delta(revenue, Number(S.prev_revenue))} />
+        <Tile icon="bag" tone="amber" label="Items sold" value={units.toLocaleString('en-IN')} sub={delta(units, Number(S.prev_units))} />
         <Tile icon="megaphone" tone="blue" label="Ad spend" value={inr(spend)} sub={delta(spend, prevSpend)} />
         <Tile icon="trend" tone="violet" label="Return on ad spend" value={spend ? `${roas.toFixed(1)}x` : '–'} sub={prevRoas ? `${roas >= prevRoas ? 'Up' : 'Down'} from ${prevRoas.toFixed(1)}x` : 'Meta and Google combined'} />
       </section>
@@ -85,8 +82,7 @@ export default async function Dashboard() {
                 {split.map(([p, v]) => { const len = (v / spend) * C, off = acc; acc += len; return <circle key={p} cx="50" cy="50" r="42" fill="none" stroke={PLATFORM[p]?.color || '#888'} strokeWidth="11" strokeDasharray={`${Math.max(0, len - 1.5)} ${C}`} strokeDashoffset={-off} transform="rotate(-90 50 50)" />; })}
                 <text x="50" y="48" textAnchor="middle" className="donut-num">{inr(spend)}</text><text x="50" y="61" textAnchor="middle" className="donut-sub">spent</text>
               </svg>
-              <ul className="legend">{split.map(([p, v]) => {
-                const rev = sum(curAds.filter(a => a.platform === p), a => Number(a.revenue));
+              <ul className="legend">{split.map(([p, v, rev]) => {
                 return <li key={p}><i style={{ background: PLATFORM[p]?.color || '#888' }} /><b>{PLATFORM[p]?.label || p}</b><span className="num">{inr(v)}</span><small>{Math.round((v / spend) * 100)}% · {(rev / v || 0).toFixed(1)}x return</small></li>;
               })}</ul>
             </div>
@@ -95,11 +91,11 @@ export default async function Dashboard() {
 
         <section className="card s4">
           <div className="card-head"><div><h3>Top products</h3><p className="sub">By revenue</p></div></div>
-          {top.length ? <ul className="rows">{top.map(([id, v], i) => (
-            <li key={id}>
-              {prod.get(id)?.image_url ? <img src={prod.get(id)!.image_url!} alt="" className="thumb" /> : <span className="thumb rank">{i + 1}</span>}
-              <div className="grow"><b className="clip">{prod.get(id)?.title || `Product ${id}`}</b><span className="meter"><i style={{ width: `${(v / topMax) * 100}%` }} /></span></div>
-              <span className="num">{inr(v)}</span>
+          {top.length ? <ul className="rows">{top.map((t, i) => (
+            <li key={t.id}>
+              {t.image_url ? <img src={t.image_url} alt="" className="thumb" loading="lazy" decoding="async" /> : <span className="thumb rank">{i + 1}</span>}
+              <div className="grow"><b className="clip">{t.title || `Product ${t.id}`}</b><span className="meter"><i style={{ width: `${(t.revenue / topMax) * 100}%` }} /></span></div>
+              <span className="num">{inr(t.revenue)}</span>
             </li>
           ))}</ul> : <div className="empty"><Icon name="bag" size={26} /><p>No orders synced yet.</p></div>}
         </section>
@@ -108,7 +104,7 @@ export default async function Dashboard() {
           <div className="card-head"><div><h3>Posts people saved</h3><p className="sub">Instagram, most saved first</p></div></div>
           {(posts || []).length ? <ul className="rows">{posts!.map(p => (
             <li key={p.id}>
-              {p.media_url && p.media_type !== 'VIDEO' ? <img src={p.media_url} alt="" className="thumb" /> : <span className="thumb"><Icon name="heart" size={18} /></span>}
+              {p.media_url && p.media_type !== 'VIDEO' ? <img src={p.media_url} alt="" className="thumb" loading="lazy" decoding="async" /> : <span className="thumb"><Icon name="heart" size={18} /></span>}
               <div className="grow"><a href={p.permalink || '#'} target="_blank" rel="noreferrer" className="clip"><b>{(p.caption || p.media_type || 'Post').slice(0, 70)}</b></a><span className="sm">{(p.media_type || '').toLowerCase().replace('_', ' ')} · reach {p.reach?.toLocaleString('en-IN') ?? '?'}</span></div>
               <span className="num">{p.saves ?? 0}<small> saves</small></span>
             </li>

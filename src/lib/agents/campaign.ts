@@ -57,19 +57,15 @@ const STEP: Record<Exclude<Stage, 'done'>, (db: SupabaseClient, run: Run, s: Run
   // Insights Lab reads sales, ads and posts. Each analyst's report goes through the Analytics Lead or Social Media Manager.
   async analyse(db, run, s) {
     const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
-    const [{ data: orders }, { data: products }, { data: ads }, { data: posts }] = await Promise.all([
-      db.from('orders_daily').select('product_id, units, revenue').gte('day', since),
-      db.from('products').select('id, title, product_type, price, inventory'),
-      db.from('ad_insights_daily').select('platform, campaign_name, ad_name, spend, clicks, purchases, revenue').gte('day', since),
+    // summed in the database: raw order and ad rows run far past what one request returns
+    const [{ data: sold }, { data: ads }, { data: posts }] = await Promise.all([
+      db.rpc('sales_by_product', { p_since: since, p_limit: 15 }),
+      db.rpc('ad_rollup', { p_since: since, p_limit: 15 }),
       db.from('social_posts').select('caption, media_type, reach, saves, likes, posted_at').order('posted_at', { ascending: false }).limit(30),
     ]);
-    const title = new Map((products || []).map(p => [p.id, p.title]));
-    const perProduct = new Map<number, { units: number; revenue: number }>();
-    (orders || []).forEach(o => { const a = perProduct.get(o.product_id) || { units: 0, revenue: 0 }; a.units += o.units; a.revenue += Number(o.revenue); perProduct.set(o.product_id, a); });
-    const top = [...perProduct].sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 15).map(([id, a]) => `${title.get(id) || id}: ${a.units} units, ${inr(a.revenue)}`).join('\n');
-    const perAd = new Map<string, { spend: number; revenue: number; purchases: number; platform: string }>();
-    (ads || []).forEach(r => { const k = `${r.campaign_name} / ${r.ad_name}`; const a = perAd.get(k) || { spend: 0, revenue: 0, purchases: 0, platform: r.platform }; a.spend += +r.spend; a.revenue += +r.revenue; a.purchases += +r.purchases; perAd.set(k, a); });
-    const adLines = [...perAd].sort((a, b) => b[1].spend - a[1].spend).slice(0, 15).map(([k, a]) => `${a.platform} ${k}: spend ${inr(a.spend)}, ${a.purchases} purchases, revenue ${inr(a.revenue)}, ROAS ${a.spend ? (a.revenue / a.spend).toFixed(1) : '-'}x`).join('\n');
+    const top = ((sold || []) as { product_id: number; title: string | null; units: number; revenue: number }[]).map(a => `${a.title || a.product_id}: ${a.units} units, ${inr(Number(a.revenue))}`).join('\n');
+    const adLines = ((ads || []) as { platform: string; campaign_name: string; ad_name: string; spend: number; purchases: number; revenue: number }[])
+      .map(a => `${a.platform} ${a.campaign_name} / ${a.ad_name}: spend ${inr(+a.spend)}, ${+a.purchases} purchases, revenue ${inr(+a.revenue)}, ROAS ${+a.spend ? (+a.revenue / +a.spend).toFixed(1) : '-'}x`).join('\n');
     const postLines = (posts || []).map(p => `${p.posted_at?.slice(0, 10)} ${p.media_type}: reach ${p.reach ?? '?'}, saves ${p.saves ?? '?'}, likes ${p.likes ?? '?'} — ${(p.caption || '').slice(0, 80)}`).join('\n');
 
     const ask = (who: string, data: string, focus: string) => chatJSON<{ title: string; body: string }>('worker',

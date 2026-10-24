@@ -23,11 +23,13 @@ before(async () => {
     create schema storage; create table storage.buckets (id text primary key, name text, public boolean); create table storage.objects (id uuid default gen_random_uuid(), bucket_id text);
     alter table storage.objects enable row level security;
     create publication supabase_realtime;
-    create role authenticated nologin; create role anon nologin;`);
+    create role authenticated nologin; create role anon nologin; create role service_role nologin;`);
   await db.exec(read('supabase/migrations/20261024000000_init.sql').replace('create extension if not exists pgcrypto;', ''));
   await db.exec(read('supabase/seed.sql'));
   await db.exec(read('supabase/migrations/20261024000200_seo_studio.sql'));
   await db.exec(read('supabase/migrations/20261024000300_memory.sql'));
+  await db.exec(read('supabase/migrations/20261024000400_scale.sql'));
+  await db.exec(read('supabase/migrations/20261024000500_learn_from_leads.sql'));
   // what Supabase grants signed-in users by default
   await db.exec(`grant usage on schema public, auth to authenticated; grant all on all tables in schema public to authenticated; grant execute on function auth.uid() to authenticated;`);
   for (const [k, id] of Object.entries(U)) await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [id, { full_name: k }]);
@@ -113,4 +115,39 @@ test("a head's notes become lessons for that department only", async () => {
   await as('perf', `select decide_approval('30000000-0000-0000-0000-000000000002', 'changes', 'Cap the daily budget at 15000')`);
   const perf = (await as('perf', 'select department_id, lesson from lessons')).rows;
   assert.ok(perf.some(l => l.department_id === 'perf' && /Onam/.test(l.lesson) && /15000/.test(l.lesson)));
+});
+
+test('dashboard totals are summed in the database, past the 1000-row page limit', async () => {
+  await db.exec(`insert into products (id, title) values (1, 'Temple necklace'), (2, 'Gold bangle');
+    insert into orders_daily (day, product_id, units, revenue)
+      select current_date - (g % 25), 1 + (g % 2), 1, 100 from generate_series(0, 1499) g on conflict do nothing;
+    insert into ad_insights_daily (day, platform, campaign_id, ad_id, spend, revenue)
+      select current_date - (g % 20), case when g % 3 = 0 then 'google' else 'meta' end, 'c1', 'ad' || g, 10, 40 from generate_series(0, 1199) g`);
+  const s = (await as('perf', 'select dashboard_summary(30) s')).rows[0].s;
+  const orders = (await db.query('select count(*)::int n, sum(revenue)::numeric r from orders_daily where day >= current_date - 30')).rows[0];
+  assert.equal(Number(s.revenue), Number(orders.r));
+  assert.equal(Number(s.spend), 12000);
+  assert.equal(s.platforms[0].platform, 'meta');
+  assert.equal(s.top[0].title.length > 0, true);
+  const sold = (await as('perf', `select * from sales_by_product(current_date - 30, 5)`)).rows;
+  assert.equal(sold.length, 2);
+});
+
+test("agent scorecards count each head's own agents only", async () => {
+  await db.exec(`insert into agent_events (kind, from_agent, from_dept, to_dept, text) values
+    ('think', 'photoEditor', 'photo', 'photo', 'retouching'), ('think', 'photoEditor', 'photo', 'photo', 'cropping'), ('think', 'metaSpec', 'perf', 'perf', 'bids')`);
+  const q = `select agent_id, actions::int, last_text from agent_activity(array['photoEditor', 'metaSpec'], now() - interval '30 days') order by agent_id`;
+  const creative = (await as('creative', q)).rows, admin = (await as('admin', q)).rows;
+  assert.equal(creative.find(r => r.agent_id === 'photoEditor').actions, 2);
+  assert.equal(creative.find(r => r.agent_id === 'metaSpec').actions, 0); // hidden by row-level security
+  assert.equal(admin.find(r => r.agent_id === 'metaSpec').actions, 1);
+});
+
+test("an AI team lead's rejection becomes a lesson for that department", async () => {
+  await db.exec(`insert into reports (id, department_id, author_agent, lead_agent, title, body, status) values
+    ('10000000-0000-0000-0000-0000000000a1', 'photo', 'photoEditor', 'studioLead', 'yellow cast shots', 'x', 'lead_review')`);
+  await db.exec(`update reports set status = 'rejected_by_lead', lead_note = 'Gold looks brassy; correct the white balance' where id = '10000000-0000-0000-0000-0000000000a1'`);
+  const l = (await as('creative', `select lesson, source from lessons where source = 'lead'`)).rows;
+  assert.ok(l.some(x => /brassy/.test(x.lesson)));
+  assert.equal((await as('perf', `select 1 from lessons where source = 'lead'`)).rows.length, 0);
 });

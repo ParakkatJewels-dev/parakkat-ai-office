@@ -87,11 +87,10 @@ export async function runSeo(db: SupabaseClient) {
     await Promise.all(jobs);
 
     // product titles and descriptions against the terms people actually search
-    const { data: prods } = await db.from('products').select('id, title, product_type, price').eq('status', 'ACTIVE').limit(400);
     const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
-    const { data: orders } = await db.from('orders_daily').select('product_id, revenue').gte('day', since);
-    const rev = new Map<number, number>(); (orders || []).forEach(o => rev.set(o.product_id, (rev.get(o.product_id) || 0) + Number(o.revenue)));
-    const top = [...(prods || [])].sort((a, b) => (rev.get(b.id) || 0) - (rev.get(a.id) || 0)).slice(0, 10);
+    const { data: sold } = await db.rpc('sales_by_product', { p_since: since, p_limit: 10 });
+    let top = ((sold || []) as { product_id: number; title: string | null; product_type: string | null }[]).filter(p => p.title).map(p => ({ id: p.product_id, title: p.title!, product_type: p.product_type }));
+    if (!top.length) top = (await db.from('products').select('id, title, product_type').eq('status', 'ACTIVE').order('updated_at', { ascending: false }).limit(10)).data || [];
     if (top.length) {
       await emit(db, run.id, 'think', 'seoWriter', 'Matching product titles to what people search');
       const ctx = `Top searches:\n${kwLines || trendLines.join('\n')}\n\nBest-selling products:\n${top.map(p => `${p.id} | ${p.title} | ${p.product_type || ''}`).join('\n')}`;

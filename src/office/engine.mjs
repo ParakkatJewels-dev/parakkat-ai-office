@@ -370,13 +370,13 @@ export function createOffice(o) {
       k.stem.style.height = Math.max(0, a.y - cy) + 'px'; at(k.stem, a.x, cy, 'translateX(-50%)');
     }
     // speech first: selected person, then talking over thinking, then nearest the middle of the view
-    const maxBubbles = dist < 30 ? 6 : dist < 70 ? 4 : 3, cx = W / 2, cy = H / 2;
+    const maxBubbles = dist < 40 ? 10 : dist < 90 ? 7 : 5, cx = W / 2, cy = H / 2;
     const talk = people.filter(p => p.bubble).map(p => ({ p, s: project(p.x, p.sitting ? 1.75 : 2.15, p.z) })).filter(o => onScreen(o.s))
       .sort((a, b) => (b.p === sel) - (a.p === sel) || (a.p.bubbleKind === 'thinking') - (b.p.bubbleKind === 'thinking') || Math.hypot(a.s.x - cx, a.s.y - cy) - Math.hypot(b.s.x - cx, b.s.y - cy));
     const shown = new Set();
     for (const { p, s } of talk) {
       if (shown.size >= maxBubbles) break;
-      const compact = dist > 60 && p !== sel, w = compact ? 170 : 230, h = compact ? 40 : 64;
+      const compact = dist > 90 && p !== sel, w = compact ? 200 : 250, h = compact ? 46 : 70;
       const bx = Math.max(w / 2 + 6, Math.min(W - w / 2 - 6, s.x));
       if (!free(bx, s.y - 14 - h / 2, w, h)) continue;
       shown.add(p);
@@ -386,10 +386,13 @@ export function createOffice(o) {
     }
     for (const p of people) if (!shown.has(p) && !p.bub.hidden) p.bub.hidden = true;
     for (const p of people) {
-      const want = !shown.has(p) && (close || p === sel || (p.human && p.quest));
+      // names stay readable from the campus view: everyone up to mid-range, people at work from further out
+      const busy = BUSY.has(p.status);
+      const want = !shown.has(p) && (close || dist < 60 || (busy && dist < 200) || p === sel || (p.human && p.quest));
       const s = want && project(p.x, p.sitting ? 1.75 : 2.15, p.z);
-      const show = want && onScreen(s) && free(s.x, s.y - 16, p.name.length * 6.6 + 16, 20);
-      if (p.tag.hidden !== !show) p.tag.hidden = !show; if (show) at(p.tag, s.x, s.y - 8, 'translate(-50%,-100%)');
+      const show = want && onScreen(s) && free(s.x, s.y - 16, p.name.length * 7.4 + (busy ? 30 : 18), 22);
+      if (p.tag.hidden !== !show) p.tag.hidden = !show;
+      if (show) { if (p.tag._busy !== busy) { p.tag._busy = busy; p.tag.classList.toggle('busy', busy); } at(p.tag, s.x, s.y - 8, 'translate(-50%,-100%)'); }
     }
     for (const r of roomLabels) {
       const s = dist < 60 && project(r.cx, 3.4, r.row ? r.cz + 5.6 : r.cz - 5.6);

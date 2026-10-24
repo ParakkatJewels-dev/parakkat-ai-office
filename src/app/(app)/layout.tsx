@@ -8,7 +8,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // what is waiting on me: forwarded reports and plans (row-level security already limits both to my departments)
   const [{ count: reports }, { data: plans }, { data: heads }] = await Promise.all([
     db.from('reports').select('id', { count: 'exact', head: true }).eq('status', 'with_head'),
-    db.from('approvals').select('id, required_roles, approval_steps(role, decision)').eq('status', 'pending'),
+    db.from('approvals').select('id, required_roles, approval_steps(role, decision)').eq('status', 'pending').limit(500),
     db.from('departments').select('id, human_head_role').in('id', ['seo', 'creative']),
   ]);
   const leads = (d: string) => role === 'super_admin' || (heads || []).some(h => h.id === d && h.human_head_role === role);

@@ -4,6 +4,7 @@ import { has } from '@/lib/env';
 import { syncProducts, syncOrders, shopifyReady } from '@/lib/connectors/shopify';
 import { syncAdInsights, syncInstagram } from '@/lib/connectors/meta';
 import { syncGoogleAds } from '@/lib/connectors/google';
+import { learnFromData } from './learn';
 import { emit } from './events';
 
 const JOBS: { provider: string; bot: string; needs: string[]; ready?: () => boolean; run: (db: SupabaseClient) => Promise<string>; ref?: () => string | undefined }[] = [
@@ -38,5 +39,11 @@ export async function syncAll(db: SupabaseClient) {
   for (const [provider, key] of [['openai', 'OPENAI_API_KEY'], ['gemini', 'GEMINI_API_KEY'], ['jev', 'JEV_API_KEY']]) {
     await db.from('connections').upsert({ provider, status: has(key) ? 'connected' : 'not_connected' });
   }
+  // with fresh numbers in, the memory updates what the agents know about results and analytics
+  try {
+    const l = await learnFromData(db);
+    results.learning = `${l.results} result and ${l.analytics} analytics lessons`;
+    if (l.results + l.analytics) await emit(db, null, 'say', 'dataLead', `Updated the team's memory: ${results.learning}.`, 'cmo');
+  } catch (e) { results.learning = 'error: ' + (e instanceof Error ? e.message : String(e)); }
   return results;
 }

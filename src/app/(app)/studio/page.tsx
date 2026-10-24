@@ -2,19 +2,24 @@ import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
 import { FORMATS, LANGS, canDesign } from '@/lib/agents/design';
 import { Icon } from '@/components/Icon';
-import { PageHead, Tile, when } from '@/components/ui';
+import { PageHead, Tile, Pager, pageOf, rangeOf, when } from '@/components/ui';
+import { PRODUCT_PAGE as PAGE } from '@/lib/limits';
 import { StudioForm } from './StudioForm';
 
 export const maxDuration = 300; // Gemini draws, the team lead checks, and one redo can follow
+const GALLERY = 12;
 
-export default async function Studio({ searchParams }: { searchParams: Promise<{ error?: string; made?: string }> }) {
+export default async function Studio({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { db, role } = await requireUser();
   if (!(await canDesign(db, role))) redirect('/office');
-  const sp = await searchParams;
-  const [{ data: products }, { data: designs }] = await Promise.all([
-    db.from('products').select('id, title, price, image_url').eq('status', 'ACTIVE').not('image_url', 'is', null).order('updated_at', { ascending: false }).limit(400),
-    db.from('designs').select('id, format, brief, headline, language, image_path, status, review_note, error, created_at').order('created_at', { ascending: false }).limit(30),
+  const sp = await searchParams, gp = pageOf(sp, 'gp'), [g0, g1] = rangeOf(gp, GALLERY);
+  // the first page of products comes with the page; the picker loads the rest as you search
+  const [{ data: firstProducts, count: productCount }, { data: designs, count: designCount }, { count: ready }] = await Promise.all([
+    db.from('products').select('id, title, price, image_url', { count: 'exact' }).eq('status', 'ACTIVE').not('image_url', 'is', null).order('updated_at', { ascending: false }).range(0, PAGE - 1),
+    db.from('designs').select('id, format, brief, headline, language, image_path, status, review_note, error, created_at', { count: 'exact' }).order('created_at', { ascending: false }).range(g0, g1),
+    db.from('designs').select('id', { count: 'exact', head: true }).eq('status', 'ready'),
   ]);
+  const products = firstProducts || [];
   const paths = (designs || []).map(d => d.image_path).filter(Boolean) as string[];
   const [views, downloads] = paths.length ? await Promise.all([
     db.storage.from('creatives').createSignedUrls(paths, 3600),
@@ -22,7 +27,6 @@ export default async function Studio({ searchParams }: { searchParams: Promise<{
   ]) : [{ data: [] }, []];
   const view = (p: string) => views.data?.find(s => s.path === p)?.signedUrl ?? undefined;
   const dl = (p: string) => downloads[paths.indexOf(p)]?.data?.signedUrl;
-  const ready = (designs || []).filter(d => d.status === 'ready').length;
 
   return (
     <div className="page">
@@ -31,14 +35,14 @@ export default async function Studio({ searchParams }: { searchParams: Promise<{
       <PageHead title="Design Studio" sub="Banners and posters made from your real Shopify product photos. The jewellery stays exactly as photographed; the designers build the scene, light and type around it." />
 
       <section className="tiles" aria-label="Summary">
-        <Tile icon="spark" label="Designs made" value={(designs || []).length} sub="The last 30 are kept here" />
-        <Tile icon="check" tone="blue" label="Passed the lead's check" value={ready} sub="Matched the product photos" />
-        <Tile icon="bag" tone="amber" label="Products with photos" value={(products || []).length} sub="Ready to design with" />
+        <Tile icon="spark" label="Designs made" value={designCount || 0} sub="All designs, newest first below" />
+        <Tile icon="check" tone="blue" label="Passed the lead's check" value={ready || 0} sub="Matched the product photos" />
+        <Tile icon="bag" tone="amber" label="Products with photos" value={productCount || 0} sub="Ready to design with" />
         <Tile icon="doc" tone="violet" label="Formats" value={Object.keys(FORMATS).length} sub="Posts, stories, banners, posters" />
       </section>
 
       <div className="studio">
-        <StudioForm products={(products || []) as any} formats={Object.entries(FORMATS).map(([id, f]) => ({ id, label: f.label, ratio: f.ratio, size: f.size }))} />
+        <StudioForm products={products as any} more={(productCount || 0) > products.length} formats={Object.entries(FORMATS).map(([id, f]) => ({ id, label: f.label, ratio: f.ratio, size: f.size }))} />
         <section className="card">
           <div className="card-head"><div><h3>Gallery</h3><p className="sub">Newest first. Download the ones you want to use.</p></div></div>
           {(designs || []).length ? <ul className="gallery">{designs!.map(d => {
@@ -58,6 +62,7 @@ export default async function Studio({ searchParams }: { searchParams: Promise<{
               </li>
             );
           })}</ul> : <div className="empty"><Icon name="spark" size={26} /><p>No designs yet. Order the first one on the left.</p></div>}
+          <Pager sp={sp} param="gp" page={gp} size={GALLERY} total={designCount} shown={(designs || []).length} />
         </section>
       </div>
     </div>

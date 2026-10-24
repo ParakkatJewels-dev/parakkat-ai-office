@@ -2,19 +2,35 @@ import { requireUser } from '@/lib/auth/session';
 import { ROLE_LABEL, type AppRole } from '@/lib/roles';
 import { decideReport, decideApproval } from './actions';
 import { Icon } from '@/components/Icon';
-import { PageHead, Tile, Avatar, Stepper, inr, when } from '@/components/ui';
+import { PageHead, Tile, Avatar, Stepper, Pager, pageOf, rangeOf, inr, when } from '@/components/ui';
 
 export const maxDuration = 300; // publishing to Meta happens in the approve action
 
 type Step = { role: AppRole; decision: string; note: string | null };
 
-export default async function Approvals({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+const REPORTS = 10, PLANS = 6, DECIDED = 10;
+
+/** Where a plan stands for me: who signs next, and whether that is me. */
+function standing(p: { status: string; required_roles: unknown; approval_steps: unknown }, role: AppRole) {
+  const steps = p.approval_steps as Step[], approved = new Set(steps.filter(s => s.decision === 'approve').map(s => s.role));
+  const headsLeft = (p.required_roles as AppRole[]).filter(r => !approved.has(r));
+  const next: AppRole[] = p.status !== 'pending' ? [] : headsLeft.length ? headsLeft : ['super_admin'];
+  return { steps, approved, next, mine: next.includes(role) && (role !== 'super_admin' || headsLeft.length === 0) };
+}
+
+export default async function Approvals({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { db, role } = await requireUser();
-  const sp = await searchParams;
+  const sp = await searchParams, rp = pageOf(sp, 'rp'), pp = pageOf(sp, 'pp'), dp = pageOf(sp, 'dp');
+  const [r0, r1] = rangeOf(rp, REPORTS), [p0, p1] = rangeOf(pp, PLANS), [d0, d1] = rangeOf(dp, DECIDED);
   // Row-level security: heads only get their own departments' forwarded reports and the plans that touch them.
-  const [{ data: reports }, { data: plans }, { data: agents }, { data: depts }] = await Promise.all([
-    db.from('reports').select('id, department_id, author_agent, lead_agent, title, body, status, lead_note, head_note, revision, updated_at').order('updated_at', { ascending: false }).limit(40),
-    db.from('approvals').select('id, status, version, required_roles, created_at, approval_steps(role, decision, note), campaigns(id, name, occasion, plan, budget_daily, channels, creatives(id, kind, language, headline, body, image_path))').order('created_at', { ascending: false }).limit(20),
+  // Each list is read one page at a time; the tiles come from counts, not from loading everything.
+  const reportCols = 'id, department_id, author_agent, lead_agent, title, body, status, lead_note, head_note, revision, updated_at';
+  const [{ data: myReports, count: myCount }, { data: doneReports, count: doneCount }, { data: plans, count: planCount }, { data: pending }, { count: live }, { data: agents }, { data: depts }] = await Promise.all([
+    db.from('reports').select(reportCols, { count: 'exact' }).eq('status', 'with_head').order('updated_at', { ascending: false }).range(r0, r1),
+    db.from('reports').select(reportCols, { count: 'exact' }).in('status', ['accepted', 'sent_back', 'rejected']).order('updated_at', { ascending: false }).range(d0, d1),
+    db.from('approvals').select('id, status, version, required_roles, created_at, approval_steps(role, decision, note), campaigns(id, name, occasion, plan, budget_daily, channels, creatives(id, kind, language, headline, body, image_path))', { count: 'exact' }).order('created_at', { ascending: false }).range(p0, p1),
+    db.from('approvals').select('id, status, required_roles, approval_steps(role, decision)').eq('status', 'pending').limit(500),
+    db.from('approvals').select('id', { count: 'exact', head: true }).eq('status', 'published'),
     db.from('agents').select('id, name, department_id'), db.from('departments').select('id, name'),
   ]);
   const A = Object.fromEntries((agents || []).map(a => [a.id, a.name])), AD = Object.fromEntries((agents || []).map(a => [a.id, a.department_id])), D = Object.fromEntries((depts || []).map(d => [d.id, d.name]));
@@ -22,33 +38,25 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
   const signed = paths.length ? (await db.storage.from('creatives').createSignedUrls(paths, 3600)).data || [] : [];
   const url = (p: string) => signed.find(s => s.path === p)?.signedUrl ?? undefined;
 
-  const myReports = (reports || []).filter(r => r.status === 'with_head');
-  const doneReports = (reports || []).filter(r => r.status !== 'with_head').slice(0, 8);
-  // where each plan stands for me
-  const view = (plans || []).map(p => {
-    const steps = p.approval_steps as Step[], approved = new Set(steps.filter(s => s.decision === 'approve').map(s => s.role));
-    const headsLeft = (p.required_roles as AppRole[]).filter(r => !approved.has(r));
-    const next: AppRole[] = p.status !== 'pending' ? [] : headsLeft.length ? headsLeft : ['super_admin'];
-    return { p, c: p.campaigns as any, steps, approved, next, mine: next.includes(role) && (role !== 'super_admin' || headsLeft.length === 0) };
-  });
-  const minePlans = view.filter(v => v.mine).length, live = view.filter(v => v.p.status === 'published').length;
+  const view = (plans || []).map(p => ({ p, c: p.campaigns as any, ...standing(p, role) }));
+  const minePlans = (pending || []).filter(p => standing(p, role).mine).length;
   return (
     <div className="page">
       {sp.error && <p className="flash">{sp.error}</p>}
       <PageHead title="Approvals" sub="Reports reach you only after your department's AI team lead has checked them. Plans go from the AI CMO to the heads they touch, then to the Super Admin, who alone can publish." />
 
       <section className="tiles" aria-label="Summary">
-        <Tile icon="doc" label="Reports waiting on you" value={myReports.length} sub={myReports.length ? 'Checked by an AI team lead' : 'All caught up'} />
-        <Tile icon="check" tone="amber" label="Plans waiting on you" value={minePlans} sub={`${view.filter(v => v.p.status === 'pending').length} in sign-off`} />
-        <Tile icon="rocket" tone="blue" label="Campaigns live" value={live} sub="Published to Meta" />
-        <Tile icon="clock" tone="violet" label="Decided recently" value={doneReports.length} sub="Reports accepted, sent back or rejected" />
+        <Tile icon="doc" label="Reports waiting on you" value={myCount || 0} sub={myCount ? 'Checked by an AI team lead' : 'All caught up'} />
+        <Tile icon="check" tone="amber" label="Plans waiting on you" value={minePlans} sub={`${(pending || []).length} in sign-off`} />
+        <Tile icon="rocket" tone="blue" label="Campaigns live" value={live || 0} sub="Published to Meta" />
+        <Tile icon="clock" tone="violet" label="Decided recently" value={doneCount || 0} sub="Reports accepted, sent back or rejected" />
       </section>
 
-      <nav className="chips" aria-label="Sections"><a href="#reports">Reports <b>{myReports.length}</b></a><a href="#plans">Campaign plans <b>{view.length}</b></a>{doneReports.length > 0 && <a href="#decided">Decided</a>}</nav>
+      <nav className="chips" aria-label="Sections"><a href="#reports">Reports <b>{myCount || 0}</b></a><a href="#plans">Campaign plans <b>{planCount || 0}</b></a>{(doneCount || 0) > 0 && <a href="#decided">Decided</a>}</nav>
 
       <section id="reports" className="section">
         <h2 className="section-title">Reports waiting on you</h2>
-        {myReports.length ? myReports.map(r => (
+        {myReports?.length ? myReports.map(r => (
           <article key={r.id} className="card report">
             <header className="report-head">
               <Avatar name={A[r.author_agent] || r.author_agent} dept={r.department_id} size={44} />
@@ -65,6 +73,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
             </form>
           </article>
         )) : <div className="empty"><Icon name="doc" size={26} /><p>No reports waiting on you.</p></div>}
+        <Pager sp={sp} param="rp" page={rp} size={REPORTS} total={myCount} shown={(myReports || []).length} anchor="reports" />
       </section>
 
       <section id="plans" className="section">
@@ -75,7 +84,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
           const bad = steps.filter(s => s.decision !== 'approve');
           return (
             <article key={p.id} className="card plan">
-              <div className="plan-art">{banner && url(banner.image_path) ? <img src={url(banner.image_path)} alt={`Banner for ${c.name}`} /> : <div className="empty"><Icon name="spark" size={26} /><p>No banner image</p></div>}</div>
+              <div className="plan-art">{banner && url(banner.image_path) ? <img src={url(banner.image_path)} alt={`Banner for ${c.name}`} loading="lazy" decoding="async" /> : <div className="empty"><Icon name="spark" size={26} /><p>No banner image</p></div>}</div>
               <div className="plan-main">
                 <header className="report-head"><div className="grow"><span className="pill acc">{c.occasion}</span><h3 className="title">{c.name}{p.version > 1 ? ` · v${p.version}` : ''}</h3></div>
                   <span className={`pill ${p.status === 'published' ? 'good' : p.status === 'pending' ? 'warn' : p.status === 'approved' ? 'acc' : 'bad'}`}>{p.status === 'published' ? 'Live' : p.status === 'pending' ? (mine ? 'Needs you' : 'In sign-off') : p.status === 'changes' ? 'Changes requested' : p.status}</span></header>
@@ -107,14 +116,16 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
             </article>
           );
         }) : <div className="empty"><Icon name="check" size={26} /><p>No plans yet. Start a campaign from the Admin page.</p></div>}
+        <Pager sp={sp} param="pp" page={pp} size={PLANS} total={planCount} shown={view.length} anchor="plans" />
       </section>
 
-      {doneReports.length > 0 && <section id="decided" className="section">
+      {(doneReports || []).length > 0 && <section id="decided" className="section">
         <h2 className="section-title">Recent report decisions</h2>
-        <ul className="card rows">{doneReports.map(r => (
+        <ul className="card rows">{doneReports!.map(r => (
           <li key={r.id}><Avatar name={A[r.author_agent] || r.author_agent} dept={r.department_id} /><div className="grow"><b className="clip">{r.title}</b><span className="sm">{D[r.department_id]}{r.head_note ? ` · ${r.head_note}` : ''}</span></div>
             <span className={`pill ${r.status === 'accepted' ? 'good' : r.status.includes('reject') ? 'bad' : 'warn'}`}>{r.status.replace(/_/g, ' ')}</span></li>
         ))}</ul>
+        <Pager sp={sp} param="dp" page={dp} size={DECIDED} total={doneCount} shown={(doneReports || []).length} anchor="decided" />
       </section>}
     </div>
   );
