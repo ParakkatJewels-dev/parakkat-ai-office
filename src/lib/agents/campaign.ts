@@ -11,6 +11,7 @@ import { fileReport } from './review';
 import { seoBrief } from './seo';
 import { loadMemory, pastResults } from './memory';
 import type { AppRole } from '@/lib/roles';
+import { errText } from '@/lib/errors';
 
 /** A campaign run moves one stage per call to advance(), so each step fits in a single serverless call. */
 export const STAGES = ['analyse', 'competitors', 'plan', 'create', 'review', 'approval', 'done'] as const;
@@ -20,16 +21,21 @@ type Plan = {
   name: string; occasion: string; headline: string; sub: string; product_ids: number[]; budget_daily: number; days: number;
   channels: string[]; split: string; audiences: string; reasons: string[];
 };
-type RunState = { insights?: string[]; competitors?: string[]; plan?: Plan; campaign_id?: string; creative_ids?: string[]; review?: string };
+type RunState = { origin?: { by: string; why: string }; insights?: string[]; competitors?: string[]; plan?: Plan; campaign_id?: string; creative_ids?: string[]; review?: string };
 type Run = { id: string; occasion: string | null; stage: Stage; state: RunState };
 
 const inr = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN');
 
-/** Start a campaign run for an occasion (Diwali, wedding season, a new collection...). */
-export async function startCampaign(db: SupabaseClient, occasion: string) {
-  const { data, error } = await db.from('agent_runs').insert({ kind: 'campaign', occasion, stage: 'analyse' }).select().single();
+/**
+ * Start a campaign run for an occasion (Diwali, wedding season, a new collection...).
+ * A person starts one from the Admin page; the CMO's daily planner starts them on its own, with the reason in origin.
+ */
+export async function startCampaign(db: SupabaseClient, occasion: string, origin?: { by: string; why: string }) {
+  const { data, error } = await db.from('agent_runs').insert({ kind: 'campaign', occasion, stage: 'analyse', state: origin ? { origin } : {} }).select().single();
   if (error) throw error;
-  await emit(db, data.id, 'say', 'cmo', `New mission: plan the ${occasion} campaign. Insights Lab and the War Room, you are up.`);
+  await emit(db, data.id, 'say', 'cmo', origin
+    ? `I am opening a ${occasion} campaign: ${origin.why} Insights Lab and the War Room, you are up. The plan comes to the heads for approval before anything goes live.`
+    : `New mission: plan the ${occasion} campaign. Insights Lab and the War Room, you are up.`);
   return data.id as string;
 }
 
@@ -46,7 +52,7 @@ export async function advance(db: SupabaseClient, runId: string) {
     await db.from('agent_runs').update({ stage: next, state, status: next === 'done' ? 'waiting' : 'running' }).eq('id', runId);
     return next;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = errText(e);
     await db.from('agent_runs').update({ status: 'failed', error: msg, state }).eq('id', runId);
     await emit(db, runId, 'feedback', 'cmo', `The ${run.stage} step failed: ${msg.slice(0, 180)}`);
     throw e;

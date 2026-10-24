@@ -10,6 +10,7 @@ import { publishApproved } from '@/lib/agents/publish';
 import { loadAccess, saveSettings, dropAccess, type Platform } from '@/lib/connectors/vault';
 import { connectionRows } from '@/lib/connectors/connect';
 import { chosen } from '@/lib/connectors/accounts.mjs';
+import { errText } from '@/lib/errors';
 
 async function admin() {
   const u = await requireUser();
@@ -21,7 +22,7 @@ async function tabOf() {
   try { const t = new URL((await headers()).get('referer') || '').searchParams.get('tab'); return t && /^[a-z]+$/.test(t) ? `tab=${t}&` : ''; } catch { return ''; }
 }
 const done = async (msg?: string) => { revalidatePath('/admin'); const t = await tabOf(); redirect(msg ? `/admin?${t}msg=${encodeURIComponent(msg)}` : `/admin?${t.slice(0, -1)}`); };
-const fail = async (e: unknown): Promise<never> => redirect(`/admin?${await tabOf()}error=${encodeURIComponent(e instanceof Error ? e.message : String(e))}`);
+const fail = async (e: unknown): Promise<never> => redirect(`/admin?${await tabOf()}error=${encodeURIComponent(errText(e))}`);
 
 export async function setRole(form: FormData) {
   const { db } = await admin();

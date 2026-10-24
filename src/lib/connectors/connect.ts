@@ -5,6 +5,7 @@ import { accessToken, devToken } from './google';
 import { shopifyHmacOk } from './oauth-core.mjs';
 import { chosen, googleId, metaId, type GoogleChoice } from './accounts.mjs';
 import type { Platform, Tokens } from './vault';
+import { errText } from '@/lib/errors';
 
 /**
  * Connecting a platform from the Admin page: the sign-in link for each platform, and what to do when it sends the
@@ -104,7 +105,7 @@ export async function finish(p: Platform, params: URLSearchParams, redirectUri: 
           }
         } catch { /* the manager's accounts stay hidden; its own row is still there */ }
       }
-    } catch (e) { note = e instanceof Error ? e.message : String(e); /* type the account id by hand instead */ }
+    } catch (e) { note = errText(e); /* type the account id by hand instead */ }
     // Analytics properties, if the Analytics Admin API is switched on in the Google Cloud project
     const properties: Option[] = [];
     try {

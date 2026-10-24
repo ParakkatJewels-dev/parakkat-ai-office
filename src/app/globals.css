@@ -480,3 +480,7 @@ a.clip:hover b{color:var(--accent)}
 .filters.loading{opacity:.85} .filters .btn.quiet{align-self:flex-end;height:36px}
 main .bento.dim{opacity:.6;transition:opacity .2s}
 @media (max-width:680px){.filters .fl{min-width:0;flex:1 1 140px}}
+.autopilot{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
+.autopilot li{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);min-width:0}
+.autopilot .grow{display:flex;flex-direction:column;gap:2px} .autopilot .sm{font-size:12.5px;color:var(--muted)} .autopilot .err{color:var(--bad)}
+.run-name .pill{align-self:flex-start;margin:2px 0}

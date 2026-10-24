@@ -7,6 +7,7 @@ import { headsDept } from '@/lib/auth/depts';
 import { emit } from './events';
 import { loadMemory, memoryFor } from './memory';
 import { byId, persona, teamLead, HUMAN_HEAD } from './people';
+import { errText } from '@/lib/errors';
 
 /** What the Design Studio can make, with the shape Gemini draws it in. */
 export const FORMATS = {
@@ -74,7 +75,7 @@ Shape: {"ok": true|false, "note": "one sentence"}`, [{ inlineData: { mimeType: i
     await emit(db, null, check.ok ? 'report' : 'feedback', lead, check.ok ? `Checked and sent to the ${byId[head].name}: ${check.note}` : `Kept with a note: ${check.note}`, head, { design_id: d.id });
     return d.id as string;
   } catch (e) {
-    await db.from('designs').update({ status: 'failed', error: (e instanceof Error ? e.message : String(e)).slice(0, 500) }).eq('id', d.id);
+    await db.from('designs').update({ status: 'failed', error: (errText(e)).slice(0, 500) }).eq('id', d.id);
     throw e;
   }
 }

@@ -7,9 +7,10 @@ import { emit } from './events';
 import { loadMemory } from './memory';
 import { persona } from './people';
 import { fileReport } from './review';
+import { errText } from '@/lib/errors';
 
 const BASE_SEEDS = ['gold necklace', 'temple jewellery', 'bridal jewellery', 'diamond ring', 'gold bangles', 'kerala jewellery'];
-const msg = (e: unknown) => e instanceof Error ? e.message : String(e);
+const msg = errText;
 
 /** Search terms to study: SEO_SEED_KEYWORDS if set, else what the store sells most plus a few jewellery staples. */
 async function seeds(db: SupabaseClient) {
@@ -26,11 +27,14 @@ async function seeds(db: SupabaseClient) {
  * product title and description fixes. Each report goes through the SEO Lead before the E-com Manager sees it.
  */
 export async function runSeo(db: SupabaseClient) {
+  // one check at a time: a second press while one runs would race it on the same keywords
+  const { count: busy } = await db.from('agent_runs').select('id', { count: 'exact', head: true }).eq('kind', 'seo').eq('status', 'running').gte('started_at', new Date(Date.now() - 10 * 6e4).toISOString());
+  if (busy) throw new Error('An SEO check is already running. It finishes in a few minutes.');
   const { data: run, error } = await db.from('agent_runs').insert({ kind: 'seo', occasion: 'Weekly SEO check', stage: 'seo' }).select().single();
   if (error) throw error;
   await loadMemory(db);
   const terms = await seeds(db), now = new Date().toISOString(), rows = new Map<string, Record<string, unknown>>();
-  const row = (k: string) => { const key = k.toLowerCase(); if (!rows.has(key)) rows.set(key, { keyword: key, source: [] as string[], updated_at: now }); return rows.get(key)!; };
+  const row = (k: string) => { const key = k.toLowerCase(); if (!rows.has(key)) rows.set(key, { keyword: key, source: [] as string[], rising: false, updated_at: now }); return rows.get(key)!; };
   const problems: string[] = [];
   try {
     await emit(db, run.id, 'say', 'seoLead', `Weekly SEO check on ${terms.length} search terms. Trends and Keyword Planner, you are up.`);
@@ -76,7 +80,8 @@ export async function runSeo(db: SupabaseClient) {
     } else problems.push('Keyword Planner: Google is not connected yet');
 
     if (!rows.size) throw new Error(`No SEO data came back. ${problems.join(' · ')}`);
-    const { error: upErr } = await db.from('seo_keywords').upsert([...rows.values()].map(r => ({ ...r, source: [...new Set(r.source as string[])] })));
+    // rows carry different columns (Trends only, Keyword Planner only); missing ones take the column default, not null
+    const { error: upErr } = await db.from('seo_keywords').upsert([...rows.values()].map(r => ({ ...r, source: [...new Set(r.source as string[])] })), { defaultToNull: false });
     if (upErr) throw upErr;
 
     const ask = (who: string, data: string, focus: string) => chatJSON<{ title: string; body: string }>('worker',

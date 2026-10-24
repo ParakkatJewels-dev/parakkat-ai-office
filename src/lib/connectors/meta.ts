@@ -3,6 +3,7 @@ import { opt } from '@/lib/env';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess } from './vault';
 import { chosen, metaId } from './accounts.mjs';
+import { errText } from '@/lib/errors';
 
 export const G = () => `https://graph.facebook.com/${opt('META_API_VERSION', 'v21.0')}`;
 
@@ -61,7 +62,7 @@ export async function syncAdInsights(db: SupabaseClient) {
       }));
       if (rows.length) { const { error } = await db.from('ad_insights_daily').upsert(rows); if (error) throw error; }
       count += rows.length;
-    } catch (e) { failed.push(`${metaId(account)} (${e instanceof Error ? e.message : String(e)})`); }
+    } catch (e) { failed.push(`${metaId(account)} (${errText(e)})`); }
   }
   if (failed.length === c.accounts.length) throw new Error(`Meta: ${failed.join('; ')}`);
   return { count, accounts: c.accounts.length, failed };

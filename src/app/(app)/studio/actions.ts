@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { makeDesign, canDesign, type Format, LANGS } from '@/lib/agents/design';
+import { errText } from '@/lib/errors';
 
 export async function orderDesign(form: FormData) {
   const { db, role, user } = await requireUser();
@@ -16,7 +17,7 @@ export async function orderDesign(form: FormData) {
       language: lang in LANGS ? lang : 'en', productIds: form.getAll('product').map(Number).filter(Boolean), userId: user.id,
     });
   } catch (e) {
-    redirect(`/studio?error=${encodeURIComponent(e instanceof Error ? e.message : String(e))}`);
+    redirect(`/studio?error=${encodeURIComponent(errText(e))}`);
   }
   revalidatePath('/studio');
   redirect(`/studio?made=${id}#d-${id}`);
