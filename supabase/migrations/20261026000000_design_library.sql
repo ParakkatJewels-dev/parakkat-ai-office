@@ -60,8 +60,7 @@ begin
   new.search := to_tsvector('simple', concat_ws(' ', new.name, new.kind, new.occasion, new.style, new.palette, new.layout, new.typography, array_to_string(new.tags, ' ')));
   return new;
 end $$;
-drop trigger if exists design_refs_search on design_refs;
-create trigger design_refs_search before insert or update of name, kind, occasion, style, palette, layout, typography, tags on design_refs
+create or replace trigger design_refs_search before insert or update of name, kind, occasion, style, palette, layout, typography, tags on design_refs
   for each row execute function design_refs_search();
 
 -- The references for one design: the closest matches to the brief, with pinned and well-finished ones first,
@@ -106,10 +105,10 @@ alter table creatives add column if not exists art_error text;
 create index if not exists designs_queue on designs (queued_at) where status in ('queued', 'making');
 create index if not exists creatives_queue on creatives (queued_at) where art_status in ('queued', 'making');
 
--- the gallery's list gains the concept, the version count and the queue state
-drop view if exists ai_images;
-create view ai_images with (security_invoker = true) as
-  select x.*, r.verdict, r.note as review, r.reviewer_role, r.updated_at as reviewed_at
+-- the gallery's list gains the concept, the version count and the queue state (new columns last, so it is replaced in place)
+create or replace view ai_images with (security_invoker = true) as
+  select x.source, x.id, x.kind, x.brief, x.headline, x.language, x.image_path, x.status, x.lead_note, x.error, x.created_at, x.campaign_id, x.campaign_name,
+         r.verdict, r.note as review, r.reviewer_role, r.updated_at as reviewed_at, x.concept, x.ref_ids, x.versions, x.redo_note
   from (
     select 'design'::text as source, d.id, d.format as kind, d.brief, d.headline, d.language, d.image_path, d.status,
            d.review_note as lead_note, d.error, d.created_at, null::uuid as campaign_id, null::text as campaign_name,
