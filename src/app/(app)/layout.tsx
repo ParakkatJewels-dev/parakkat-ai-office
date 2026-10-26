@@ -5,6 +5,8 @@ import { TopBar } from '@/components/TopBar';
 import { Icon } from '@/components/Icon';
 import { Submit } from '@/components/forms';
 import { when } from '@/components/ui';
+import { SyncBar } from '@/components/SyncBar';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { togglePause } from './admin/actions';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -16,6 +18,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     db.from('departments').select('id, human_head_role').in('id', ['seo', 'creative']),
     db.from('system_state').select('paused, paused_at, reason').eq('id', 1).maybeSingle(),
   ]);
+  // only the server can read the sync lease; only the Super Admin starts syncs, so only they see the bar
+  const syncing = role === 'super_admin'
+    ? await supabaseAdmin().from('job_locks').select('until').eq('name', 'sync').maybeSingle().then(r => !!r.data && Date.parse(r.data.until) > Date.now(), () => false)
+    : false;
   const leads = (d: string) => role === 'super_admin' || (heads || []).some(h => h.id === d && h.human_head_role === role);
   const waitingPlans = (plans || []).filter(a => {
     const signed = new Set((a.approval_steps as { role: string; decision: string }[]).filter(s => s.decision === 'approve').map(s => s.role));
@@ -36,6 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {role === 'super_admin' && <form action={togglePause}><input type="hidden" name="pause" value="0" /><Submit small icon="play" pending="Resuming…">Resume</Submit></form>}
           </div>
         )}
+        {role === 'super_admin' && <SyncBar running={syncing} />}
         {children}
       </main>
     </div>

@@ -33,12 +33,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const platform = sp.platform === 'meta' || sp.platform === 'google' ? sp.platform : null, account = sp.account && /^[\w-]{1,40}$/.test(sp.account) ? sp.account : null;
   const end = `${P.to}T23:59:59.999Z`, delta = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}% vs the days before` : P.label;
   // totals are summed in the database (dashboard_report), so they stay right however many order and ad rows there are
-  const [{ data: summary }, { data: posts }, { data: moves }, { data: runs }, { data: accts }] = await Promise.all([
+  const [{ data: summary }, { data: posts }, { data: moves }, { data: runs }, { data: accts }, { data: branchRows }] = await Promise.all([
     db.rpc('dashboard_report', { p_from: P.from, p_to: P.to, p_platform: platform, p_account: account }),
     db.from('social_posts').select('id, caption, media_type, permalink, saves, reach, media_url').gte('posted_at', P.from).lte('posted_at', end).order('saves', { ascending: false, nullsFirst: false }).limit(5),
     db.from('competitor_moves').select('id, kind, summary, seen_at, competitors(name)').gte('seen_at', P.from).lte('seen_at', end).order('seen_at', { ascending: false }).limit(6),
     db.from('agent_runs').select('id, occasion, stage, status, started_at, state').gte('started_at', P.from).lte('started_at', end).order('started_at', { ascending: false }).limit(5),
     db.rpc('ad_accounts'),
+    db.rpc('branch_sales', { p_since: P.from, p_till: P.to }),
   ]);
   const live = await liveRuns(db, (runs || []).map(r => r.id));
   const accounts = ((accts || []) as { platform: string; account_id: string }[]).map(a => ({ platform: a.platform, id: a.account_id, label: a.platform === 'google' ? googleId(a.account_id) : metaId(a.account_id) }));
@@ -61,6 +62,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const top = S.top.map(t => ({ ...t, revenue: Number(t.revenue) }));
   const topMax = top[0]?.revenue || 1;
   const hr = new Date().getHours();
+  // every showroom and the online store, from Odoo
+  const branches = ((branchRows || []) as { branch: string; kind: string; orders: number; revenue: number; prev_revenue: number }[]).map(b => ({ ...b, revenue: Number(b.revenue), prev: Number(b.prev_revenue) }));
+  const branchTotal = branches.reduce((t, b) => t + b.revenue, 0), branchMax = branches[0]?.revenue || 1;
+  const change = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}%` : 'new';
 
   return (
     <div className="page">
@@ -137,6 +142,18 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           {(moves || []).length ? <ol className="timeline">{moves!.map(m => (
             <li key={m.id}><i /><div><b>{(m.competitors as any)?.name}</b> <span className="pill acc">{m.kind}</span><p>{m.summary}</p><time>{when(m.seen_at)}</time></div></li>
           ))}</ol> : <div className="empty"><Icon name="eye" size={26} /><p>Add competitors on the Admin page and the War Room will watch them.</p></div>}
+        </section>
+
+        <section className="card s12">
+          <div className="card-head"><div><h3>Sales by branch</h3><p className="sub">Every showroom and the online store, from Odoo, {P.label}</p></div>{branches.length > 0 && <b className="card-num">{inr(branchTotal)}</b>}</div>
+          {branches.length ? <ul className="rows">{branches.map(b => (
+            <li key={b.branch}>
+              <span className="thumb"><Icon name={b.kind === 'online' ? 'bag' : 'map'} size={18} /></span>
+              <div className="grow"><b className="clip">{b.branch}</b><span className="meter"><i style={{ width: `${(b.revenue / branchMax) * 100}%` }} /></span>
+                <span className="sm">{b.kind === 'showroom' ? 'Showroom' : b.kind === 'online' ? 'Online' : 'Other sales'} · {Number(b.orders).toLocaleString('en-IN')} orders · {change(b.revenue, b.prev)} vs the days before</span></div>
+              <span className="num">{inr(b.revenue)}</span>
+            </li>
+          ))}</ul> : <div className="empty"><Icon name="chart" size={26} /><p>Connect Odoo on the Admin page and run a sync to see every branch.</p></div>}
         </section>
 
         <section className="card s12">

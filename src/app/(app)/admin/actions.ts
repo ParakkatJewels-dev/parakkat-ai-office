@@ -2,12 +2,15 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
+import { after } from 'next/server';
 import { requireUser } from '@/lib/auth/session';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { startCampaign, advance } from '@/lib/agents/campaign';
-import { syncAll } from '@/lib/agents/sync';
+import { claimSync, runClaimed, BUSY } from '@/lib/agents/sync';
 import { publishApproved } from '@/lib/agents/publish';
-import { loadAccess, saveSettings, dropAccess, type Platform } from '@/lib/connectors/vault';
+import { loadAccess, saveAccess, saveSettings, dropAccess, type Platform } from '@/lib/connectors/vault';
+import { testOdoo } from '@/lib/connectors/odoo';
+import { normalizeOdooUrl, guessDb } from '@/lib/connectors/odoo-core.mjs';
 import { connectionRows } from '@/lib/connectors/connect';
 import { chosen } from '@/lib/connectors/accounts.mjs';
 import { errText } from '@/lib/errors';
@@ -59,11 +62,15 @@ export async function togglePause(form: FormData) {
   revalidatePath('/', 'layout');
   await done(on ? 'Paused. The agents stop at their next step, make no AI or API calls and publish nothing until you resume.' : 'Resumed. The agents carry on from where they stopped at the next minute.');
 }
+/** Start a sync and answer at once: it runs on after the page has loaded, and the bar at the top shows it until it ends. */
 export async function syncNow() {
   await admin();
-  let r: Record<string, string> = {};
-  try { r = await syncAll(supabaseAdmin()); } catch (e) { await fail(e); }
-  await done(Object.entries(r).map(([k, v]) => `${k}: ${v}`).join(' · '));
+  const db = supabaseAdmin();
+  let holder: string | null = null;
+  try { holder = await claimSync(db); } catch (e) { await fail(e); }
+  if (!holder) return done(BUSY);
+  after(async () => { try { await runClaimed(db, holder!); } catch { /* kept in sync_last for the Admin page */ } });
+  await done('Sync started. It runs in the background, so you can carry on; the bar at the top shows when it is done.');
 }
 export async function publishAgain(form: FormData) {
   await admin();
@@ -130,4 +137,35 @@ export async function disconnect(form: FormData) {
     await supabaseAdmin().from('connections').upsert(connectionRows(p, {}));
   } catch (e) { await fail(e); }
   await done(`${PLATFORM_NAME[p]} disconnected. Remove the app from the ${PLATFORM_NAME[p]} account too if you no longer want it to have access.`);
+}
+
+/**
+ * Connect Odoo with an API key. The key is tried before it is saved, and saved encrypted; it is never shown again.
+ * Leaving the key empty keeps the one already saved, so the other details can change without typing it again.
+ */
+export async function connectOdoo(form: FormData) {
+  const { user } = await admin();
+  const f = (k: string) => String(form.get(k) || '').trim();
+  let msg = '';
+  try {
+    const url = normalizeOdooUrl(f('url'));
+    if (!url) throw new Error('Enter the Odoo address, starting with https://, for example https://parakkat.odoo.com.');
+    const saved = await loadAccess('odoo'), key = f('key') || saved?.tokens.access_token;
+    if (!key) throw new Error('Enter the API key.');
+    const cfg = { url, db: f('db') || guessDb(url), login: f('login'), key, online: f('online').split(',').map(x => x.trim()).filter(Boolean).slice(0, 20) };
+    const t = await testOdoo(cfg);
+    await saveAccess('odoo', { access_token: key }, { url, db: cfg.db, login: cfg.login, online: cfg.online, version: t.version, warehouses: t.warehouses.slice(0, 30), pos: t.pos.slice(0, 30) }, null, user.id);
+    await supabaseAdmin().from('connections').upsert({ provider: 'odoo', status: 'connected', account_ref: `${new URL(url).host}${cfg.db ? ` · ${cfg.db}` : ''}`, last_error: null });
+    msg = `Odoo ${t.version} connected: ${t.warehouses.length} warehouse${t.warehouses.length === 1 ? '' : 's'} and ${t.pos.length} point${t.pos.length === 1 ? '' : 's'} of sale found. Press Sync data now to pull sales and stock.`;
+  } catch (e) { await fail(e); }
+  await done(msg);
+}
+
+export async function disconnectOdoo() {
+  await admin();
+  try {
+    await dropAccess('odoo');
+    await supabaseAdmin().from('connections').upsert({ provider: 'odoo', status: 'not_connected', account_ref: null, last_error: null });
+  } catch (e) { await fail(e); }
+  await done('Odoo disconnected. Delete the API key in Odoo too (Preferences > Account Security) if it is no longer needed.');
 }
