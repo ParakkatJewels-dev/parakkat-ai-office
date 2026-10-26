@@ -31,7 +31,8 @@ const JOBS: { provider: string; bot: string; ready: () => Promise<string | null 
     run: async (db, deadline) => {
       const until = Math.min(deadline + 120_000, Math.max(deadline, Date.now() + 90_000));
       const st = await syncOdooStock(db, until), sa = await syncOdooSales(db, until);
-      return `${st.skus} products and ${st.units} pieces in ${st.warehouses} warehouses (${st.changed} Shopify products updated), ${sa.days} branch-days of sales${sa.more ? ` (back to ${sa.from}; older days next sync)` : ''}`;
+      return `stock for ${st.skus} products in ${st.warehouses} warehouses (${st.changed} Shopify products updated), `
+        + (sa.busy ? 'sales already being read' : `${sa.days} day${sa.days === 1 ? '' : 's'} of branch sales${sa.more ? `, back to ${sa.from}; the rest comes in over the next hours` : ''}`);
     } },
 ];
 const adDays = (r: { count: number; accounts: number; failed: string[] }) =>

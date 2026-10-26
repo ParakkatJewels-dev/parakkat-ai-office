@@ -40,15 +40,17 @@ export function skuOf(p) {
 
 const ONLINE = /online|web|e-?com|shopify|amazon|flipkart|marketplace/i;
 /**
- * The branch a sales order belongs to. Orders from an Odoo website, or from a sales team or warehouse whose name says it is
- * online, count as online; the names in `online` (from the Admin page) always do.
+ * The branch a sales order belongs to. A showroom is a warehouse, so orders count under their warehouse; without one,
+ * under their sales team. Orders from an Odoo website, or from a team or warehouse whose name says it is online, count as
+ * online; the names in `online` (from the Admin page) always do.
  */
 export function orderBranch(o, online = []) {
   const site = m2o(o.website_id), team = m2o(o.team_id), wh = m2o(o.warehouse_id);
   const named = n => !!n && (online.some(x => x && n.toLowerCase() === String(x).toLowerCase()) || ONLINE.test(n));
   if (site) return { branch: site.name, kind: 'online' };
-  const name = team?.name || wh?.name || 'Sales orders';
-  return { branch: name, kind: named(team?.name) || named(wh?.name) ? 'online' : 'other' };
+  if (named(team?.name)) return { branch: team.name, kind: 'online' };
+  if (wh) return { branch: wh.name, kind: named(wh.name) ? 'online' : 'showroom' };
+  return { branch: team?.name || 'Sales orders', kind: 'other' };
 }
 
 /** Running totals per branch per day and per branch, product and day. */
@@ -70,17 +72,18 @@ export function totals() {
 const round = n => Math.round(n * 100) / 100;
 
 /**
- * Which days to read this sync: the last three days every time (late edits and refunds), from further back when the last
- * sync was longer ago than that, and, until 90 days are in, one more fortnight before the oldest day read so far.
+ * Which days to read, one day at a time so a slow Odoo still gets somewhere each sync and keeps what it read.
+ * First the recent days, oldest first: the last three days every time (late edits and refunds), from further back when
+ * the last sync was longer ago than that. Then, until 90 days are in, the days before the oldest read so far, newest first.
  * `oldest` is the first day already read and `newest` the last.
  */
-export function salesWindows(today, oldest, newest, backfill = 90, chunk = 15) {
+export function salesDays(today, oldest, newest, backfill = 90) {
   const floor = addDays(today, -backfill + 1);
   let from = addDays(today, -2);
   if (newest && newest < from) from = newest < floor ? floor : newest;
-  const recent = { from, to: today };
-  const start = oldest && oldest <= from ? oldest : from;
-  if (start <= floor) return [recent];
-  const back = addDays(start, -chunk) < floor ? floor : addDays(start, -chunk);
-  return [recent, { from: back, to: addDays(start, -1) }];
+  const recent = [];
+  for (let d = from; d <= today; d = addDays(d, 1)) recent.push(d);
+  const back = [];
+  for (let d = addDays(oldest && oldest <= from ? oldest : from, -1); d >= floor; d = addDays(d, -1)) back.push(d);
+  return { recent, back };
 }
