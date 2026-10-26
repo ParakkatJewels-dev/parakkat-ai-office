@@ -59,7 +59,7 @@ insert into agents (id, name, role_desc, department_id, is_lead, model) values
   ('festivalKeeper', 'Festival Calendar Keeper', 'Festivals, auspicious days, weddings', 'goldrate', false, 'Gemini, worker tier'),
   ('eventsWatcher', 'Local Events Watcher', 'Kerala events and holidays', 'goldrate', false, 'Gemini, worker tier'),
   ('dataLead', 'Data Hub Lead', 'Head of Data Hub, checks every sync', 'datahub', true, 'OpenAI GPT, manager tier'),
-  ('shopifySync', 'Shopify Sync Bot', 'Products, orders, stock', 'datahub', false, 'Scheduled job'),
+  ('shopifySync', 'Shopify & Odoo Sync Bot', 'Products, orders, branch sales, real stock', 'datahub', false, 'Scheduled job'),
   ('metaSync', 'Meta Sync Bot', 'Ads, Instagram, Facebook', 'datahub', false, 'Scheduled job'),
   ('googleSync', 'Google Sync Bot', 'Google Ads, GA4, Triple Whale', 'datahub', false, 'Scheduled job'),
   ('forecaster', 'Demand Forecaster', 'Sales forecast by product', 'forecast', true, 'OpenAI GPT, worker tier'),
@@ -93,5 +93,5 @@ insert into agents (id, name, role_desc, department_id, is_lead, model) values
   ('moodCurator', 'Moodboard Curator', 'Looks for each season', 'brand', false, 'Gemini image model')
 on conflict (id) do update set name = excluded.name, role_desc = excluded.role_desc, department_id = excluded.department_id, is_lead = excluded.is_lead, model = excluded.model;
 
-insert into connections (provider) values ('shopify'), ('meta'), ('instagram'), ('google_ads'), ('ga4'), ('triple_whale'), ('openai'), ('gemini'), ('jev'), ('google_trends'), ('keyword_planner')
+insert into connections (provider) values ('shopify'), ('meta'), ('instagram'), ('google_ads'), ('ga4'), ('triple_whale'), ('openai'), ('gemini'), ('jev'), ('google_trends'), ('keyword_planner'), ('odoo')
 on conflict do nothing;

@@ -13,6 +13,7 @@ import { syncAll } from './sync';
 import { upcoming, covered } from './occasions.mjs';
 import { runSeo } from './seo';
 import { scanLibrary } from './library';
+import { branchBrief } from './branches';
 
 /**
  * The agents' own schedule. The every-minute tick calls runAutopilot(), which runs the one job most overdue:
@@ -89,7 +90,12 @@ async function festivals(db: SupabaseClient) {
 async function stock(db: SupabaseClient) {
   await emit(db, null, 'think', 'picker', 'Checking stock on this month\'s best sellers');
   const { data } = await db.rpc('sales_by_product', { p_since: daysAgo(30), p_limit: 40 });
-  const rows = (data || []) as { title: string | null; inventory: number | null; units: number }[];
+  // best sellers in the showrooms come from Odoo, with Odoo's stock; Shopify's best sellers already read Odoo's stock where matched
+  const { data: shop } = await db.rpc('odoo_top_products', { p_since: daysAgo(30), p_limit: 40 });
+  const rows = [
+    ...(data || []) as { title: string | null; inventory: number | null; units: number }[],
+    ...((shop || []) as any[]).map(p => ({ title: p.product || p.sku, inventory: p.stock == null ? null : Math.floor(+p.stock), units: +p.units })),
+  ].filter((r, i, all) => all.findIndex(x => x.title === r.title) === i);
   if (!rows.length) { await emit(db, null, 'say', 'picker', 'No sales synced yet, so no stock to check.', 'strategist'); return 'no sales'; }
   // jewellery is often one of a kind, so a single piece left is normal; flag sold-out best sellers and last pieces of repeat sellers
   const out = rows.filter(r => r.inventory != null && r.inventory <= 0), last = rows.filter(r => r.inventory === 1 && Number(r.units) >= 3);
@@ -102,15 +108,43 @@ async function stock(db: SupabaseClient) {
 
 /** Sales Analyst: yesterday against the two weeks before. */
 async function sales(db: SupabaseClient) {
-  await emit(db, null, 'think', 'sales', 'Reading yesterday\'s Shopify orders');
+  await emit(db, null, 'think', 'sales', 'Reading yesterday\'s orders from Shopify and the branches');
   const { data } = await db.from('orders_daily').select('day, revenue').gte('day', daysAgo(15)).limit(20000);
   const by = new Map<string, number>(); (data || []).forEach(r => by.set(r.day, (by.get(r.day) || 0) + Number(r.revenue)));
   const y = daysAgo(1), yRev = by.get(y) || 0, prev = [...by].filter(([d]) => d < y), avg = prev.length ? prev.reduce((s, [, v]) => s + v, 0) / prev.length : 0;
-  if (!by.size) { await emit(db, null, 'say', 'sales', 'No orders synced in the last two weeks.', 'analyticsLead'); return 'no orders'; }
+  if (!by.size) {
+    const b = await branchDays(db, y);
+    if (b) { await emit(db, null, b.moved.length ? 'feedback' : 'say', 'sales', b.text, 'analyticsLead'); return `branches ${b.summary}`; }
+    await emit(db, null, 'say', 'sales', 'No orders synced in the last two weeks.', 'analyticsLead'); return 'no orders';
+  }
   const pct = avg ? Math.round(((yRev - avg) / avg) * 100) : 0;
   await emit(db, null, Math.abs(pct) >= 30 ? 'feedback' : 'say', 'sales',
-    `Yesterday ${inr(yRev)} in orders, ${pct >= 0 ? '+' : ''}${pct}% against the daily average of ${inr(avg)} over the two weeks before.`, 'analyticsLead');
-  return `${inr(yRev)} (${pct}%)`;
+    `Online store yesterday ${inr(yRev)} in orders, ${pct >= 0 ? '+' : ''}${pct}% against the daily average of ${inr(avg)} over the two weeks before.`, 'analyticsLead');
+  const b = await branchDays(db, y);
+  if (b) await emit(db, null, b.moved.length ? 'feedback' : 'say', 'sales', b.text, 'analyticsLead');
+  return `${inr(yRev)} (${pct}%)${b ? `; branches ${b.summary}` : ''}`;
+}
+
+/** Each branch in Odoo yesterday against its own daily average over the two weeks before; big moves are flagged. */
+async function branchDays(db: SupabaseClient, y: string) {
+  const { data } = await db.from('odoo_branch_daily').select('day, branch, revenue').gte('day', daysAgo(15)).lte('day', y).limit(20000);
+  if (!(data || []).length) return null;
+  // a branch has no row on a day it sold nothing, so the average is over the days any branch has, not that branch's own
+  const by = new Map<string, { y: number; before: number }>(), days = new Set<string>();
+  for (const r of data!) {
+    const x = by.get(r.branch) || { y: 0, before: 0 };
+    if (r.day === y) x.y += Number(r.revenue); else { x.before += Number(r.revenue); days.add(r.day); }
+    by.set(r.branch, x);
+  }
+  const all = [...by].map(([branch, x]) => {
+    const avg = days.size ? x.before / days.size : 0, p = avg ? Math.round(((x.y - avg) / avg) * 100) : 0;
+    return { branch, y: x.y, avg, p };
+  }).sort((a, b) => b.y - a.y);
+  const total = all.reduce((t, r) => t + r.y, 0);
+  const moved = all.filter(r => r.avg >= 5000 && Math.abs(r.p) >= 40);
+  const text = `All branches yesterday ${inr(total)}: ${all.slice(0, 8).map(r => `${r.branch} ${inr(r.y)} (${r.p >= 0 ? '+' : ''}${r.p}%)`).join(', ')}.`
+    + (moved.length ? ` Worth a look: ${moved.map(r => `${r.branch} ${r.p >= 0 ? 'up' : 'down'} ${Math.abs(r.p)}%`).join(', ')}.` : '');
+  return { text, moved, summary: inr(total) };
 }
 
 /** Ads Analyst and Budget Guard: ads that spend without returning. */
@@ -153,19 +187,21 @@ async function planner(db: SupabaseClient) {
   const cal = upcoming(new Date(), 75);
   let picks: { occasion: string; why: string }[] = [];
   if (canWrite()) {
-    const [{ data: sold }, { data: before }, { data: adRows }, { data: posts }, { data: moves }, { data: rising }] = await Promise.all([
+    const [{ data: sold }, { data: before }, { data: adRows }, { data: posts }, { data: moves }, { data: rising }, branches] = await Promise.all([
       db.rpc('sales_by_product', { p_since: daysAgo(14), p_limit: 15 }),
       db.rpc('sales_by_product', { p_since: daysAgo(28), p_limit: 40 }),
       db.rpc('ad_rollup', { p_since: daysAgo(14), p_limit: 10 }),
       db.from('social_posts').select('caption, media_type, saves, reach').gte('posted_at', daysAgo(30)).order('saves', { ascending: false, nullsFirst: false }).limit(5),
       db.from('competitor_moves').select('kind, summary, competitors(name)').gte('seen_at', daysAgo(14)).limit(8),
       db.from('seo_keywords').select('keyword, trend_change').eq('rising', true).order('updated_at', { ascending: false }).limit(10),
+      branchBrief(db, 14).catch(() => [] as string[]),
     ]);
     const prevUnits = new Map(((before || []) as any[]).map(p => [p.product_id, Number(p.units)]));
     const data = [
       `Today: ${new Date().toISOString().slice(0, 10)}`,
       `Calendar: ${cal.map(o => `${o.name} on ${o.date} (${o.left} days; ${o.why}; planning should start ${o.lead} days before)`).join('\n') || 'nothing in 75 days'}`,
-      `Best sellers, last 14 days (units, revenue, stock, units in the 28 days):\n${((sold || []) as any[]).map(p => `${p.title} | ${p.product_type || ''} | ${p.units} | ${inr(+p.revenue)} | stock ${p.inventory ?? '?'} | ${prevUnits.get(p.product_id) ?? 0}`).join('\n') || 'none'}`,
+      `Online store best sellers, last 14 days (units, revenue, stock, units in the 28 days):\n${((sold || []) as any[]).map(p => `${p.title} | ${p.product_type || ''} | ${p.units} | ${inr(+p.revenue)} | stock ${p.inventory ?? '?'} | ${prevUnits.get(p.product_id) ?? 0}`).join('\n') || 'none'}`,
+      ...(branches.length ? [branches.join('\n')] : []),
       `Ads, last 14 days:\n${((adRows || []) as any[]).map(a => `${a.platform} ${a.campaign_name}: spend ${inr(+a.spend)}, revenue ${inr(+a.revenue)}`).join('\n') || 'none'}`,
       `Most saved posts:\n${(posts || []).map(p => `${p.media_type} saves ${p.saves ?? '?'}: ${(p.caption || '').slice(0, 70)}`).join('\n') || 'none'}`,
       `Competitor moves:\n${(moves || []).map(m => `${(m.competitors as any)?.name} ${m.kind}: ${m.summary.slice(0, 90)}`).join('\n') || 'none'}`,
@@ -174,7 +210,7 @@ async function planner(db: SupabaseClient) {
     ].join('\n\n');
     const r = await chatJSON<{ proposals?: { occasion: string; why: string }[]; note?: string }>('manager', persona('cmo',
       `You decide which campaigns the team starts today for Parakkat Jewels. Propose at most ${Math.min(2, room)}, and only when the calendar
-(an occasion whose planning window has started) or the numbers (a product or category picking up, stock to move, a rival's offer to answer,
+(an occasion whose planning window has started) or the numbers (a product or category picking up, a branch growing or slowing, stock to move, a rival's offer to answer,
 a rising search) give a clear reason. Proposing none is fine. Never repeat one already open or run recently.
 Shape: {"proposals": [{"occasion": "short campaign name, e.g. Dhanteras gold coins", "why": "one sentence with the date or numbers behind it"}], "note": "one line on what you looked at"}`), data);
     picks = (r.proposals || []).filter(p => p?.occasion && p?.why);

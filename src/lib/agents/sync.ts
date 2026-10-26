@@ -5,6 +5,7 @@ import { has } from '@/lib/env';
 import { syncProducts, syncOrders, shopifyReady } from '@/lib/connectors/shopify';
 import { syncAdInsights, syncInstagram, metaConfig } from '@/lib/connectors/meta';
 import { syncGoogleAds, googleAdsReady } from '@/lib/connectors/google';
+import { syncOdooStock, syncOdooSales, odooReady } from '@/lib/connectors/odoo';
 import { googleId, metaId } from '@/lib/connectors/accounts.mjs';
 import { learnFromData } from './learn';
 import { emit } from './events';
@@ -25,19 +26,56 @@ const JOBS: { provider: string; bot: string; ready: () => Promise<string | null 
     run: async db => `${await syncInstagram(db)} posts` },
   { provider: 'google_ads', bot: 'googleSync', ready: async () => (await googleAdsReady())?.customers.map(c => googleId(c.id)).join(', '),
     run: async db => adDays(await syncGoogleAds(db)) },
+  // after Shopify, so newly synced products are matched to their Odoo stock; it gets at least a minute and a half of its own
+  { provider: 'odoo', bot: 'shopifySync', ready: odooReady,
+    run: async (db, deadline) => {
+      const until = Math.min(deadline + 120_000, Math.max(deadline, Date.now() + 90_000));
+      const st = await syncOdooStock(db, until), sa = await syncOdooSales(db, until);
+      return `${st.skus} products and ${st.units} pieces in ${st.warehouses} warehouses (${st.changed} Shopify products updated), ${sa.days} branch-days of sales${sa.more ? ` (back to ${sa.from}; older days next sync)` : ''}`;
+    } },
 ];
 const adDays = (r: { count: number; accounts: number; failed: string[] }) =>
   `${r.count} ad-days from ${r.accounts} account${r.accounts === 1 ? '' : 's'}${r.failed.length ? `; could not read ${r.failed.join('; ')}` : ''}`;
 
 /** Pull fresh data from every connected platform. Each Data Hub bot reports to the Data Hub Lead. */
 export async function syncAll(db: SupabaseClient) {
+  const holder = await claimSync(db);
+  if (!holder) return { sync: BUSY } as Record<string, string>;
+  return runClaimed(db, holder);
+}
+export const BUSY = 'A sync is already running. It finishes within five minutes; check back then.';
+
+/**
+ * Take the sync lease, or null when a sync is already running. Taken before the page answers, so a sync started in the
+ * background shows as running straight away.
+ */
+export async function claimSync(db: SupabaseClient) {
   await checkPause();
   // one sync at a time: two at once spend Shopify's query budget twice over and both get throttled
   const holder = randomUUID();
   const { data: got, error } = await db.rpc('acquire_job_lock', { p_name: 'sync', p_holder: holder, p_seconds: 300 });
   if (error) throw new Error(`Could not start the sync: ${error.message}`);
-  if (!got) return { sync: 'A sync is already running. It finishes within five minutes; check back then.' } as Record<string, string>;
-  try { return await syncLocked(db); } finally { await db.rpc('release_job_lock', { p_name: 'sync', p_holder: holder }); }
+  return got ? holder : null;
+}
+
+/** Run the sync under a lease from claimSync, keep what each platform said for the Admin page, and let the lease go. */
+export async function runClaimed(db: SupabaseClient, holder: string) {
+  let results: Record<string, string> = {};
+  try { results = await syncLocked(db); return results; }
+  catch (e) { results = { sync: 'error: ' + errText(e) }; throw e; }
+  finally {
+    await db.from('sync_cursors').upsert({ name: 'sync_last', state: { at: new Date().toISOString(), results }, updated_at: new Date().toISOString() });
+    await db.rpc('release_job_lock', { p_name: 'sync', p_holder: holder });
+  }
+}
+
+/** Whether a sync is running now, and what the last one found. */
+export async function syncStatus(db: SupabaseClient) {
+  const [{ data: lock }, { data: last }] = await Promise.all([
+    db.from('job_locks').select('until').eq('name', 'sync').maybeSingle(),
+    db.from('sync_cursors').select('state').eq('name', 'sync_last').maybeSingle(),
+  ]);
+  return { running: !!lock && Date.parse(lock.until) > Date.now(), last: (last?.state || null) as { at: string; results: Record<string, string> } | null };
 }
 
 async function syncLocked(db: SupabaseClient) {

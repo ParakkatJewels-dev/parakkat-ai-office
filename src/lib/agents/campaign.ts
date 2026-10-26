@@ -5,6 +5,7 @@ import { drawItem } from './design';
 import { classify } from '@/lib/llm/jev';
 import { competitorInstagram, metaConfig } from '@/lib/connectors/meta';
 import { has } from '@/lib/env';
+import { branchBrief } from './branches';
 import { emit } from './events';
 import { persona } from './people';
 import { fileReport } from './review';
@@ -136,23 +137,26 @@ const STEP: Record<Exclude<Stage, 'done'>, (db: SupabaseClient, run: Run, s: Run
   async analyse(db, run, s) {
     const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
     // summed in the database: raw order and ad rows run far past what one request returns
-    const [{ data: sold }, { data: ads }, { data: posts }] = await Promise.all([
+    const [{ data: sold }, { data: ads }, { data: posts }, branches] = await Promise.all([
       db.rpc('sales_by_product', { p_since: since, p_limit: 15 }),
       db.rpc('ad_rollup', { p_since: since, p_limit: 15 }),
       db.from('social_posts').select('caption, media_type, reach, saves, likes, posted_at').order('posted_at', { ascending: false }).limit(30),
+      branchBrief(db, 30).catch(() => [] as string[]),
     ]);
-    const top = ((sold || []) as { product_id: number; title: string | null; units: number; revenue: number }[]).map(a => `${a.title || a.product_id}: ${a.units} units, ${inr(Number(a.revenue))}`).join('\n');
+    const online = ((sold || []) as { product_id: number; title: string | null; units: number; revenue: number }[]).map(a => `${a.title || a.product_id}: ${a.units} units, ${inr(Number(a.revenue))}`).join('\n');
+    // the showrooms are most of the business: with Odoo connected the analyst reads every branch, not only the website
+    const top = [online && `Online store (Shopify), last 30 days:\n${online}`, branches.join('\n')].filter(Boolean).join('\n\n');
     const adLines = ((ads || []) as { platform: string; campaign_name: string; ad_name: string; spend: number; purchases: number; revenue: number }[])
       .map(a => `${a.platform} ${a.campaign_name} / ${a.ad_name}: spend ${inr(+a.spend)}, ${+a.purchases} purchases, revenue ${inr(+a.revenue)}, ROAS ${+a.spend ? (+a.revenue / +a.spend).toFixed(1) : '-'}x`).join('\n');
     const postLines = (posts || []).map(p => `${p.posted_at?.slice(0, 10)} ${p.media_type}: reach ${p.reach ?? '?'}, saves ${p.saves ?? '?'}, likes ${p.likes ?? '?'} — ${(p.caption || '').slice(0, 80)}`).join('\n');
 
     const ask = (who: string, data: string, focus: string) => chatJSON<{ title: string; body: string }>('worker',
       persona(who, `Write a short report for the ${run.occasion} campaign. Focus: ${focus}. Shape: {"title": "one-line finding", "body": "3 to 5 bullet lines"}`), data);
-    await emit(db, run.id, 'think', 'sales', 'Reading Shopify orders and products');
+    await emit(db, run.id, 'think', 'sales', branches.length ? 'Reading sales from every branch in Odoo, and Shopify orders' : 'Reading Shopify orders and products');
     await emit(db, run.id, 'think', 'adsAnalyst', 'Reading Meta and Google results');
     await emit(db, run.id, 'think', 'postAnalyst', 'Checking which posts led to sales');
     const [sales, adsR, postR] = await Promise.all([
-      ask('sales', top || 'No orders synced yet.', 'which products and price bands sell, and what to feature'),
+      ask('sales', top || 'No orders synced yet.', 'which products and price bands sell, which branches are growing or slowing, and what to feature'),
       ask('adsAnalyst', adLines || 'No ad results synced yet.', 'which ads and channels return the most per rupee'),
       ask('postAnalyst', postLines || 'No posts synced yet.', 'which post formats and themes get saves and clicks'),
     ]);
@@ -183,29 +187,32 @@ const STEP: Record<Exclude<Stage, 'done'>, (db: SupabaseClient, run: Run, s: Run
 
   // Strategy turns the forwarded reports into one plan, picking only in-stock products.
   async plan(db, run, s) {
-    const [{ data: stock }, search, past] = await Promise.all([
-      db.from('products').select('id, title, product_type, price, inventory, image_url').eq('status', 'ACTIVE').gt('inventory', 0).limit(200),
+    // stock from Odoo where the product is matched to it by SKU, else Shopify's count
+    const [{ data: rows }, search, past, branches] = await Promise.all([
+      db.from('product_stock').select('id, title, product_type, price, stock, stock_source, image_url').eq('status', 'ACTIVE').gt('stock', 0).limit(200),
       seoBrief(db).catch(() => [] as string[]),
       pastResults(db).catch(() => [] as string[]),
+      branchBrief(db, 30).catch(() => [] as string[]),
     ]);
+    const stock = (rows || []).map(p => ({ ...p, inventory: p.stock as number }));
     await emit(db, run.id, 'think', 'strategist', `Drafting the ${run.occasion} plan`);
     const plan = await chatJSON<Plan>('manager', persona('strategist', `Plan one campaign. Use only product ids from the in-stock list. Keep the daily budget realistic for a regional jewellery brand unless the data says otherwise.
 Shape: {"name": "...", "occasion": "...", "headline": "max 5 words", "sub": "max 8 words", "product_ids": [ids], "budget_daily": rupees, "days": n, "channels": ["meta","google"], "split": "one line", "audiences": "one line", "reasons": ["3 short reasons tied to the data"]}`),
-      `Occasion: ${run.occasion}\n\nInsights:\n${(s.insights || []).join('\n\n') || 'none forwarded'}\n\nCompetitors:\n${(s.competitors || []).join('\n') || 'none'}\n\nPast campaigns and what the heads said (learn from these):\n${past.join('\n') || 'none yet'}\n\nWhat people search (SEO Desk):\n${search.join('\n') || 'no SEO data yet'}\n\nIn stock:\n${(stock || []).map(p => `${p.id} | ${p.title} | ${p.product_type} | ${inr(p.price)} | ${p.inventory} left`).join('\n')}`);
+      `Occasion: ${run.occasion}\n\nInsights:\n${(s.insights || []).join('\n\n') || 'none forwarded'}\n\nCompetitors:\n${(s.competitors || []).join('\n') || 'none'}\n\nPast campaigns and what the heads said (learn from these):\n${past.join('\n') || 'none yet'}\n\nWhat people search (SEO Desk):\n${search.join('\n') || 'no SEO data yet'}\n\n${branches.length ? `${branches.join('\n')}\n\n` : ''}In stock${stock.some(p => p.stock_source === 'odoo') ? ' (real stock from Odoo)' : ''}:\n${stock.map(p => `${p.id} | ${p.title} | ${p.product_type} | ${inr(p.price)} | ${p.inventory} left`).join('\n')}`);
     // models sometimes return the ids as strings; match on the text and keep the database's own id
-    const ok = new Map((stock || []).map(p => [String(p.id), p.id]));
+    const ok = new Map(stock.map(p => [String(p.id), p.id]));
     const valid = (ids: unknown) => [...new Set((Array.isArray(ids) ? ids : []).map(id => ok.get(String(id).trim())).filter((id): id is number => id != null))].slice(0, 6);
     plan.product_ids = valid(plan.product_ids);
     if (!plan.product_ids.length && ok.size) {
       // one more try: ask for ids copied from the list, not made up
       const again = await chatJSON<{ product_ids: unknown[] }>('worker', persona('strategist', 'None of the product ids you chose are in the in-stock list. Pick 3 to 6 that fit the plan, copying each id exactly from the list. Shape: {"product_ids": [ids]}'),
-        `Plan: ${plan.name}, ${plan.headline}\n\nIn stock:\n${(stock || []).map(p => `${p.id} | ${p.title} | ${p.product_type}`).join('\n')}`);
+        `Plan: ${plan.name}, ${plan.headline}\n\nIn stock:\n${stock.map(p => `${p.id} | ${p.title} | ${p.product_type}`).join('\n')}`);
       plan.product_ids = valid(again.product_ids);
     }
-    if (!plan.product_ids.length) throw new Error(ok.size ? 'The plan picked no products from the in-stock list, twice.' : 'No products are in stock. Sync Shopify first.');
+    if (!plan.product_ids.length) throw new Error(ok.size ? 'The plan picked no products from the in-stock list, twice.' : 'No products are in stock. Sync Shopify (and Odoo, for the real stock) first.');
     s.plan = plan;
     await emit(db, run.id, 'think', 'budgetForecaster', 'Working out what this plan should bring in, from our own last 30 days');
-    plan.report = await proposal(db, run, s, plan, (stock || []).filter(p => plan.product_ids.includes(p.id)));
+    plan.report = await proposal(db, run, s, plan, stock.filter(p => plan.product_ids.includes(p.id)));
     await emit(db, run.id, 'walk', 'strategist', `Brief: ${plan.name}. ${plan.split}`, 'creativeDirector');
   },
 
