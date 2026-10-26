@@ -14,6 +14,7 @@ import { upcoming, covered } from './occasions.mjs';
 import { runSeo } from './seo';
 import { scanLibrary } from './library';
 import { branchBrief } from './branches';
+import { syncOdooSales, odooReady } from '@/lib/connectors/odoo';
 
 /**
  * The agents' own schedule. The every-minute tick calls runAutopilot(), which runs the one job most overdue:
@@ -33,6 +34,12 @@ type Job = { name: string; every: number; hours?: [number, number]; run: (db: Su
 const JOBS: Job[] = [
   { name: 'planner', every: 20 * H, hours: [9, 20], run: planner },
   { name: 'sync', every: 6 * H, run: async db => Object.entries(await syncAll(db)).map(([k, v]) => `${k}: ${v}`).join(' · ') },
+  // Odoo's sales history is large: an hourly run of its own fills in the 90 days, then keeps the last days fresh
+  { name: 'odoo_sales', every: 1 * H, run: async db => {
+    if (!(await odooReady())) return 'not connected';
+    const r = await syncOdooSales(db, Date.now() + 240_000);
+    return r.busy ? 'already running' : `${r.days} days read${r.more ? `, back to ${r.from}, more next hour` : ', up to date'}`;
+  } },
   { name: 'festivals', every: 20 * H, hours: [8, 21], run: festivals },
   { name: 'stock', every: 1 * H, hours: [8, 22], run: stock },
   { name: 'sales', every: 1.5 * H, hours: [8, 22], run: sales },

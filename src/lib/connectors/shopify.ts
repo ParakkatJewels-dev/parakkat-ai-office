@@ -3,6 +3,7 @@ import { env, opt } from '@/lib/env';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess, saveAccess, type Saved } from './vault';
 import { isThrottled, waitMs } from './shopify-limits.mjs';
+import { assertShopifyQuery } from './readonly.mjs';
 
 let cached: { token: string; until: number } | null = null;
 type Store = { domain: string; saved: Saved | null };
@@ -53,7 +54,9 @@ async function adminToken(s: Store) {
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** One GraphQL call. Waits when Shopify's query budget runs low and retries when it says THROTTLED. */
+/** A read from the Admin API. Mutations are refused before anything is sent: the app never changes the store. */
 async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+  assertShopifyQuery(query);
   const s = await store(); if (!s) throw new Error('Shopify is not connected. Connect it on the Admin page.');
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(`https://${s.domain}/admin/api/${opt('SHOPIFY_API_VERSION', '2025-07')}/graphql.json`, {

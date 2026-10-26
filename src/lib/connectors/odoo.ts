@@ -1,12 +1,15 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess } from './vault';
-import { normalizeOdooUrl, guessDb, istDay, utcStart, addDays, m2o, skuOf, orderBranch, totals, salesWindows } from './odoo-core.mjs';
+import { assertOdooRead } from './readonly.mjs';
+import { normalizeOdooUrl, guessDb, istDay, utcStart, addDays, m2o, skuOf, orderBranch, totals, salesDays } from './odoo-core.mjs';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Odoo, the ERP: sales for every showroom and the online store, and the stock actually on hand.
  * Odoo 19 and later answer on JSON-2 (/json/2/<model>/<method>, the API key as a bearer token). Older versions only have
- * JSON-RPC (/jsonrpc), which Odoo is retiring, so it is used only when JSON-2 is not there. Everything here only reads.
+ * JSON-RPC (/jsonrpc), which Odoo is retiring, so it is used only when JSON-2 is not there. Everything here only reads:
+ * call() refuses any method that is not on the read list in readonly.mjs.
  */
 export type OdooCfg = { url: string; db: string; login: string; key: string; online: string[] };
 
@@ -26,6 +29,8 @@ export async function odooReady() {
 }
 
 const STEP = 2000;
+/** A read stopped because the sync's time is up; what was finished before it is kept. */
+export class OutOfTime extends Error {}
 
 export class Odoo {
   private mode: 'json2' | 'jsonrpc' | null = null;
@@ -44,6 +49,9 @@ export class Odoo {
   }
 
   private async rpc(service: string, method: string, args: unknown[]) {
+    // the old API's two doors: logging in, and model calls, which call() has already checked are reads
+    if (!(service === 'common' && method === 'authenticate') && !(service === 'object' && method === 'execute_kw' && typeof args[4] === 'string')) throw new Error('Refused: not a read.');
+    if (service === 'object') assertOdooRead(String(args[3]), String(args[4]));
     const { res, data } = await this.post('/jsonrpc', { jsonrpc: '2.0', method: 'call', params: { service, method, args }, id: Date.now() });
     if (!res.ok || !data) throw new Error(`Odoo answered ${res.status}. Check the address.`);
     if (data.error) throw new Error(`Odoo: ${data.error.data?.message || data.error.message}`);
@@ -72,6 +80,7 @@ export class Odoo {
 
   /** Call a model's method with named arguments; `ids` are the records it acts on. */
   async call<T = any>(model: string, method: string, kw: Record<string, unknown> = {}, ids?: number[]): Promise<T> {
+    assertOdooRead(model, method);
     await this.open();
     if (this.mode === 'json2') {
       const { res, data } = await this.post(`/json/2/${model}/${method}`, ids ? { ids, ...kw } : kw,
@@ -99,7 +108,7 @@ export class Odoo {
       out.push(...rows);
       if (rows.length < STEP) return out;
       last = rows[rows.length - 1].id;
-      if (Date.now() > deadline) throw new Error(`Ran out of time reading ${model}; the last good numbers are kept. The next sync tries again.`);
+      if (Date.now() > deadline) throw new OutOfTime(`Ran out of time reading ${model}; the last good numbers are kept. The next sync carries on.`);
     }
   }
 }
@@ -132,25 +141,32 @@ async function products(o: Odoo, ids: number[], have: Map<number, Prod>) {
   return have;
 }
 
-/** Write rows in batches of 1,000. */
-async function put(db: SupabaseClient, table: string, rows: Record<string, unknown>[], onConflict: string) {
-  for (let i = 0; i < rows.length; i += 1000) {
-    const { error } = await db.from(table).upsert(rows.slice(i, i + 1000), { onConflict });
+/** Write rows in batches, 1,000 at a time unless told otherwise. */
+async function put(db: SupabaseClient, table: string, rows: Record<string, unknown>[], onConflict: string, size = 1000) {
+  for (let i = 0; i < rows.length; i += size) {
+    const { error } = await db.from(table).upsert(rows.slice(i, i + size), { onConflict });
     if (error) throw new Error(`Could not save ${table}: ${error.message}`);
   }
 }
 
 /**
  * Stock on hand in every warehouse, replacing the last copy, then each Shopify product's free stock across its SKUs.
- * Every product Odoo knows is listed, with nothing on hand where it has no stock, so a sold-out piece reads 0 instead of
- * falling back to Shopify's count.
+ * The Odoo products behind the Shopify ones are listed even with nothing on hand, so a sold-out piece reads 0 instead
+ * of falling back to Shopify's count.
  */
 export async function syncOdooStock(db: SupabaseClient, deadline: number) {
   const o = await odooClient(), started = new Date().toISOString();
-  const pf = await o.fields('product.product');
-  // only goods that are counted in stock; services and consumables have no stock to plan with
-  const storable = pf?.has('is_storable') ? [['is_storable', '=', true]] : pf?.has('detailed_type') ? [['detailed_type', '=', 'product']] : [['type', '=', 'product']];
-  const catalog = await o.all<Prod>('product.product', storable, ['default_code', 'barcode', 'display_name'], deadline);
+  // the Odoo products the Shopify products point at, so one of them with nothing on hand reads 0 rather than unknown;
+  // asked for by SKU, since the whole Odoo catalogue is far larger than the online store
+  const { data: shop } = await db.from('products').select('skus').neq('skus', '{}').limit(50000);
+  const wanted = [...new Set((shop || []).flatMap(p => p.skus as string[]))];
+  const catalog: Prod[] = [];
+  for (let i = 0; i < wanted.length; i += 500) {
+    const part = wanted.slice(i, i + 500);
+    catalog.push(...await o.call<Prod[]>('product.product', 'search_read',
+      { domain: ['|', ['default_code', 'in', part], ['barcode', 'in', part]], fields: ['default_code', 'barcode', 'display_name'], context: { active_test: false } }));
+    if (Date.now() > deadline) throw new OutOfTime('Ran out of time matching Shopify products in Odoo; the last good stock is kept. The next sync tries again.');
+  }
   const qf = await o.fields('stock.quant');
   const quants = await o.all<any>('stock.quant', [['location_id.usage', '=', 'internal']],
     ['product_id', 'quantity', 'reserved_quantity', ...(qf?.has('warehouse_id') ? ['warehouse_id'] : []), 'location_id'], deadline);
@@ -166,14 +182,14 @@ export async function syncOdooStock(db: SupabaseClient, deadline: number) {
     const r = rows.get(k) || { sku, warehouse: wh, product: p?.display_name || m2o(q.product_id)!.name, qty: 0, reserved: 0, updated_at: started };
     r.qty += Number(q.quantity) || 0; r.reserved += Number(q.reserved_quantity) || 0; rows.set(k, r);
   }
-  await put(db, 'odoo_stock', [...rows.values()], 'sku,warehouse');
+  await put(db, 'odoo_stock', [...rows.values()], 'sku,warehouse', 5000);
   // whatever this read did not see is gone from Odoo
   const { error } = await db.from('odoo_stock').delete().lt('updated_at', started);
   if (error) throw new Error(`Could not clear old stock: ${error.message}`);
   const { data: matched, error: e2 } = await db.rpc('refresh_odoo_stock');
   if (e2) throw new Error(`Could not match stock to Shopify products: ${e2.message}`);
   const units = [...rows.values()].reduce((s, r) => s + r.qty, 0);
-  return { skus: catalog.length, units: Math.round(units), warehouses: new Set([...rows.values()].map(r => r.warehouse).filter(Boolean)).size, changed: Number(matched) || 0 };
+  return { skus: new Set([...rows.values()].map(r => r.sku)).size, units: Math.round(units), warehouses: new Set([...rows.values()].map(r => r.warehouse).filter(Boolean)).size, changed: Number(matched) || 0 };
 }
 
 /** Showroom names: each point of sale counts under its warehouse, so the counters of one showroom add up together. */
@@ -213,7 +229,7 @@ async function readSales(o: Odoo, from: string, to: string, deadline: number, on
         const oid = m2o(l.order_id)?.id as number, x = byId.get(oid), pid = m2o(l.product_id)?.id; if (!x || !pid) continue;
         lines.push({ pid, day: x.day, branch: x.branch, kind: x.kind, units: l.product_uom_qty, revenue: l.price_total, order: oid });
       }
-      if (Date.now() > deadline) throw new Error('Ran out of time reading sales orders; the last good numbers are kept. The next sync tries again.');
+      if (Date.now() > deadline) throw new OutOfTime('Ran out of time reading sales orders; the last good numbers are kept. The next sync carries on.');
     }
   }
 
@@ -236,24 +252,34 @@ async function writeSales(db: SupabaseClient, from: string, to: string, t: Retur
 }
 
 /**
- * Branch sales: the last three days every sync, and 90 days back over the first syncs, a fortnight at a time.
- * A window is written only once all of it has been read, so a sync cut short never leaves half a day.
+ * Branch sales, a day at a time: the last three days every run, and 90 days back over the first runs. Each day is
+ * written once all of it has been read, so a run cut short keeps every day it finished and the next one carries on.
+ * The sync and the hourly catch-up both call this; a lease keeps them from reading the same days at once.
  */
 export async function syncOdooSales(db: SupabaseClient, deadline: number) {
-  const o = await odooClient(), c = (await config())!;
-  const today = istDay(new Date().toISOString())!;
-  const { data: saved } = await db.from('sync_cursors').select('state').eq('name', 'odoo_sales').maybeSingle();
-  const st: { oldest?: string; newest?: string } = saved?.state || {};
-  let days = 0, more = false;
-  for (const [i, w] of salesWindows(today, st.oldest, st.newest).entries()) {
-    // the backfill waits for the next sync when there is not time for it
-    if (i > 0 && Date.now() > deadline - 30_000) { more = true; break; }
-    const t = await readSales(o, w.from, w.to, deadline, c.online);
-    await writeSales(db, w.from, w.to, t);
-    if (i === 0) { st.newest = w.to; st.oldest = st.oldest && st.oldest < w.from ? st.oldest : w.from; } else st.oldest = w.from;
-    days += t.branchRows().length;
-    await db.from('sync_cursors').upsert({ name: 'odoo_sales', state: st, updated_at: new Date().toISOString() });
-  }
-  if (st.oldest && st.oldest > addDays(today, -89)) more = true;
-  return { days, from: st.oldest, more };
+  const holder = randomUUID();
+  const { data: got } = await db.rpc('acquire_job_lock', { p_name: 'odoo_sales', p_holder: holder, p_seconds: 300 });
+  if (!got) return { days: 0, from: undefined as string | undefined, more: true, busy: true };
+  try {
+    const o = await odooClient(), c = (await config())!;
+    const today = istDay(new Date().toISOString())!;
+    const { data: saved } = await db.from('sync_cursors').select('state').eq('name', 'odoo_sales').maybeSingle();
+    const st: { oldest?: string; newest?: string } = saved?.state || {};
+    const { recent, back } = salesDays(today, st.oldest, st.newest);
+    const keep = () => db.from('sync_cursors').upsert({ name: 'odoo_sales', state: st, updated_at: new Date().toISOString() });
+    let days = 0, more = false;
+    try {
+      for (const day of [...recent, ...back]) {
+        // leave the backfill for the next run when a day may not fit in the time left
+        if (days && Date.now() > deadline - 20_000) { more = true; break; }
+        const t = await readSales(o, day, day, deadline, c.online);
+        await writeSales(db, day, day, t);
+        if (recent.includes(day)) { st.newest = day; if (!st.oldest || day < st.oldest) st.oldest = day; } else st.oldest = day;
+        days++;
+        await keep();
+      }
+    } catch (e) { if (!(e instanceof OutOfTime)) throw e; more = true; }
+    if (st.oldest && st.oldest > addDays(today, -89)) more = true;
+    return { days, from: st.oldest, more, busy: false };
+  } finally { await db.rpc('release_job_lock', { p_name: 'odoo_sales', p_holder: holder }); }
 }
