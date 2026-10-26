@@ -19,7 +19,7 @@ insert into agents (id, name, role_desc, department_id, is_lead, model) values
 ${agents.join(',\n')}
 on conflict (id) do update set name = excluded.name, role_desc = excluded.role_desc, department_id = excluded.department_id, is_lead = excluded.is_lead, model = excluded.model;
 
-insert into connections (provider) values ('shopify'), ('meta'), ('instagram'), ('google_ads'), ('ga4'), ('triple_whale'), ('openai'), ('gemini'), ('jev'), ('google_trends'), ('keyword_planner')
+insert into connections (provider) values ('shopify'), ('meta'), ('instagram'), ('google_ads'), ('ga4'), ('triple_whale'), ('openai'), ('gemini'), ('jev'), ('google_trends'), ('keyword_planner'), ('odoo')
 on conflict do nothing;
 `);
 console.log(`seed.sql: ${depts.length} departments, ${agents.length} agents`);

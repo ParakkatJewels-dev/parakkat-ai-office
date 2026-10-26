@@ -86,7 +86,7 @@ export const PEOPLE = [
   { id: 'festivalKeeper', name: 'Festival Calendar Keeper', role: 'Festivals, auspicious days, weddings', room: 'goldrate', seat: 1, model: GEM, dept: 'goldrate' },
   { id: 'eventsWatcher', name: 'Local Events Watcher', role: 'Kerala events and holidays', room: 'goldrate', seat: 2, model: GEM, dept: 'goldrate' },
   { id: 'dataLead', name: 'Data Hub Lead', role: 'Head of Data Hub, checks every sync', room: 'datahub', seat: 0, model: GPT_M, dept: 'datahub', head: true },
-  { id: 'shopifySync', name: 'Shopify Sync Bot', role: 'Products, orders, stock', room: 'datahub', seat: 1, model: 'Scheduled job', dept: 'datahub' },
+  { id: 'shopifySync', name: 'Shopify & Odoo Sync Bot', role: 'Products, orders, branch sales, real stock', room: 'datahub', seat: 1, model: 'Scheduled job', dept: 'datahub' },
   { id: 'metaSync', name: 'Meta Sync Bot', role: 'Ads, Instagram, Facebook', room: 'datahub', seat: 2, model: 'Scheduled job', dept: 'datahub' },
   { id: 'googleSync', name: 'Google Sync Bot', role: 'Google Ads, GA4, Triple Whale', room: 'datahub', seat: 3, model: 'Scheduled job', dept: 'datahub' },
   { id: 'forecaster', name: 'Demand Forecaster', role: 'Sales forecast by product', room: 'forecast', seat: 0, model: GPT_W, dept: 'forecast', head: true },

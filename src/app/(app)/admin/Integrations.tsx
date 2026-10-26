@@ -5,7 +5,7 @@ import { Icon } from '@/components/Icon';
 import { when } from '@/components/ui';
 import { chosen, googleId, googleLabel, metaAdLabel, metaId, pageLabel, type GoogleChoice } from '@/lib/connectors/accounts.mjs';
 import { Locked, Submit, GoLink } from '@/components/forms';
-import { chooseAccounts, disconnect } from './actions';
+import { chooseAccounts, disconnect, connectOdoo, disconnectOdoo } from './actions';
 
 const PLATFORMS: { id: Platform; name: string; what: string; envKeys: string[] }[] = [
   { id: 'meta', name: 'Meta', what: 'Ads, Facebook page and Instagram', envKeys: ['META_ACCESS_TOKEN'] },
@@ -77,7 +77,34 @@ export async function Integrations() {
           </div>
         </li>
       );
-    })}</ul>
+    })}
+    <OdooCard saved={saved.odoo as any} />
+    </ul>
+  );
+}
+
+/** Odoo connects with an API key typed here rather than a sign-in. The key is never sent back to the page. */
+function OdooCard({ saved: c }: { saved?: { settings: Record<string, any>; updated_at: string } }) {
+  const s = c?.settings || {}, viaEnv = !c && !!process.env.ODOO_URL && !!process.env.ODOO_API_KEY;
+  return (
+    <li>
+      <div className="integr-top">
+        <span className="tile-ic"><Icon name="plug" size={18} /></span>
+        <div className="grow"><b>Odoo</b><span className="sm">Sales for every showroom and the online store, and the real stock</span></div>
+        {c ? <span className="pill good">Connected</span> : viaEnv ? <span className="pill acc">Vercel keys</span> : <span className="pill">Not connected</span>}
+      </div>
+      {c && <span className="sm">Odoo {s.version} · {s.url ? new URL(s.url).host : ''} · connected {when(c.updated_at)}
+        {(s.warehouses || []).length ? ` · warehouses: ${s.warehouses.join(', ')}` : ''}{(s.pos || []).length ? ` · points of sale: ${s.pos.join(', ')}` : ''}</span>}
+      <Locked key={c?.updated_at || 'new'} action={connectOdoo} saved={!!c} className="integr-pick" label={c ? 'Test and save' : 'Test and connect'} savedNote="Key saved encrypted">
+        <label className="field">Odoo address<input name="url" className="in" required defaultValue={s.url || ''} placeholder="https://parakkat.odoo.com" /></label>
+        <label className="field">Database<input name="db" className="in" defaultValue={s.db || ''} placeholder="Found from the address on Odoo Online" /></label>
+        <label className="field">Login (email of the API user)<input name="login" className="in" defaultValue={s.login || ''} placeholder="Needed for Odoo 18 and older" autoComplete="off" /></label>
+        <label className="field">API key<input name="key" type="password" className="in" required={!c} placeholder={c ? 'Saved. Leave empty to keep it' : 'From Odoo: Preferences > Account Security > New API Key'} autoComplete="new-password" /></label>
+        <label className="field">Sales teams that are the online store<input name="online" className="in" defaultValue={(s.online || []).join(', ')} placeholder="Optional, e.g. Website, Shopify" /></label>
+        <span className="sm">Read only: the app never changes anything in Odoo. Use a user that can read Sales, Point of Sale and Inventory. On Odoo Online the API needs the Custom plan.</span>
+      </Locked>
+      {c && <div className="integr-act"><form action={disconnectOdoo}><Submit ghost small pending="Disconnecting…">Disconnect</Submit></form></div>}
+    </li>
   );
 }
 

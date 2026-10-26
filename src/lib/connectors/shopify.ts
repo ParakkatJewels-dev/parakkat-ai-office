@@ -90,11 +90,13 @@ export async function syncProducts(db: SupabaseClient, deadline = Date.now() + 2
   const keep = (state: ProductPass) => db.from('sync_cursors').upsert({ name: 'shopify_products', state, updated_at: new Date().toISOString() });
   let count = 0, after = pass.after ?? null;
   do {
-    const d: any = await gql(`query($after: String, $q: String) { products(first: 50, after: $after, query: $q) { pageInfo { hasNextPage endCursor }
-      nodes { id title handle productType tags status updatedAt totalInventory featuredMedia { preview { image { url } } } variants(first: 1) { nodes { price } } } } }`, { after, q: pass.query || null });
+    // 25 products with up to 20 variants each keeps the query well under Shopify's cost limit; the SKUs match products to Odoo
+    const d: any = await gql(`query($after: String, $q: String) { products(first: 25, after: $after, query: $q) { pageInfo { hasNextPage endCursor }
+      nodes { id title handle productType tags status updatedAt totalInventory featuredMedia { preview { image { url } } } variants(first: 20) { nodes { price sku } } } } }`, { after, q: pass.query || null });
     const rows = d.products.nodes.map((p: any) => ({
       id: num(p.id), title: p.title, handle: p.handle, product_type: p.productType, tags: p.tags, status: p.status, updated_at: p.updatedAt,
       inventory: p.totalInventory, price: Number(p.variants.nodes[0]?.price ?? 0), image_url: p.featuredMedia?.preview?.image?.url ?? null,
+      skus: [...new Set<string>(p.variants.nodes.map((v: any) => String(v.sku || '').trim()).filter(Boolean))],
     }));
     if (rows.length) { const { error } = await db.from('products').upsert(rows); if (error) throw error; }
     count += rows.length; after = d.products.pageInfo.hasNextPage ? d.products.pageInfo.endCursor : null;

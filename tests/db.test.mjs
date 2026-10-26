@@ -36,6 +36,7 @@ before(async () => {
   await db.exec(read('supabase/migrations/20261024000900_dashboard_filters.sql'));
   await db.exec(read('supabase/migrations/20261024001000_autopilot.sql'));
   await db.exec(read('supabase/migrations/20261024001100_reviews_usage.sql'));
+  await db.exec(read('supabase/migrations/20261026000100_odoo.sql'));
   // what Supabase grants signed-in users by default
   await db.exec(`grant usage on schema public, auth to authenticated; grant all on all tables in schema public to authenticated; grant execute on function auth.uid() to authenticated;`);
   for (const [k, id] of Object.entries(U)) await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [id, { full_name: k }]);
@@ -216,4 +217,26 @@ test('AI images from the studio and from campaigns show in one list with their r
   assert.deepEqual(rows, [{ source: 'design', verdict: 'bad', review: 'stones look plastic' }]);
   assert.equal((await as('perf', `select count(*)::int n from ai_images where id = $1`, [d.id])).rows[0].n, 0, 'only creative heads and admin see designs');
   await db.query(`delete from image_reviews where item_id = $1`, [d.id]); await db.query(`delete from designs where id = $1`, [d.id]);
+});
+
+test('Odoo stock replaces Shopify stock for products matched by SKU, and a matched piece with nothing on hand reads 0', async () => {
+  await db.exec(`insert into products (id, title, status, inventory, skus) values
+    (901, 'Matched ring', 'ACTIVE', 9, '{R-1,R-1B}'), (902, 'Sold out in Odoo', 'ACTIVE', 4, '{N-2}'), (903, 'Not in Odoo', 'ACTIVE', 3, '{X-9}'), (904, 'No SKU', 'ACTIVE', 2, '{}');
+    insert into odoo_stock (sku, warehouse, qty, reserved) values ('R-1', 'Thrissur', 2, 0), ('R-1', 'Kochi', 3, 1), ('R-1B', 'Kochi', 1, 0), ('N-2', '', 0, 0);`);
+  await db.query('select refresh_odoo_stock()');
+  const { rows } = await db.query('select id, stock, stock_source from product_stock where id between 901 and 904 order by id');
+  assert.deepEqual(rows.map(r => [r.id, r.stock, r.stock_source]), [[901, 5, 'odoo'], [902, 0, 'odoo'], [903, 3, 'shopify'], [904, 2, 'shopify']]);
+  await db.exec(`insert into orders_daily (day, product_id, units, revenue) values (current_date, 902, 1, 100)`);
+  const top = await db.query(`select inventory from sales_by_product(current_date - 1, 5) where product_id = 902`);
+  assert.equal(top.rows[0].inventory, 0);
+});
+
+test('branch sales compare each branch with the same number of days before', async () => {
+  await db.exec(`insert into odoo_branch_daily (day, branch, kind, orders, revenue) values
+    (current_date, 'Thrissur', 'showroom', 3, 300), (current_date - 1, 'Thrissur', 'showroom', 1, 100),
+    (current_date - 2, 'Thrissur', 'showroom', 2, 200), (current_date, 'Website', 'online', 1, 50)`);
+  const { rows } = await db.query(`select branch, kind, orders, revenue, prev_revenue from branch_sales(current_date - 1)`);
+  assert.deepEqual(rows.map(r => [r.branch, r.kind, Number(r.orders), Number(r.revenue), Number(r.prev_revenue)]), [['Thrissur', 'showroom', 4, 400, 200], ['Website', 'online', 1, 50, 0]]);
+  const signedIn = await as('ecom', 'select count(*)::int as n from odoo_branch_daily');
+  assert.equal(signedIn.rows[0].n, 4);
 });
