@@ -36,6 +36,7 @@ before(async () => {
   await db.exec(read('supabase/migrations/20261024000900_dashboard_filters.sql'));
   await db.exec(read('supabase/migrations/20261024001000_autopilot.sql'));
   await db.exec(read('supabase/migrations/20261024001100_reviews_usage.sql'));
+  await db.exec(read('supabase/migrations/20261026000000_design_library.sql'));
   await db.exec(read('supabase/migrations/20261026000100_odoo.sql'));
   // what Supabase grants signed-in users by default
   await db.exec(`grant usage on schema public, auth to authenticated; grant all on all tables in schema public to authenticated; grant execute on function auth.uid() to authenticated;`);
@@ -217,6 +218,35 @@ test('AI images from the studio and from campaigns show in one list with their r
   assert.deepEqual(rows, [{ source: 'design', verdict: 'bad', review: 'stones look plastic' }]);
   assert.equal((await as('perf', `select count(*)::int n from ai_images where id = $1`, [d.id])).rows[0].n, 0, 'only creative heads and admin see designs');
   await db.query(`delete from image_reviews where item_id = $1`, [d.id]); await db.query(`delete from designs where id = $1`, [d.id]);
+});
+
+test('the design library picks matching past designs, never hidden ones, and only creative heads and admin see it', async () => {
+  await db.exec(`insert into design_library_folders (id, root_id, name) values ('folderAAAAAAAA', 'folderAAAAAAAA', 'Campaigns')`);
+  await db.exec(`insert into design_refs (drive_id, folder_id, name, status, image_path, occasion, style, quality, hidden) values
+    ('d1', 'folderAAAAAAAA', 'onam-2025.jpg', 'ready', 'library/1.jpg', 'Onam', 'kasavu gold border, temple necklace on green silk', 4, false),
+    ('d2', 'folderAAAAAAAA', 'diwali-2025.jpg', 'ready', 'library/2.jpg', 'Diwali', 'diyas and deep maroon', 5, false),
+    ('d3', 'folderAAAAAAAA', 'onam-old.jpg', 'ready', 'library/3.jpg', 'Onam', 'kasavu, dated look', 5, true),
+    ('d4', 'folderAAAAAAAA', 'onam-new.jpg', 'new', null, null, null, null, false)`);
+  for (let i = 0; i < 5; i++) {
+    const { rows } = await db.query(`select name from pick_design_refs('onam or kasavu', 1)`);
+    assert.equal(rows[0].name, 'onam-2025.jpg', 'the Onam design wins over a better-finished Diwali one, and the hidden one never shows');
+  }
+  const two = (await db.query(`select name from pick_design_refs('onam', 3, array[(select id from design_refs where drive_id = 'd1')])`)).rows.map(r => r.name);
+  assert.deepEqual(two, ['diwali-2025.jpg'], 'a redesign leaves out the last references; unstudied and hidden ones are never picked');
+  await db.query(`select mark_design_refs_used(array(select id from design_refs where drive_id = 'd1'))`);
+  assert.equal((await db.query(`select uses from design_refs where drive_id = 'd1'`)).rows[0].uses, 1);
+  assert.equal((await as('creative', `select count(*)::int n from design_refs`)).rows[0].n, 4);
+  assert.equal((await as('perf', `select count(*)::int n from design_refs`)).rows[0].n, 0, 'other heads do not see the library');
+  await db.exec(`delete from design_library_folders`);
+  assert.equal((await db.query(`select count(*)::int n from design_refs`)).rows[0].n, 0, 'removing a folder removes its designs');
+});
+
+test('a campaign banner being redesigned shows in the gallery with its version count', async () => {
+  const { rows: [c] } = await db.query(`insert into campaigns (name, occasion, plan, budget_daily) values ('Onam gold', 'Onam', '{}', 0) returning id`);
+  const { rows: [cr] } = await db.query(`insert into creatives (campaign_id, kind, image_path, art_status, versions, redo_note) values ($1, 'banner', 'c/banner.png', 'making', '[{"image_path":"c/banner.png"}]', 'warmer light') returning id`, [c.id]);
+  const { rows } = await db.query(`select source, status, versions, redo_note, campaign_name from ai_images where id = $1`, [cr.id]);
+  assert.deepEqual(rows, [{ source: 'creative', status: 'making', versions: 1, redo_note: 'warmer light', campaign_name: 'Onam gold' }]);
+  await db.query(`delete from campaigns where id = $1`, [c.id]);
 });
 
 test('Odoo stock replaces Shopify stock for products matched by SKU, and a matched piece with nothing on hand reads 0', async () => {

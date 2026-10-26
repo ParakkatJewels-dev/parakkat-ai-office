@@ -1,6 +1,8 @@
 import { requireUser } from '@/lib/auth/session';
 import { ROLE_LABEL, type AppRole } from '@/lib/roles';
 import { decideReport, decideApproval } from './actions';
+import { redesign } from '../studio/actions';
+import { Refresher } from '@/components/Refresher';
 import { Icon } from '@/components/Icon';
 import { Submit } from '@/components/forms';
 import type { Proposal } from '@/lib/agents/campaign';
@@ -30,7 +32,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
   const [{ data: myReports, count: myCount }, { data: doneReports, count: doneCount }, { data: plans, count: planCount }, { data: pending }, { count: live }, { data: agents }, { data: depts }] = await Promise.all([
     db.from('reports').select(reportCols, { count: 'exact' }).eq('status', 'with_head').order('updated_at', { ascending: false }).range(r0, r1),
     db.from('reports').select(reportCols, { count: 'exact' }).in('status', ['accepted', 'sent_back', 'rejected']).order('updated_at', { ascending: false }).range(d0, d1),
-    db.from('approvals').select('id, status, version, required_roles, created_at, approval_steps(role, decision, note), campaigns(id, name, occasion, plan, budget_daily, channels, creatives(id, kind, language, headline, body, image_path))', { count: 'exact' }).order('created_at', { ascending: false }).range(p0, p1),
+    db.from('approvals').select('id, status, version, required_roles, created_at, approval_steps(role, decision, note), campaigns(id, name, occasion, plan, budget_daily, channels, creatives(id, kind, language, headline, body, image_path, art_status, art_error, versions, review_note))', { count: 'exact' }).order('created_at', { ascending: false }).range(p0, p1),
     db.from('approvals').select('id, status, required_roles, approval_steps(role, decision)').eq('status', 'pending').limit(500),
     db.from('approvals').select('id', { count: 'exact', head: true }).eq('status', 'published'),
     db.from('agents').select('id, name, department_id'), db.from('departments').select('id, name'),
@@ -45,6 +47,8 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
   return (
     <div className="page">
       {sp.error && <p className="flash">{sp.error}</p>}
+      {sp.msg && <p className="flash ok">{sp.msg}</p>}
+      <Refresher active={view.some(v => (v.c?.creatives || []).some((x: any) => ['queued', 'making'].includes(x.art_status)))}>A banner is being redesigned in the background. This page updates on its own.</Refresher>
       <PageHead title="Approvals" sub="Reports reach you only after your department's AI team lead has checked them. Plans go from the AI CMO to the heads they touch, then to the Super Admin, who alone can publish." />
 
       <section className="tiles" aria-label="Summary">
@@ -82,11 +86,26 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
         <h2 className="section-title">Campaign plans</h2>
         {view.length ? view.map(({ p, c, steps, approved, next, mine }) => {
           const chain: AppRole[] = [...(p.required_roles as AppRole[]), 'super_admin'];
-          const banner = c.creatives?.find((x: any) => x.image_path);
+          const banner = c.creatives?.find((x: any) => x.image_path || x.art_status);
+          const drawing = ['queued', 'making'].includes(banner?.art_status);
           const bad = steps.filter(s => s.decision !== 'approve');
           return (
             <article key={p.id} className="card plan">
-              <div className="plan-art">{banner && url(banner.image_path) ? <img src={url(banner.image_path)} alt={`Banner for ${c.name}`} loading="lazy" decoding="async" /> : <div className="empty"><Icon name="spark" size={26} /><p>No banner image</p></div>}</div>
+              <div className="plan-art" id={`art-${p.id}`}>
+                <div className="art-box">{banner && url(banner.image_path) ? <img src={url(banner.image_path)} alt={`Banner for ${c.name}`} loading="lazy" decoding="async" /> : <div className="empty"><Icon name="spark" size={26} /><p>{drawing ? 'Designing the banner…' : 'No banner image'}</p></div>}
+                  {drawing && banner?.image_path && <span className="redoing"><span className="spin" aria-hidden="true" />Making version {(banner.versions?.length || 0) + 2}</span>}</div>
+                {banner?.art_error && !drawing && <p className="sm err">{banner.image_path ? 'The last redesign failed: ' : ''}{banner.art_error.slice(0, 160)}</p>}
+                {banner?.review_note && !drawing && !banner.art_error && <p className="sm">AI lead: {banner.review_note}</p>}
+                {banner && !drawing && p.status !== 'published' && (
+                  <details className="redo"><summary><Icon name="sync" size={14} />Redesign the banner</summary>
+                    <form action={redesign}>
+                      <input type="hidden" name="source" value="creative" /><input type="hidden" name="id" value={banner.id} /><input type="hidden" name="back" value={`/approvals${pp > 1 ? `?pp=${pp}` : ''}#art-${p.id}`} />
+                      <textarea name="note" className="in" rows={2} maxLength={600} placeholder="What to change (optional). Empty tries a new direction." aria-label="What to change" />
+                      <Submit small icon="sync" pending="Starting…">Make a new version</Submit>
+                    </form>
+                  </details>
+                )}
+              </div>
               <div className="plan-main">
                 <header className="report-head"><div className="grow"><span className="pill acc">{c.occasion}</span><h3 className="title">{c.name}{p.version > 1 ? ` · v${p.version}` : ''}</h3></div>
                   <span className={`pill ${p.status === 'published' ? 'good' : p.status === 'pending' ? 'warn' : p.status === 'approved' ? 'acc' : 'bad'}`}>{p.status === 'published' ? 'Live' : p.status === 'pending' ? (mine ? 'Needs you' : 'In sign-off') : p.status === 'changes' ? 'Changes requested' : p.status}</span></header>

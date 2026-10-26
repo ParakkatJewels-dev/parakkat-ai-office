@@ -12,6 +12,7 @@ import { startCampaign } from './campaign';
 import { syncAll } from './sync';
 import { upcoming, covered } from './occasions.mjs';
 import { runSeo } from './seo';
+import { scanLibrary } from './library';
 import { branchBrief } from './branches';
 
 /**
@@ -39,6 +40,8 @@ const JOBS: Job[] = [
   { name: 'rivals', every: 3 * H, hours: [9, 21], run: rivals },
   { name: 'seo', every: 7 * 24 * H, hours: [6, 22], run: async db => { const r = await runSeo(db); return `${r.keywords} search terms${r.problems.length ? `; ${r.problems.join('; ')}` : ''}`; } },
   { name: 'budget', every: 20 * H, hours: [9, 21], run: budget },
+  // reads the picked Drive folders a page at a time and studies new past designs, so a big library fills in over a few hours
+  { name: 'library', every: 0.15 * H, run: scanLibrary },
 ];
 
 /** Run the most overdue job, if any is due. One at a time, so a slow sync never overlaps the next tick. */

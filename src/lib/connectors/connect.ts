@@ -22,7 +22,8 @@ export const APP_KEYS: Record<Platform, string[]> = {
 export const appReady = (p: Platform) => has(...APP_KEYS[p]);
 
 const META_SCOPES = ['ads_read', 'ads_management', 'business_management', 'pages_show_list', 'pages_read_engagement', 'pages_manage_ads', 'instagram_basic', 'instagram_manage_insights'];
-const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/adwords', 'https://www.googleapis.com/auth/analytics.readonly'];
+// drive.readonly lets the design library read the folders of past designs picked in Design Studio
+const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/adwords', 'https://www.googleapis.com/auth/analytics.readonly', 'https://www.googleapis.com/auth/drive.readonly'];
 const SHOPIFY_SCOPES = 'read_products,read_orders,read_inventory';
 
 export function authorizeUrl(p: Platform, redirectUri: string, state: string, shop?: string) {

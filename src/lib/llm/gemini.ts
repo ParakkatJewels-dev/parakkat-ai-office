@@ -34,12 +34,15 @@ export async function imagePart(url: string): Promise<Part> {
 
 /**
  * Make a banner from real product photos. The product must stay exactly as photographed:
- * Gemini only builds the scene, light and layout around it.
+ * Gemini only builds the scene, light and layout around it. Reference images are Parakkat's own past designs,
+ * labelled as such so the model takes their finish and art direction, never their jewellery or their exact layout.
  */
-export async function bannerImage(prompt: string, productPhotos: string[], aspectRatio?: string, photoParts?: Part[]): Promise<{ data: Buffer; mimeType: string }> {
+export async function bannerImage(prompt: string, productPhotos: string[], aspectRatio?: string, photoParts?: Part[], refs: Part[] = []): Promise<{ data: Buffer; mimeType: string }> {
   const photos = photoParts || await Promise.all(productPhotos.slice(0, 3).map(imagePart));
   const parts = await generate(opt('GEMINI_IMAGE_MODEL', 'gemini-3.1-flash-image'), [
-    { text: `${prompt}\nKeep every piece of jewellery exactly as in the attached product photos: same design, stones, colour and proportions. Do not invent jewellery.` },
+    { text: `${prompt}\nKeep every piece of jewellery exactly as in the PRODUCT PHOTOS: same design, stones, colour and proportions. Do not invent jewellery.` },
+    ...(refs.length ? [{ text: `STYLE REFERENCES: ${refs.length} past Parakkat Jewels design${refs.length === 1 ? '' : 's'}. Match their level of finish, art direction and typography. Do not copy their layout, their text or the jewellery in them.` }, ...refs] : []),
+    { text: 'PRODUCT PHOTOS:' },
     ...photos,
   ], true, aspectRatio);
   const img = parts.find(p => p.inlineData)?.inlineData;
