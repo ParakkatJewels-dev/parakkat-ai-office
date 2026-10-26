@@ -27,6 +27,7 @@ const AUTOPILOT = [
   { id: 'rivals', name: 'Competitor Scout', when: 'Every 3 hours, 9am to 9pm. This week\'s competitor moves' },
   { id: 'seo', name: 'SEO Desk weekly check', when: 'Weekly. Google Trends and Keyword Planner, then title and description fixes' },
   { id: 'budget', name: 'Budget Guard: running costs', when: 'Daily. Warns you once a month when AI and API spend nears the budget on Usage and billing' },
+  { id: 'library', name: 'Banner Designer: design library', when: 'Every 10 minutes. Reads the Drive folders picked in Design Studio and studies new past designs' },
 ];
 
 const TABS = [

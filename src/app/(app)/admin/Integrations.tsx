@@ -9,7 +9,7 @@ import { chooseAccounts, disconnect } from './actions';
 
 const PLATFORMS: { id: Platform; name: string; what: string; envKeys: string[] }[] = [
   { id: 'meta', name: 'Meta', what: 'Ads, Facebook page and Instagram', envKeys: ['META_ACCESS_TOKEN'] },
-  { id: 'google', name: 'Google', what: 'Google Ads, Keyword Planner and Analytics', envKeys: ['GOOGLE_OAUTH_REFRESH_TOKEN'] },
+  { id: 'google', name: 'Google', what: 'Google Ads, Keyword Planner, Analytics and Drive (past designs)', envKeys: ['GOOGLE_OAUTH_REFRESH_TOKEN'] },
   { id: 'shopify', name: 'Shopify', what: 'Products, stock and orders', envKeys: ['SHOPIFY_ADMIN_TOKEN', 'SHOPIFY_STORE_DOMAIN'] },
 ];
 const DAY = 864e5;

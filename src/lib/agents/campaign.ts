@@ -1,7 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { chatJSON } from '@/lib/llm/openai';
-import { bannerImage } from '@/lib/llm/gemini';
+import { drawItem } from './design';
 import { classify } from '@/lib/llm/jev';
 import { competitorInstagram, metaConfig } from '@/lib/connectors/meta';
 import { has } from '@/lib/env';
@@ -213,24 +213,28 @@ Shape: {"name": "...", "occasion": "...", "headline": "max 5 words", "sub": "max
   async create(db, run, s) {
     const p = s.plan!;
     const { data: prods } = await db.from('products').select('id, title, price, image_url').in('id', p.product_ids);
-    const { data: camp, error } = await db.from('campaigns').insert({ run_id: run.id, name: p.name, occasion: p.occasion, plan: p, budget_daily: p.budget_daily, channels: p.channels,
-      start_date: new Date().toISOString().slice(0, 10), end_date: new Date(Date.now() + p.days * 864e5).toISOString().slice(0, 10) }).select().single();
+    // a retried step picks up the campaign it already made instead of making a second one
+    const { data: had } = await db.from('campaigns').select('id').eq('run_id', run.id).limit(1).maybeSingle();
+    if (had) await db.from('creatives').delete().eq('campaign_id', had.id);
+    const fields = { run_id: run.id, name: p.name, occasion: p.occasion, plan: p, budget_daily: p.budget_daily, channels: p.channels,
+      start_date: new Date().toISOString().slice(0, 10), end_date: new Date(Date.now() + p.days * 864e5).toISOString().slice(0, 10) };
+    const { data: camp, error } = had ? await db.from('campaigns').update(fields).eq('id', had.id).select().single() : await db.from('campaigns').insert(fields).select().single();
     if (error) throw error;
     s.campaign_id = camp.id;
     await emit(db, run.id, 'think', 'copywriter', 'Writing headlines and captions');
     const copy = await chatJSON<{ en: { headline: string; body: string }; ml: { headline: string; body: string } }>('worker', persona('copywriter', 'Write ad copy. Malayalam must be natural Kerala Malayalam. Mention prices only if given. Shape: {"en": {"headline": "...", "body": "..."}, "ml": {"headline": "...", "body": "..."}}'),
       `${p.name} for ${p.occasion}. Headline idea: ${p.headline}. Products: ${(prods || []).map(x => `${x.title} ${inr(x.price)}`).join(', ')}`);
     await emit(db, run.id, 'say', 'malayalam', `Malayalam headline: ${copy.ml.headline}`, 'creativeDirector');
-    const photos = (prods || []).map(x => x.image_url).filter(Boolean) as string[];
+    const photos = (prods || []).filter(x => x.image_url).map(x => x.id);
     s.creative_ids = [];
     if (photos.length && has('GEMINI_API_KEY')) {
-      await emit(db, run.id, 'think', 'designer', 'Generating banners from the Shopify photos');
-      const img = await withUsage({ agent: 'designer' }, () => bannerImage(`Luxury ${p.occasion} jewellery banner for Parakkat Jewels, 1080x1080. Elegant black and warm champagne palette, soft studio light, festive Kerala touches. Space for the headline "${p.headline}".`, photos));
-      const path = `${camp.id}/banner-1.${img.mimeType.split('/')[1] || 'png'}`;
-      const up = await db.storage.from('creatives').upload(path, img.data, { contentType: img.mimeType, upsert: true });
-      if (up.error) throw up.error;
-      const { data: cr } = await db.from('creatives').insert({ campaign_id: camp.id, kind: 'banner', language: 'en', headline: copy.en.headline, body: copy.en.body, image_path: path, product_ids: p.product_ids }).select().single();
-      s.creative_ids.push(cr!.id);
+      // drawn the same way as a Studio order: past designs as references, a fresh concept, the team lead's check
+      await emit(db, run.id, 'think', 'designer', 'Designing the banner from the Shopify photos and our past designs');
+      const { data: cr, error: ce } = await db.from('creatives').insert({ campaign_id: camp.id, kind: 'banner', format: 'post', language: 'en', headline: copy.en.headline, body: copy.en.body,
+        product_ids: photos.slice(0, 3), art_status: 'queued', queued_at: new Date().toISOString() }).select().single();
+      if (ce) throw ce;
+      s.creative_ids.push(cr.id);
+      await drawItem(db, 'creative', cr.id);
     } else {
       await emit(db, run.id, 'feedback', 'designer', 'No product photos or Gemini key, so this plan has copy only.', 'creativeDirector');
     }
