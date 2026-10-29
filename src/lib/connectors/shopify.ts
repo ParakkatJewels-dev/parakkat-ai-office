@@ -50,6 +50,13 @@ async function adminToken(s: Store) {
   return cached.token;
 }
 
+/** Server-only access for narrowly scoped, human-reviewed catalogue updates. */
+export async function shopifyAutomationAccess() {
+  const s=await store();
+  if(!s)throw new Error('Shopify is not connected.');
+  return {domain:s.domain,token:await adminToken(s)};
+}
+
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** One GraphQL call. Waits when Shopify's query budget runs low and retries when it says THROTTLED. */

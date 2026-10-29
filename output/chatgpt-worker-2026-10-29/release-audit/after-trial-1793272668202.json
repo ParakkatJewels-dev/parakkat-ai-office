@@ -1,0 +1,322 @@
+{
+  "release": "chatgpt-image-worker-20261029-r1",
+  "at": "2026-10-29T11:17:47.940Z",
+  "mode": "snapshot",
+  "systemStateBefore": {
+    "id": 1,
+    "paused": false,
+    "paused_at": null,
+    "paused_by": null,
+    "reason": null
+  },
+  "systemStateAfter": {
+    "id": 1,
+    "paused": false,
+    "paused_at": null,
+    "paused_by": null,
+    "reason": null
+  },
+  "stablePauseState": true,
+  "consistentDatabaseSnapshot": false,
+  "note": "Read-only paginated hashes; not one database transaction. Capture after pause+drain for release comparison.",
+  "protected": {
+    "designs": {
+      "count": 20,
+      "sha256": "c5fd895d49eda499e6a0d73e032ec4195e566e5ca8f0a306539d9075f8db61af",
+      "rows": [
+        {
+          "key": "00780dbc-083d-4975-ad18-d73335775e93",
+          "sha256": "db42c16b89cde3567bde0868875cd746aa3deebd133b8b1ab76e46f4bba72dd3",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "19f318c6-bc9a-4457-893e-1fe5f50d81f4",
+          "sha256": "cae542fffac52c5f47a90e6d454a3d499fa733ffa955732d4fac117f961be88b",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "27bc4373-be89-4ba3-8a89-e887ba1eef00",
+          "sha256": "8e6b5874efec734c86030af9553bbef844f4d07e32e33e7bff7957ae569b638d",
+          "versionsSha256": "ff3382cb74e3ad606e2e092c6585959d1a1b9db9ef32e187aa96d3f08ce3b427",
+          "versionCount": 3
+        },
+        {
+          "key": "3a6ffb36-043a-42af-a116-6fb5b2b3af9b",
+          "sha256": "ac8fd7c8cf7eb04196439769ba57ec16a1a8741e329e68ef1a2ce73b9fc6b64e",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "55a5f0cb-a6a4-448d-8db0-842a93b0190e",
+          "sha256": "714a0e1470f2beb58ebfd3f274bd12c0ed2c074daf0471e7808708c478bedd0a",
+          "versionsSha256": "3837d3bfe1fee0807f2df5d35ea17f1fe254868dd8e6c83495eaaac53b876656",
+          "versionCount": 3
+        },
+        {
+          "key": "5a5a452d-b228-4e25-9881-5fb2381103f7",
+          "sha256": "4cba8518e305915e640d0db3ea3e00b87f691e441cc6ef2b3c02626f977535e0",
+          "versionsSha256": "35df7605238b5508f2a0be047ff07a09e36c276dc2da4aa27a529fe5b27145d8",
+          "versionCount": 3
+        },
+        {
+          "key": "5f6d3c25-e54a-4172-8f71-fa77665f07b7",
+          "sha256": "8342a15568630234fbf112b20bb838eff01c856c3b26761b9acbf55dc46aeb2d",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "5fd86041-2e06-46e5-afbc-32f5d506e056",
+          "sha256": "8df48b50740c8b0f5c004cf84eb9cae31148b4ca767c09e7451a91f45b4eba5e",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "734d096c-3a11-4abb-a14a-f3dd5322a679",
+          "sha256": "44824b48b7e5622e7a8a8cef7d031e9f0dbacfaa04635fc7c1f583b02dc0dfdb",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "81dd0795-a162-4f07-9e41-14f5e9488fee",
+          "sha256": "85c55077ba7e515b859083426775d7657cb2148c23802a6b4ef56b116d9e8364",
+          "versionsSha256": "afa10cf541838e9c859d73effe38dd66e243bd56cdaec2b0d6e932a8ee8c71e9",
+          "versionCount": 3
+        },
+        {
+          "key": "859f552f-f858-4f47-8c71-94c05cc3e23f",
+          "sha256": "12d926e9359c20939986bc28b7844cbe10e261bf17a69c77cf5b010c8344420f",
+          "versionsSha256": "d65f8febeba4a3f3bb899812aae86616f9d4d2375694704fadf8b92af86298e8",
+          "versionCount": 3
+        },
+        {
+          "key": "891a5e0d-7a71-4c9a-bcd0-a6ae2d6076d5",
+          "sha256": "20717ab8557ca1dea1e254d105b7cd7cc16b6d1d0a2599e952736fc101a67a9c",
+          "versionsSha256": "13ccd0a14fce52dac2bf3399fd372b09007681e7fe787539b43a2a4b56919ba9",
+          "versionCount": 3
+        },
+        {
+          "key": "902577cc-ca8b-4cee-b7ea-d7f0ade32ff6",
+          "sha256": "ae538da2f02d7c2fd5f7948cafcf9c894a50ebb8b6590ce568b90189f5a98133",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "9f17123c-719b-4286-8869-a81717621cfd",
+          "sha256": "bc21343feae87967e4dc10f204ca4b7fb9ba43334d92726ae81b7a1de32d3968",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "a9cf9fa7-586f-43b4-b4a6-d1636976b7fb",
+          "sha256": "9ef5ae994b8d0b3566e3d8e858914658651750b205998895eef5b481067bebed",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "b0fa7d05-c4f5-4b3e-8b52-31728e45964b",
+          "sha256": "86c3484c69093e93d0398caf0719958cd6dbb05c343a574bca0cecc59439ce97",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "b3853c73-0c19-47bf-a71b-3e809a95b6a2",
+          "sha256": "f0a363fe7cdf7b58aa3de59cd5f3873e787d728123ef569774ca12148ae6523e",
+          "versionsSha256": "114f68e83c9b917bafd19aa7cadcc4629e316ef33abaf225f3cd9577f50b4f0c",
+          "versionCount": 4
+        },
+        {
+          "key": "c28ab8b5-89d1-46ae-aaf1-c7bb277381bc",
+          "sha256": "15a1fe7164fdf69b7ccf51a1f4c5d4463d71c5fa00a1e67b0eca5b04f71f0118",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "cd017b60-8b9c-448d-bc10-f7bb546f7167",
+          "sha256": "81e4001caeef1ca0c6c921ae4ee9b394c12d358257b9167ca13ef4053b37862b",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "eb472f2e-60cd-4540-b652-2d08633d308f",
+          "sha256": "3b3c0709576ba97f7c286da2ba1b6b013ec48ffce0f417948c1ecc2cc009e62b",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        }
+      ]
+    },
+    "creatives": {
+      "count": 4,
+      "sha256": "af9eae2bc430346919a75bfec5cda054d3f7b9d3905e484b118440dff5f96c1f",
+      "rows": [
+        {
+          "key": "0b2e3bad-df6b-4434-9d03-32a988e9c764",
+          "sha256": "68a7e95849fb8fea4b3e18fe089a2c65d5fbe6ecf08a179c0d07d327b23ca842",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "b44bfd5d-b9b8-42b3-82a9-5373a27e9819",
+          "sha256": "63fc9543f92344c28ec334b686785f056b1e13821213b4d90ca05421cb58031e",
+          "versionsSha256": "5f6870f40520bae2473836a8e268677278e914f984c4bde6ef94110bd1b57ea4",
+          "versionCount": 9
+        },
+        {
+          "key": "b7f09430-7d3d-4d99-babe-1c2156f5e27a",
+          "sha256": "1f0e0ca05a69c638a3e5188ee7a44eead3b91498006280be084bfd86c871058c",
+          "versionsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "versionCount": 0
+        },
+        {
+          "key": "d19c5c87-f595-474e-9d02-03880df56342",
+          "sha256": "5cd41a68f120807d6e50bbb2e3bb168da54762a8d79229586268ec04aa13c68e",
+          "versionsSha256": "bce2aa4998500d9797cce7a917a31b8d303eb6c01d365b5ad61a037cfa563dc6",
+          "versionCount": 8
+        }
+      ]
+    },
+    "imageReviews": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "rows": []
+    }
+  },
+  "activity": {
+    "at": "2026-10-29T11:17:47.216Z",
+    "blocking": {
+      "agent_tasks_running": {
+        "count": 0
+      },
+      "agent_meetings_running": {
+        "count": 0
+      },
+      "agent_runs_running": {
+        "count": 0
+      },
+      "automation_tasks_running": {
+        "count": 0
+      },
+      "automation_task_live_leases": {
+        "count": 0
+      },
+      "automation_actions_executing": {
+        "count": 0
+      },
+      "designs_active": {
+        "count": 0
+      },
+      "creatives_active": {
+        "count": 0
+      },
+      "carousel_backgrounds_active": {
+        "count": 0
+      },
+      "job_locks_live": {
+        "count": 0
+      },
+      "higgsfield_active": {
+        "count": 0
+      },
+      "higgsfield_live_leases": {
+        "count": 0
+      },
+      "higgsfield_projects_creating": {
+        "count": 0
+      },
+      "chatgpt_images_active": {
+        "count": 0
+      },
+      "chatgpt_images_live_leases": {
+        "count": 0
+      },
+      "recent_text_reservations": {
+        "count": 0
+      }
+    },
+    "informational": {
+      "agent_tasks_queued": {
+        "count": 0
+      },
+      "automation_tasks_queued": {
+        "count": 0
+      },
+      "designs_queued": {
+        "count": 0
+      },
+      "creatives_queued": {
+        "count": 0
+      },
+      "higgsfield_queued": {
+        "count": 0
+      },
+      "higgsfield_uncertain": {
+        "count": 0
+      },
+      "chatgpt_images_queued": {
+        "count": 0
+      },
+      "chatgpt_images_uncertain": {
+        "count": 0
+      },
+      "old_text_reservations": {
+        "count": 0
+      }
+    },
+    "blockerNames": []
+  },
+  "bangle": {
+    "id": "c28ab8b5-89d1-46ae-aaf1-c7bb277381bc",
+    "found": true,
+    "status": "ready",
+    "requestId": "6a8e8d9c-3d0f-4acf-b1ef-b85cacb4bc0f",
+    "hasPreviousImage": true,
+    "selectedProductCount": 1,
+    "products": [
+      {
+        "id": "9196947276095",
+        "present": true,
+        "hasHttpsImage": true,
+        "imageHost": "cdn.shopify.com"
+      }
+    ],
+    "cachedBundlePresent": true,
+    "cachedRequestMatches": true,
+    "cachedBundleSha256": "21a2b453704f4d305c3b4509cb0848b86af06eeca0c416b9da63b984bf45c81f",
+    "cachedPromptPresent": true,
+    "frozenReferenceCount": 3,
+    "references": [
+      {
+        "id": "1bbc009d-c222-45f0-a0de-ae9e7e722951",
+        "present": true,
+        "ready": true,
+        "versionMatches": true,
+        "driveIdMatches": true
+      },
+      {
+        "id": "7bdbb477-4a78-4b61-91f9-b0d699d87367",
+        "present": true,
+        "ready": true,
+        "versionMatches": true,
+        "driveIdMatches": true
+      },
+      {
+        "id": "4315833a-538c-497c-80c7-2ae53616f124",
+        "present": true,
+        "ready": true,
+        "versionMatches": true,
+        "driveIdMatches": true
+      }
+    ],
+    "previousHiggsfieldJobs": [
+      {
+        "id": "0b02508d-bc58-43bf-8fde-f75ecef285e2",
+        "state": "blocked",
+        "error_code": "credits",
+        "provider_request_id": null
+      }
+    ],
+    "knownHiggsfieldConflict": false,
+    "scope": "Metadata read only. Actual reference bytes and requester permissions are rechecked by reserve/claim/dispatch/import before generation or save-back."
+  }
+}

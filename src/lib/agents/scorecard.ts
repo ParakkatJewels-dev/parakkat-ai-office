@@ -1,6 +1,8 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { FORMATS } from './design';
+import { readAgentWork } from './agent-work';
+import { activityState } from './activity-core.mjs';
 
 export type Ev = { id: number; at: string; kind: string; text: string; run_id: string | null; from_agent: string | null; to_agent: string | null };
 export type Card = {
@@ -19,24 +21,28 @@ export type AgentCampaign = { agent_id: string; campaign_id: string; name: strin
 export async function scorecards(db: SupabaseClient, ids: string[]) {
   const since = new Date(Date.now() - 30 * 864e5).toISOString();
   const makers = Object.entries(FORMATS).filter(([, f]) => ids.includes(f.maker));
-  const [{ data: act, error }, { data: camps }, designCounts] = await Promise.all([
+  const [{ data: act, error }, { data: camps }, designCounts, enabled] = await Promise.all([
     db.rpc('agent_activity', { p_ids: ids, p_since: since }),
     db.rpc('agent_campaigns', { p_ids: ids, p_since: since }),
     Promise.all(makers.map(async ([fmt, f]) => {
       const { count } = await db.from('designs').select('id', { count: 'exact', head: true }).eq('format', fmt).neq('status', 'failed').gte('created_at', since);
       return [f.maker, count || 0] as const;
     })),
+    // Callers already scope IDs to the signed-in head's departments. Recheck enabled
+    // state before exposing process-local work; a recent event is only history.
+    db.from('agents').select('id').in('id', ids).eq('enabled', true),
   ]);
   if (error) throw error;
+  if (enabled.error) throw enabled.error;
   const designs = new Map<string, number>(); designCounts.forEach(([m, n]) => designs.set(m, (designs.get(m) || 0) + n));
   const campaigns = (camps || []) as AgentCampaign[], now = Date.now();
+  const working = readAgentWork((enabled.data || []).map(agent => agent.id), now);
   const cards: Record<string, Card> = {};
   for (const a of act || []) {
     const mine = campaigns.filter(c => c.agent_id === a.agent_id), live = mine.filter(c => c.status === 'live');
-    const age = a.last_at ? now - new Date(a.last_at).getTime() : Infinity;
     cards[a.agent_id] = {
       id: a.agent_id, last: a.last_at ? { at: a.last_at, text: a.last_text } : null,
-      state: age < 10 * 6e4 ? 'now' : age < 864e5 ? 'today' : 'quiet', actions: Number(a.actions),
+      state: activityState(a.last_at, working[a.agent_id], now), actions: Number(a.actions),
       reports: Number(a.reports), forwarded: Number(a.forwarded), accepted: Number(a.accepted), pushedBack: Number(a.pushed_back),
       runs: mine.length, live: live.length, spend: live.reduce((s, c) => s + Number(c.spend), 0), revenue: live.reduce((s, c) => s + Number(c.revenue), 0),
       designs: designs.get(a.agent_id) || 0,

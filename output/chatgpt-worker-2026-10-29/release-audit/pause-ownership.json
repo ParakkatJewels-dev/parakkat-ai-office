@@ -1,0 +1,22 @@
+{
+  "release": "chatgpt-image-worker-20261029-r1",
+  "nonce": "e5baf356-bc89-49d9-a7a5-d4c53bf5965f",
+  "phase": "resumed",
+  "owned": false,
+  "prior": {
+    "id": 1,
+    "paused": false,
+    "paused_at": null,
+    "paused_by": null,
+    "reason": null
+  },
+  "pausedState": {
+    "id": 1,
+    "paused": true,
+    "paused_at": "2026-10-29T11:12:49.710Z",
+    "paused_by": null,
+    "reason": "chatgpt-image-worker-20261029-r1"
+  },
+  "confirmedAt": "2026-10-29T11:12:49.809Z",
+  "resumedAt": "2026-10-29T11:14:48.243Z"
+}

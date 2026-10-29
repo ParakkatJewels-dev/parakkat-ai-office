@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Parakkat SEO every Monday at 07:00 India time
+
+[Timer]
+OnCalendar=Mon *-*-* 01:30:00 UTC
+Persistent=true
+Unit=parakkat-job@seo.service
+
+[Install]
+WantedBy=timers.target

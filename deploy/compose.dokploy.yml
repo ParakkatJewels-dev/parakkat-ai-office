@@ -1,0 +1,69 @@
+# Launch from the repo root with:
+# docker compose --env-file /etc/parakkat-ai-office.env -f deploy/compose.dokploy.yml up -d --build
+name: parakkat-ai-office
+services:
+  parakkat-ai-office:
+    image: parakkat-ai-office:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?Set the Supabase URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Set the public anon key}
+    env_file:
+      - ${PARAKKAT_ENV_FILE:-/etc/parakkat-ai-office.env}
+    environment:
+      NODE_ENV: production
+      CHATGPT_AUTH_DIR: /var/lib/parakkat-ai-office/chatgpt
+      GEMINI_CONFIG_DIR: /var/lib/parakkat-ai-office/provider-secrets
+      # Runtime variables are already injected; the host env-file path is not inside the container.
+      PARAKKAT_ENV_FILE: ""
+    volumes:
+      - chatgpt-auth:/var/lib/parakkat-ai-office/chatgpt
+      - provider-secrets:/var/lib/parakkat-ai-office/provider-secrets
+    expose:
+      - "3000"
+    networks:
+      - dokploy
+      - office
+    restart: unless-stopped
+    cpus: 1.0
+    mem_limit: 1536m
+    pids_limit: 192
+    init: true
+    security_opt:
+      - no-new-privileges:true
+
+  scheduler:
+    image: parakkat-ai-office:local
+    entrypoint: ["node", "deploy/scheduler.mjs"]
+    # This process has no HTTP server; disable the image's app HTTP check. Restart policy monitors process exit.
+    healthcheck:
+      disable: true
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?Set a random cron secret}
+      PARAKKAT_JOB_ORIGIN: http://parakkat-ai-office:3000
+    networks:
+      - office
+    depends_on:
+      parakkat-ai-office:
+        condition: service_healthy
+    restart: unless-stopped
+    cpus: 0.25
+    mem_limit: 128m
+    pids_limit: 64
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - scheduled
+
+volumes:
+  chatgpt-auth:
+  provider-secrets:
+
+networks:
+  office:
+  dokploy:
+    external: true
+    name: ${DOKPLOY_NETWORK:-dokploy-network}

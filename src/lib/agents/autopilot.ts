@@ -9,11 +9,18 @@ import { emit } from './events';
 import { persona } from './people';
 import { loadMemory } from './memory';
 import { startCampaign } from './campaign';
-import { syncAll } from './sync';
+import { syncAll, continueOdooSales } from './sync';
+import { odooContinuationDue } from '@/lib/connectors/odoo-core.mjs';
 import { upcoming, covered } from './occasions.mjs';
 import { runSeo } from './seo';
 import { scanLibrary } from './library';
 import { branchBrief } from './branches';
+import { runOpportunityReview } from './opportunities';
+import { chooseDueJob, OPPORTUNITY_SCHEDULE } from './autopilot-core.mjs';
+import { seoSuccessSummary } from './seo-status.mjs';
+import { withAgentWork, type AgentWorkKind } from './agent-work';
+import { runAutomationQueue } from '@/lib/automation/runner';
+import { syncInstagramInbox } from '@/lib/connectors/instagram-inbox';
 
 /**
  * The agents' own schedule. The every-minute tick calls runAutopilot(), which runs the one job most overdue:
@@ -23,58 +30,77 @@ import { branchBrief } from './branches';
  */
 
 const H = 36e5, inr = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN');
-/** Hour of the day in India, where the team works. */
-const istHour = (d = new Date()) => (d.getUTCHours() + d.getUTCMinutes() / 60 + 5.5) % 24;
 const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
 const MAX_OPEN = 3; // campaigns the planner keeps going at once, so the heads are not flooded
 
-type Job = { name: string; every: number; hours?: [number, number]; run: (db: SupabaseClient) => Promise<string> };
+type Job = { name: string; every: number; hours?: [number, number]; recordsOutcome?: boolean; run: (db: SupabaseClient) => Promise<string> };
+const JOB_AGENTS:Record<string,{agentId:string;kind:AgentWorkKind}>={planner:{agentId:'cmo',kind:'planner'},festivals:{agentId:'festivalKeeper',kind:'festivals'},stock:{agentId:'picker',kind:'stock'},sales:{agentId:'sales',kind:'sales'},ads:{agentId:'adsAnalyst',kind:'ads'},rivals:{agentId:'scout',kind:'rivals'},budget:{agentId:'budgetGuard',kind:'budget'}};
 
 const JOBS: Job[] = [
+  { name: 'business_automation', every: 2 * 60_000, run: async db => JSON.stringify(await runAutomationQueue(db)) },
+  { name: 'instagram_inbox', every: 3 * 60_000, run: async db => {
+    const settings=await db.from('automation_settings').select('customer_channel').eq('id',1).maybeSingle();
+    if(settings.error)throw new Error('Could not read the inbox settings.');
+    if(settings.data?.customer_channel!=='instagram')return 'Instagram inbox is not enabled.';
+    return JSON.stringify(await syncInstagramInbox(db));
+  } },
+  { name: 'opportunities', ...OPPORTUNITY_SCHEDULE, recordsOutcome: true, run: async db => (await runOpportunityReview(db, { trigger: 'scheduled' })).summary },
   { name: 'planner', every: 20 * H, hours: [9, 20], run: planner },
   { name: 'sync', every: 6 * H, run: async db => Object.entries(await syncAll(db)).map(([k, v]) => `${k}: ${v}`).join(' · ') },
+  { name: 'odoo_sales', every: 2 * 60_000, run: continueOdooSales },
   { name: 'festivals', every: 20 * H, hours: [8, 21], run: festivals },
   { name: 'stock', every: 1 * H, hours: [8, 22], run: stock },
   { name: 'sales', every: 1.5 * H, hours: [8, 22], run: sales },
   { name: 'ads', every: 1.5 * H, hours: [8, 22], run: ads },
   { name: 'rivals', every: 3 * H, hours: [9, 21], run: rivals },
-  { name: 'seo', every: 7 * 24 * H, hours: [6, 22], run: async db => { const r = await runSeo(db); return `${r.keywords} search terms${r.problems.length ? `; ${r.problems.join('; ')}` : ''}`; } },
+  { name: 'seo', every: 7 * 24 * H, hours: [6, 22], recordsOutcome: true, run: async db => seoSuccessSummary(await runSeo(db)) },
   { name: 'budget', every: 20 * H, hours: [9, 21], run: budget },
-  // reads the picked Drive folders a page at a time and studies new past designs, so a big library fills in over a few hours
-  { name: 'library', every: 0.15 * H, run: scanLibrary },
+  // The library owns its manual/scheduled outcome and resumes bounded discovery and study batches under one lease.
+  { name: 'library', every: 0.15 * H, recordsOutcome: true, run: scanLibrary },
 ];
 
 /** Run the most overdue job, if any is due. One at a time, so a slow sync never overlaps the next tick. */
 export async function runAutopilot(db: SupabaseClient, now = new Date()) {
   if (await isPaused(true)) return 'paused';
-  const { data: rows } = await db.from('autopilot_jobs').select('name, last_run_at');
-  const last = Object.fromEntries((rows || []).map(r => [r.name, r.last_run_at ? Date.parse(r.last_run_at) : 0]));
-  const h = istHour(now);
-  const due = JOBS.filter(j => (!j.hours || (h >= j.hours[0] && h < j.hours[1])) && now.getTime() - (last[j.name] || 0) >= j.every)
-    .sort((a, b) => (now.getTime() - (last[b.name] || 0)) / b.every - (now.getTime() - (last[a.name] || 0)) / a.every);
-  const job = due[0];
-  if (!job) return null;
-
   const holder = randomUUID();
-  const { data: got } = await db.rpc('acquire_job_lock', { p_name: 'autopilot', p_holder: holder, p_seconds: 290 });
+  const { data: got, error: lockError } = await db.rpc('acquire_job_lock', { p_name: 'autopilot', p_holder: holder, p_seconds: 290 });
+  if (lockError) throw new Error('Could not check the agents’ schedule.');
   if (!got) return null;
-  let result: string;
   try {
-    // mark it first: a job that fails waits for its next turn instead of retrying every minute
-    await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: now.toISOString(), last_result: 'running' });
-    await loadMemory(db);
-    result = await withUsage({ feature: `autopilot:${job.name}` }, () => job.run(db));
-  } catch (e) {
-    if (e instanceof Paused) {
-      // stopped by the pause switch: the job counts as not run, so it is due again after Resume
-      await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: last[job.name] ? new Date(last[job.name]).toISOString() : null, last_result: 'paused' });
-      return { job: job.name, result: 'paused' };
+    // Re-read after acquiring the lease: another tick may have finished while this one waited.
+    const [{ data: rows, error: jobsError }, { data: odooSales, error: cursorError }] = await Promise.all([
+      db.from('autopilot_jobs').select('name, last_run_at'),
+      db.from('sync_cursors').select('state,updated_at').eq('name', 'odoo_sales').maybeSingle(),
+    ]);
+    if (jobsError || cursorError) throw new Error('Could not read the agents’ latest job progress.');
+    const last = Object.fromEntries((rows || []).map(r => [r.name, r.last_run_at ? Date.parse(r.last_run_at) : 0]));
+    const eligible = JOBS.filter(j => j.name !== 'odoo_sales' || odooContinuationDue(odooSales?.state, odooSales?.updated_at, last.odoo_sales, now.getTime()));
+    const job = chooseDueJob(eligible, last, now);
+    if (!job) return null;
+    // These runners share outcome ownership with their manual/API entry points. A busy caller must not
+    // overwrite the winning run or advance its schedule; a pause must retain the earlier due time.
+    if (job.recordsOutcome) {
+      await loadMemory(db);
+      return { job: job.name, result: await withUsage({ feature: `autopilot:${job.name}` }, () => job.run(db)) };
     }
-    result = `failed: ${errText(e)}`;
-  }
-  finally { await db.rpc('release_job_lock', { p_name: 'autopilot', p_holder: holder }); }
-  await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: now.toISOString(), last_result: result.slice(0, 500) });
-  return { job: job.name, result };
+    let result: string;
+    try {
+      // Mark it first: a failed job waits for its next turn instead of retrying every minute.
+      const { error } = await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: now.toISOString(), last_result: 'running' });
+      if (error) throw new Error('Could not record the job start.');
+      await loadMemory(db);
+      result = await withUsage({ feature: `autopilot:${job.name}` }, () => withAgentWork({...JOB_AGENTS[job.name],timeoutMs:270_000},()=>job.run(db)));
+    } catch (e) {
+      if (e instanceof Paused) {
+        // A paused job counts as not run, so it is due again after Resume.
+        await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: last[job.name] ? new Date(last[job.name]).toISOString() : null, last_result: 'paused' });
+        return { job: job.name, result: 'paused' };
+      }
+      result = `failed: ${errText(e)}`;
+    }
+    await db.from('autopilot_jobs').upsert({ name: job.name, last_run_at: now.toISOString(), last_result: result.slice(0, 500) });
+    return { job: job.name, result };
+  } finally { await db.rpc('release_job_lock', { p_name: 'autopilot', p_holder: holder }); }
 }
 
 /** Festival Calendar Keeper: what is coming and how long the team has. */
@@ -147,17 +173,15 @@ async function branchDays(db: SupabaseClient, y: string) {
   return { text, moved, summary: inr(total) };
 }
 
-/** Ads Analyst and Budget Guard: ads that spend without returning. */
+/** Shared outcome monitoring owns campaign health; this watcher performs no model calls. */
 async function ads(db: SupabaseClient) {
-  await emit(db, null, 'think', 'adsAnalyst', 'Reading the last 7 days of Meta and Google results');
-  const { data } = await db.rpc('ad_rollup', { p_since: daysAgo(7), p_limit: 50 });
-  const rows = (data || []) as { platform: string; campaign_name: string; ad_name: string; spend: number; revenue: number }[];
-  if (!rows.length) { await emit(db, null, 'say', 'adsAnalyst', 'No ad results in the last 7 days. Connect Meta or Google Ads, or nothing is running.', 'perfLead'); return 'no ads'; }
-  const spend = rows.reduce((s, r) => s + Number(r.spend), 0), rev = rows.reduce((s, r) => s + Number(r.revenue), 0);
-  const weak = rows.filter(r => Number(r.spend) >= 1000 && Number(r.revenue) / Number(r.spend) < 1).slice(0, 3);
-  await emit(db, null, 'say', 'adsAnalyst', `Last 7 days: ${inr(spend)} spent, ${inr(rev)} back (${spend ? (rev / spend).toFixed(1) : '-'}x).`, 'perfLead');
-  if (weak.length) await emit(db, null, 'feedback', 'budgetGuard', `Spending without return: ${weak.map(r => `${r.platform} ${r.campaign_name} / ${r.ad_name}: ${inr(+r.spend)} for ${inr(+r.revenue)}`).join('; ')}. Worth pausing or changing the creative.`, 'perfMarketer');
-  return `${inr(spend)} → ${inr(rev)}, ${weak.length} weak`;
+  const {error}=await db.from('campaign_sync_coverage').select('provider,account_id,status,complete,last_success_at').eq('selected',true);
+  if(error)throw new Error('Campaign monitoring coverage is unavailable.');
+  // The shared monitor creates one durable incident per finding. It replaces the
+  // old repeated fixed-ROAS alerts and does not duplicate investigations as chats.
+  const {refreshOutcomeMonitoring}=await import('@/lib/outcomes/service');
+  await refreshOutcomeMonitoring(db);
+  return 'Campaign evidence and follow-through refreshed in Outcomes; no automatic ad changes.';
 }
 
 /** Competitor Scout: what rivals did this week, from the War Room's log. */
@@ -186,7 +210,7 @@ async function planner(db: SupabaseClient) {
 
   const cal = upcoming(new Date(), 75);
   let picks: { occasion: string; why: string }[] = [];
-  if (canWrite()) {
+  if (await canWrite()) {
     const [{ data: sold }, { data: before }, { data: adRows }, { data: posts }, { data: moves }, { data: rising }, branches] = await Promise.all([
       db.rpc('sales_by_product', { p_since: daysAgo(14), p_limit: 15 }),
       db.rpc('sales_by_product', { p_since: daysAgo(28), p_limit: 40 }),
@@ -208,11 +232,11 @@ async function planner(db: SupabaseClient) {
       `Rising searches in Kerala: ${(rising || []).map(r => r.keyword).join(', ') || 'none'}`,
       `Campaigns already open or run in the last 45 days (do not repeat): ${existing.join('; ') || 'none'}`,
     ].join('\n\n');
-    const r = await chatJSON<{ proposals?: { occasion: string; why: string }[]; note?: string }>('manager', persona('cmo',
+    const r = await chatJSON<{ proposals?: { occasion: string; why: string }[]; note?: string }>('manager', await persona(db, 'cmo',
       `You decide which campaigns the team starts today for Parakkat Jewels. Propose at most ${Math.min(2, room)}, and only when the calendar
 (an occasion whose planning window has started) or the numbers (a product or category picking up, a branch growing or slowing, stock to move, a rival's offer to answer,
 a rising search) give a clear reason. Proposing none is fine. Never repeat one already open or run recently.
-Shape: {"proposals": [{"occasion": "short campaign name, e.g. Dhanteras gold coins", "why": "one sentence with the date or numbers behind it"}], "note": "one line on what you looked at"}`), data);
+Shape: {"proposals": [{"occasion": "short campaign name, e.g. Dhanteras gold coins", "why": "one sentence with the date or numbers behind it"}], "note": "one line on what you looked at"}`), data,{useCase:'decision'});
     picks = (r.proposals || []).filter(p => p?.occasion && p?.why);
     if (r.note) await emit(db, null, 'say', 'cmo', r.note.slice(0, 300));
   } else {

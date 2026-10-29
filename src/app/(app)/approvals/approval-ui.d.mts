@@ -1,0 +1,1 @@
+export function campaignReviewState(approval:{quality_snapshot?:unknown;required_roles?:unknown;status:string},campaign:{plan?:unknown;creatives?:unknown[];external_ids?:unknown;status:string},role:string):{current:boolean;canRequest:boolean};

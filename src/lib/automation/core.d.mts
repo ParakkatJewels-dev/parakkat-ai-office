@@ -1,0 +1,11 @@
+import type { AutomationKind, AutomationOutcome } from './types';
+export type Template = {kind:AutomationKind;label:string;description:string;departmentId:string;ownerAgent:string;scheduled:boolean};
+export const TEMPLATES: Template[];
+export const UUID: RegExp;
+export function templateFor(kind:unknown):Template|undefined;
+export function canManageDepartment(role:string,departmentId:string,departments:Array<{id:string;human_head_role:string}>):boolean;
+export function textInput(value:unknown,max:number,required?:boolean):string;
+export function scheduleSlot(schedule:{enabled:boolean;local_hour:number;cadence_hours:number;last_queued_at?:string|null},now?:Date):string|null;
+export function validOutcome(value:unknown):AutomationOutcome;
+export function mayTransition(status:string,action:string):boolean;
+export function workflowOriginAllowed(origin:unknown,requestUrl:string,appUrl?:string):boolean;

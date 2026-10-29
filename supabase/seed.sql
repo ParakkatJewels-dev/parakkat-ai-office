@@ -21,13 +21,14 @@ insert into departments (id, name, building, human_head_role, ai_lead_agent) val
   ('lang', 'Language Desk', 'Parakkat Creative House', 'creative_head', 'malayalam'),
   ('crm', 'CRM and Email', 'Parakkat Creative House', 'ecom_manager', 'crmLead'),
   ('brand', 'Brand Studio', 'Parakkat Creative House', 'creative_head', 'brandManager')
-on conflict (id) do update set name = excluded.name, building = excluded.building, ai_lead_agent = excluded.ai_lead_agent;
+on conflict (id) do nothing;
 
 insert into agents (id, name, role_desc, department_id, is_lead, model) values
   ('cmo', 'AI Chief Marketing Officer', 'Sets goals and reviews every plan', 'board', true, 'OpenAI GPT, manager tier'),
   ('analyticsLead', 'Analytics Lead', 'Head of Insights Lab', 'insights', true, 'OpenAI GPT, manager tier'),
   ('sales', 'Sales Analyst', 'Shopify and GA4 results', 'insights', false, 'OpenAI GPT, worker tier'),
   ('adsAnalyst', 'Ads Analyst', 'Meta and Google results', 'insights', false, 'Jev for scoring, GPT for notes'),
+  ('outcomesAnalyst', 'Experiment & Outcomes Analyst', 'Evidence-based experiment evaluation, baselines and outcome follow-through', 'insights', false, 'OpenAI GPT, worker tier'),
   ('attribution', 'Attribution Analyst', 'Which channel earned each sale', 'insights', false, 'OpenAI GPT, worker tier'),
   ('intelLead', 'Intelligence Lead', 'Head of Market Intel', 'intel', true, 'OpenAI GPT, manager tier'),
   ('scout', 'Competitor Scout', 'Finds competitors and their moves', 'intel', false, 'Jev for scoring, GPT summaries'),
@@ -47,6 +48,7 @@ insert into agents (id, name, role_desc, department_id, is_lead, model) values
   ('perfLead', 'Performance Lead AI', 'Head of Performance Bay', 'perf', true, 'OpenAI GPT, manager tier'),
   ('metaSpec', 'Meta Ads Specialist', 'Facebook and Instagram ads', 'perf', false, 'OpenAI GPT, worker tier'),
   ('googleSpec', 'Google Ads Specialist', 'Search and Shopping ads', 'perf', false, 'OpenAI GPT, worker tier'),
+  ('funnelCro', 'Funnel/CRO Specialist', 'Diagnoses measured conversion gaps and separates missing tracking from drop-off', 'perf', false, 'OpenAI GPT, worker tier'),
   ('budgetGuard', 'Budget Guard', 'Caps and pacing', 'perf', false, 'Jev for scoring'),
   ('warLead', 'War Room Lead', 'Head of competitor research', 'warroom', true, 'OpenAI GPT, manager tier'),
   ('igScout', 'Instagram Scout', 'Competitor posts and reels', 'warroom', false, 'Jev for scoring, GPT summaries'),
@@ -65,8 +67,9 @@ insert into agents (id, name, role_desc, department_id, is_lead, model) values
   ('forecaster', 'Demand Forecaster', 'Sales forecast by product', 'forecast', true, 'OpenAI GPT, worker tier'),
   ('budgetForecaster', 'Budget Forecaster', 'Spend needed for a target', 'forecast', false, 'OpenAI GPT, worker tier'),
   ('creativeScorer', 'Creative Scorer', 'Predicts winning creatives', 'forecast', false, 'Jev for scoring'),
-  ('compliance', 'Compliance Checker', 'Hallmark and claims rules', 'qa', true, 'Jev for scoring, GPT explains'),
+  ('compliance', 'QA/QC Lead', 'Acceptance criteria, independent quality review, hallmark and claims rules', 'qa', true, 'Jev for scoring, GPT explains'),
   ('priceAuditor', 'Price Auditor', 'Ad prices match Shopify', 'qa', false, 'Jev for scoring'),
+  ('outputQc', 'Output QC Reviewer', 'Independent evidence and artifact review of the exact completed version', 'qa', false, 'OpenAI GPT, worker tier'),
   ('policyChecker', 'Ad Policy Checker', 'Meta and Google ad policies', 'qa', false, 'Jev for scoring'),
   ('seoLead', 'SEO Lead', 'Head of the SEO Desk', 'seo', true, 'OpenAI GPT, manager tier'),
   ('trendsAnalyst', 'Google Trends Analyst', 'Rising and falling searches in Kerala', 'seo', false, 'OpenAI GPT, worker tier'),
@@ -91,7 +94,7 @@ insert into agents (id, name, role_desc, department_id, is_lead, model) values
   ('brandManager', 'Brand Manager AI', 'Head of Brand Studio', 'brand', true, 'OpenAI GPT, manager tier'),
   ('voiceKeeper', 'Brand Voice Keeper', 'Tone and words we use', 'brand', false, 'OpenAI GPT, worker tier'),
   ('moodCurator', 'Moodboard Curator', 'Looks for each season', 'brand', false, 'Gemini image model')
-on conflict (id) do update set name = excluded.name, role_desc = excluded.role_desc, department_id = excluded.department_id, is_lead = excluded.is_lead, model = excluded.model;
+on conflict (id) do nothing;
 
 insert into connections (provider) values ('shopify'), ('meta'), ('instagram'), ('google_ads'), ('ga4'), ('triple_whale'), ('openai'), ('gemini'), ('jev'), ('google_trends'), ('keyword_planner'), ('odoo')
 on conflict do nothing;

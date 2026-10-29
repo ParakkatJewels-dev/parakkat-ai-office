@@ -1,11 +1,15 @@
 import Link from 'next/link';
+import styles from './AgentDetail.module.css';
 import { notFound, redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
 import { ROLE_LABEL, type AppRole } from '@/lib/roles';
 import { scorecards, myDepartments, ago } from '@/lib/agents/scorecard';
 import { FORMATS } from '@/lib/agents/design';
 import { Icon, type IconName } from '@/components/Icon';
-import { PageHead, Tile, Avatar, Pager, pageOf, rangeOf, inr, when } from '@/components/ui';
+import { Tile, Avatar, Pager, pageOf, rangeOf, inr, when } from '@/components/ui';
+import AgentConversation from '@/components/AgentConversation';
+import conversationStyles from '@/components/AgentConversation.module.css';
+import { AgentActivityProvider, AgentActivityBadge } from '@/components/AgentActivity';
 
 const KIND: Record<string, [IconName, string]> = {
   think: ['spark', 'Working on'], say: ['doc', 'Said'], walk: ['arrow', 'Handed over'], feedback: ['clock', 'Feedback'],
@@ -41,36 +45,44 @@ export default async function AgentReport({ params, searchParams }: { params: Pr
   const formats = Object.entries(FORMATS).filter(([, f]) => f.maker === id).map(([k]) => k);
   const { data: designs } = formats.length ? await db.from('designs').select('id, format, brief, image_path, status').in('format', formats).not('image_path', 'is', null).order('created_at', { ascending: false }).limit(6) : { data: [] };
   const signed = (designs || []).length ? (await db.storage.from('creatives').createSignedUrls(designs!.map(d => d.image_path!), 3600)).data || [] : [];
-  const state = c.state === 'now' ? ['Working now', 'good'] : c.state === 'today' ? ['Active today', 'acc'] : ['Quiet', ''];
 
   return (
-    <div className="page">
+    <AgentActivityProvider history={{[id]:c.last?.at||null}} observedAt={new Date().toISOString()}><div className={`page ${styles.workspace}`}>
       <Link href="/agents" className="back"><Icon name="arrow" size={16} />All agents</Link>
-      <header className="agent-hero card">
-        <Avatar name={agent.name} dept={agent.department_id} size={64} />
+      <header className={`card ${styles.profile}`}>
+        <Avatar name={agent.name} dept={agent.department_id} size={44} />
         <div className="grow">
-          <h1>{agent.name} <span className={`pill ${state[1]}`}><i className={`live-dot ${c.state}`} />{state[0]}</span></h1>
+          <h1>{agent.name} <AgentActivityBadge id={id}/></h1>
           <p className="sub">{agent.is_lead ? 'AI team lead of ' : ''}{dept.name} · {agent.role_desc}</p>
           {c.last && <p className="agent-now">Latest: {c.last.text}<time> · {ago(c.last.at)}</time></p>}
         </div>
-        <div className="facts hero-facts">
+        <div className={styles.facts}>
           <div><small>Team lead</small><b>{agent.is_lead ? 'Leads this team' : lead?.name || '–'}</b></div>
           <div><small>Reports to</small><b>{ROLE_LABEL[dept.human_head_role as AppRole]}</b></div>
           <div><small>Runs on</small><b>{agent.model}</b></div>
         </div>
-        <Link href={`/office?focus=${agent.id}`} className="btn ghost"><Icon name="map" size={18} />Find in the office</Link>
+        <div className={styles.profileActions}>{role!=='viewer'&&<Link href={`/automations?workflow=head_task&agent=${encodeURIComponent(agent.is_lead?agent.id:lead?.id||agent.id)}`} className="btn"><Icon name="users" size={18}/>{agent.is_lead?'Assign a task':'Assign through AI head'}</Link>}
+        <Link href={`/agents/manage?agent=${agent.id}`} className="btn ghost"><Icon name="edit" size={18} />Manage instructions</Link>
+        <Link href={`/office?focus=${agent.id}`} className="btn ghost"><Icon name="map" size={18} />Find in the office</Link></div>
       </header>
+
+      <nav className={styles.sectionNav} aria-label="Agent workspace sections"><a href="#conversation">Conversation</a><a href="#activity">Activity</a><a href="#reports">Reports</a><a href="#knowledge">Team knowledge</a>{camps.length > 0 && <a href="#campaigns">Campaigns</a>}{(designs || []).length > 0 && <a href="#designs">Designs</a>}</nav>
 
       <section className="tiles" aria-label="Last 30 days">
         <Tile icon="spark" label="Actions" value={c.actions} sub="Last 30 days" />
-        <Tile icon="doc" tone="blue" label="Reports that reached a head" value={c.forwarded} sub={c.forwarded ? `${c.accepted} accepted (${Math.round((c.accepted / c.forwarded) * 100)}%)` : `${c.reports} filed`} />
+        <Tile icon="doc" tone="blue" label="Reports forwarded" value={c.forwarded} sub={c.forwarded ? `${c.accepted} accepted (${Math.round((c.accepted / c.forwarded) * 100)}%)` : `${c.reports} filed`} />
         <Tile icon="rocket" tone="amber" label={c.designs ? 'Designs made' : 'Campaigns worked on'} value={c.designs || c.runs} sub={c.designs ? 'From the Design Studio' : `${c.live} live now`} />
-        <Tile icon="rupee" tone="violet" label="Revenue from their live campaigns" value={inr(c.revenue)} sub={c.spend ? `${inr(c.spend)} spent · ${(c.revenue / c.spend).toFixed(1)}x return` : 'Shared credit, Meta results'} />
+        <Tile icon="rupee" tone="violet" label="Campaign revenue" value={inr(c.revenue)} sub={c.spend ? `${inr(c.spend)} spent · ${(c.revenue / c.spend).toFixed(1)}x return` : 'Shared credit, Meta results'} />
       </section>
 
-      <div className="bento">
+      <section className={`card ${conversationStyles.profileConversation}`} id="conversation">
+        <div className={conversationStyles.profileHeader}><Icon name="doc" size={20} /><div><h2>Conversation</h2><p>Talk to {agent.name}, assign a task or start a meeting.</p></div></div>
+        <AgentConversation agentId={agent.id} agentName={agent.name} initialActivity={c.last ? { text: c.last.text, at: c.last.at } : null} initialThreadId={sp.thread} initialMeetingId={sp.meeting} />
+      </section>
+
+      <div className={`bento ${styles.activityGrid}`} id="activity">
         <section className="card s6" id="feed">
-          <div className="card-head"><div><h3>What they have been doing</h3><p className="sub">Newest first</p></div></div>
+          <div className="card-head"><div><h3>Activity log</h3><p className="sub">Newest first</p></div></div>
           {evs.length ? <ol className="feed">{evs.map(e => {
             const [ic, label] = KIND[e.kind] || ['doc', e.kind], incoming = e.to_agent === id && e.from_agent !== id;
             return <li key={e.id}><span className={`feed-ic k-${e.kind}`}><Icon name={ic} size={15} /></span><div>
@@ -95,13 +107,13 @@ export default async function AgentReport({ params, searchParams }: { params: Pr
           <Pager sp={sp} param="rp" page={rp} size={REPORTS} total={reportCount} shown={(reports || []).length} anchor="reports" />
         </section>
 
-        <section className="card s12">
-          <div className="card-head"><div><h3>What this team has learned</h3><p className="sub">Notes from the heads&apos; decisions, the team lead&apos;s rejections, and Parakkat&apos;s own results and analytics, added automatically. {agent.name} reads these, and the brand book, before every job.</p></div></div>
+        <section className="card s12" id="knowledge">
+          <div className="card-head"><div><h3>Team knowledge</h3><p className="sub">Notes from the heads&apos; decisions, the team lead&apos;s rejections, and Parakkat&apos;s own results and analytics, added automatically. {agent.name} reads these, and the brand book, before every job.</p></div></div>
           {(lessons || []).length ? <ul className="rows lessons">{lessons!.map(l => <li key={l.id}><span className={`pill ${['accepted', 'approve', 'worked'].includes(l.decision || '') ? 'good' : l.decision === 'data' ? 'acc' : 'warn'}`}>{l.decision === 'data' ? 'analytics' : l.decision ? l.decision.replace(/_/g, ' ') : 'note'}</span><div className="grow"><span>{l.lesson}</span><span className="sm">{when(l.created_at)}</span></div></li>)}</ul>
             : <p className="sub">Nothing yet. When you accept, send back or reject this team&apos;s work with a note, it becomes a lesson here.</p>}
         </section>
 
-        {camps.length > 0 && <section className="card s12">
+        {camps.length > 0 && <section className="card s12" id="campaigns">
           <div className="card-head"><div><h3>Campaigns they worked on</h3><p className="sub">Results come from Meta once a campaign is live</p></div></div>
           <div className="tablewrap"><table className="table">
             <thead><tr><th>Campaign</th><th>Status</th><th className="r">Spend</th><th className="r">Revenue</th><th className="r">Return</th></tr></thead>
@@ -110,11 +122,11 @@ export default async function AgentReport({ params, searchParams }: { params: Pr
           </table></div>
         </section>}
 
-        {(designs || []).length > 0 && <section className="card s12">
+        {(designs || []).length > 0 && <section className="card s12" id="designs">
           <div className="card-head"><div><h3>Recent designs</h3><p className="sub">More in the Design Studio</p></div><Link href="/studio" className="btn ghost sm-btn">Open the studio</Link></div>
           <ul className="thumbs">{designs!.map(d => { const u = signed.find(s => s.path === d.image_path)?.signedUrl; return <li key={d.id}>{u && <img src={u} alt={d.brief} loading="lazy" decoding="async" />}<span className="sm clip">{d.brief}</span></li>; })}</ul>
         </section>}
       </div>
-    </div>
+    </div></AgentActivityProvider>
   );
 }

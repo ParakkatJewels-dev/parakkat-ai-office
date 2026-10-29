@@ -4,7 +4,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { requireUser } from '@/lib/auth/session';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { connectionRows, finish, redirectUri, STATE_COOKIE } from '@/lib/connectors/connect';
-import { saveAccess, type Platform } from '@/lib/connectors/vault';
+import { loadAccess, saveAccess, type Platform } from '@/lib/connectors/vault';
 import { errText } from '@/lib/errors';
 
 export const maxDuration = 60;
@@ -27,6 +27,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
     return back('error', `The ${NAME[p] || 'platform'} sign-in expired or did not start here. Press Connect again.`);
   try {
     const f = await finish(p, q, redirectUri(req.nextUrl.origin, p), shop || undefined);
+    if(p==='meta') {
+      // A permission upgrade must not silently choose a different business account.
+      const previous=await loadAccess('meta'),old=previous?.settings;
+      if(old){
+        const ads=new Set((f.settings.choices?.ads||[]).map((a:{id:string})=>a.id));
+        const selected=(old.ad_account_ids||[old.ad_account_id]).filter((id:string)=>id&&ads.has(id));
+        if(selected.length){f.settings.ad_account_ids=selected;f.settings.ad_account_id=selected.includes(old.ad_account_id)?old.ad_account_id:selected[0];}
+        const page=(f.settings.choices?.pages||[]).find((page:{id:string})=>page.id===old.page_id);
+        if(page){f.settings.page_id=page.id;f.settings.ig_user_id=page.ig||undefined;}
+      }
+    }
     await saveAccess(p, f.tokens, f.settings, f.expiresAt, user.id);
     await supabaseAdmin().from('connections').upsert(connectionRows(p, f.settings));
     const pick = p !== 'shopify' && !(p === 'meta' ? f.settings.ad_account_ids?.length && f.settings.page_id : f.settings.customer_ids?.length);

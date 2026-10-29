@@ -1,0 +1,17 @@
+export type InstagramInboundMessage = { accountId:string; messageId:string; senderId:string; receivedAt:string; body:string; contactName:string; conversationRef:string|null; deleted:boolean };
+export type InstagramAccount = { igId:string; pageId:string };
+export const INSTAGRAM_INBOX_PERMISSIONS: string[];
+export const INSTAGRAM_REPLY_WINDOW_MS: number;
+export const INSTAGRAM_WEBHOOK_MAX_BYTES: number;
+export function instagramInboxError(code:string,message:string,requiresReview?:boolean):Error & {code:string;requiresReview:boolean};
+export function instagramWebhookToken(appSecret?:string,dedicatedToken?:string):string|null;
+export function instagramVerificationChallenge(params:URLSearchParams,expectedToken:string|null):string|null;
+export function instagramSignatureValid(raw:Uint8Array,signature:string|null,appSecret?:string):boolean;
+export function readInstagramWebhookBody(request:Request,maxBytes?:number):Promise<Buffer>;
+export function parseInstagramWebhook(payload:unknown,account:InstagramAccount,now?:number):{events:InstagramInboundMessage[];ignored:number};
+export function normaliseInstagramMessage(message:unknown,account:InstagramAccount,conversationRef?:string|null,now?:number):InstagramInboundMessage|null;
+export function instagramReplyAllowed(receivedAt:string,now?:number):boolean;
+export type InstagramReply = {recipientId:string;text:string;inquiryReceivedAt:string;accountId?:string;pageId?:string};
+export function validateInstagramReply(input:InstagramReply,now?:number):{recipient:{id:string};message:{text:string}};
+export function instagramGraphRequest(input:{graphBase:string;path:string;token:string;params?:Record<string,string|number|undefined|null>;method?:'GET'|'POST';body?:unknown;signal?:AbortSignal;fetchImpl?:typeof fetch}):Promise<any>;
+export function sendInstagramMessage(input:InstagramReply & {graphBase:string;pageId:string;pageToken:string},options?:{signal?:AbortSignal;fetchImpl?:typeof fetch;now?:number}):Promise<{messageId:string}>;

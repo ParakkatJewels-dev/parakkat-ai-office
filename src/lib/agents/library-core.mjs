@@ -13,10 +13,9 @@ export function folderIdFrom(input) {
 export const DESIGN_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/vnd.adobe.photoshop', 'application/pdf', 'application/postscript', 'application/illustrator'];
 export const isDesignFile = mime => DESIGN_MIMES.includes(mime) || (typeof mime === 'string' && mime.startsWith('image/') && mime !== 'image/gif' && mime !== 'image/svg+xml');
 
-/** Drive's query for one folder's children: its designs and its subfolders, never the bin. */
-export function childrenQuery(folderId, since) {
-  const types = [...DESIGN_MIMES.map(m => `mimeType = '${m}'`), "mimeType = 'application/vnd.google-apps.folder'"].join(' or ');
-  return `'${folderId.replace(/'/g, '')}' in parents and trashed = false and (${types})${since ? ` and modifiedTime > '${since}'` : ''}`;
+/** Stable full enumeration. Filtering locally keeps uncommon image MIME types and old moved subfolders discoverable. */
+export function childrenQuery(folderId) {
+  return `'${String(folderId).replace(/['\\]/g, '')}' in parents and trashed = false`;
 }
 
 /** A thumbnail link at a size the model can read the type and layout at. Drive's links end in =s220 or similar. */
@@ -29,9 +28,90 @@ export function searchWords(...texts) {
   return [...new Set(words)].slice(0, 12).join(' or ');
 }
 
+const REFERENCE_STOP = new Set(`${[...STOP].join(' ')} gold golden layered parakkat jewels jewellery jewelry product products selected official photo photos image images use using create generate keep same actual exact source reference references premium quality campaign brand brief human review publish draft stock selling top find latest recorded complete days`.split(' '));
+const referenceTokens = value => [...new Set(String(value || '').toLowerCase().normalize('NFKD').match(/[\p{L}\p{N}]{3,}/gu) || [])].filter(word => !REFERENCE_STOP.has(word));
+const SUBJECTS = [
+  ['neckwear', /\b(?:chains?|necklaces?)\b/i, 'chain or necklace'],
+  ['ring', /\brings?\b/i, 'ring'], ['earwear', /\b(?:earrings?|jhumkas?|studs?)\b/i, 'earring or jhumka'],
+  ['wristwear', /\b(?:bracelets?|bangles?)\b/i, 'bracelet or bangle'], ['pendant', /\bpendants?\b/i, 'pendant'],
+  ['anklet', /\b(?:anklets?|payals?)\b/i, 'anklet or payal'], ['idol', /\b(?:idols?|deities|deity|figurines?)\b/i, 'idol or deity'],
+];
+const subjects = value => {
+  const text=String(value||''),found=SUBJECTS.filter(([, pattern])=>pattern.test(text)).map(([name])=>name);
+  // "Chain bracelet" describes wristwear, not a necklace reference.
+  return found.some(name=>name==='wristwear'||name==='anklet')&&!/\bnecklaces?\b/i.test(text)?found.filter(name=>name!=='neckwear'):found;
+};
+function directionTerms(value) {
+  const excluded=[];
+  const positive=String(value || '').replace(/\b(?:no|without|avoid|exclude|do not (?:include|use|add))\s+([^.;\n]+?)(?=$|[.;\n]|\b(?:but|instead|with|and (?:use|keep|add))\b)/gi, (_match, banned) => {excluded.push(...referenceTokens(banned));return ' ';});
+  if(excluded.some(word=>/^(?:ceremonial|temple|idols?|deit(?:y|ies)|rituals?|diyas?)$/.test(word)))excluded.push('ceremonial','temple','temples','idol','idols','deity','deities','ritual','rituals','diya','diyas');
+  return {positive:referenceTokens(positive),excluded:[...new Set(excluded)]};
+}
+const referenceText = ref => [ref.name,...(Array.isArray(ref.tags)?ref.tags:[]),ref.kind,ref.occasion,ref.style,ref.palette,ref.layout,ref.typography,
+  ...Object.entries(ref.fingerprint||{}).filter(([key])=>key!=='avoid').map(([,value])=>typeof value==='string'?value:'')].filter(Boolean).join(' ');
+
+/** Supplemental indexed reads for a library larger than the bounded full scan. */
+export function designReferenceQueries(words, options={}) {
+  const wanted=subjects(options.productTitles?.length?options.productTitles.join(' '):words.join(' '));
+  const category=SUBJECTS.filter(([name])=>wanted.includes(name)).map(([, ,query])=>query).join(' or ');
+  const direction=directionTerms(options.direction).positive.slice(0,12).join(' or ');
+  return [...new Set([category,direction].filter(Boolean))];
+}
+
+/** Subject and requested direction outrank popularity, quality ratings and recency. */
+export function rankDesignReferences(refs, words, options={}) {
+  const wanted=subjects(options.productTitles?.length?options.productTitles.join(' '):words.join(' '));
+  const direction=directionTerms(options.direction),requested=referenceTokens(words.join(' ')).filter(word=>!direction.excluded.includes(word)),previous=new Set(options.previousIds||[]);
+  const format=/story|reel/i.test(options.format||'')?'story':/banner|website/i.test(options.format||'')?'banner':/poster/i.test(options.format||'')?'poster':/post|portrait/i.test(options.format||'')?'post':null;
+  const scored=refs.map(ref=>{
+    const identity=[ref.name,...(ref.tags||[])].join(' '),direct=subjects(identity);
+    const text=referenceText(ref),tokens=new Set(referenceTokens(text)),actual=subjects([identity,ref.style,ref.layout,ref.fingerprint?.visualBrief,ref.fingerprint?.composition].filter(Boolean).join(' '));
+    const match=wanted.some(name=>actual.includes(name)),conflicting=actual.filter(name=>!wanted.includes(name)).length;
+    const requestedChain=/\bchains?\b/i.test((options.productTitles||[]).join(' ')),directChain=requestedChain&&/\bchains?\b/i.test(identity)&&!direct.includes('wristwear')&&!direct.includes('anklet');
+    return {ref,tokens,key:[wanted.length?(match?(wanted.some(name=>direct.includes(name))?3:2):actual.length?0:1):1,directChain?1:0,match?-conflicting:0,
+      -direction.excluded.filter(word=>tokens.has(word)).length,
+      direction.positive.filter(word=>tokens.has(word)).length,
+      requested.filter(word=>tokens.has(word)).length,format&&ref.kind===format?1:0,
+      Math.max(0,Math.min(5,Number(ref.quality)||0)),ref.pinned?1:0,previous.has(ref.id)?1:0]};
+  });
+  const compare=(a,b)=>{for(let i=0;i<a.key.length;i++){if(a.key[i]!==b.key[i])return b.key[i]-a.key[i];}return String(a.ref.id).localeCompare(String(b.ref.id));};
+  scored.sort(compare);
+  // Prefer compatible supporting references after choosing the strongest match.
+  // Explicit subject/direction always remain ahead of stylistic consistency.
+  const primary=scored.shift();if(!primary)return [];
+  const palette=new Set(referenceTokens([primary.ref.palette,primary.ref.fingerprint?.palette,primary.ref.fingerprint?.lighting].join(' ')));
+  for(const row of scored)row.key.splice(5,0,[...palette].filter(word=>row.tokens.has(word)).length);
+  scored.sort(compare);
+  return [primary,...scored].slice(0,Math.max(1,Math.min(3,Number(options.limit)||3))).map(row=>row.ref);
+}
+
 /** The one-line summary of a past design that the art director reads, from what the describer saw. */
 export function refLine(r, i) {
-  return `Reference ${i + 1}${r.occasion ? ` (${r.occasion})` : ''}: ${[r.style, r.layout && `Layout: ${r.layout}`, r.palette && `Palette: ${r.palette}`, r.typography && `Type: ${r.typography}`].filter(Boolean).join(' ')}`;
+  return `Reference ${i + 1}${r.occasion ? ` (${r.occasion})` : ''}: ${referenceFingerprint(r)}`;
+}
+
+/** Compact, reusable art direction retained after the uploaded preview is removed. */
+export function referenceFingerprint(r) {
+  const f = r?.fingerprint && typeof r.fingerprint === 'object' ? r.fingerprint : {};
+  const fields = [
+    ['Visual brief', f.visualBrief || r?.style], ['Composition', f.composition || r?.layout],
+    ['Palette', f.palette || r?.palette], ['Lighting', f.lighting], ['Materials and props', f.materials],
+    ['Typography', f.typography || r?.typography], ['How it was made', f.productionNotes], ['Avoid', f.avoid],
+  ].filter(([, value]) => typeof value === 'string' && value.trim()).map(([name, value]) => [name, value.trim()]);
+  if (!fields.length) return '';
+  // Reserve every category's label before sharing the remaining space. Short
+  // fields keep their full detail; long early descriptions cannot crowd out
+  // lighting, typography, production notes or the constraints at the end.
+  let remaining = 2200 - fields.reduce((total, [name]) => total + name.length + 2, 0) - (fields.length - 1) * 2;
+  const excerpts = new Array(fields.length);
+  fields.map(([name, value], index) => ({ name, value, index })).sort((a, b) => a.value.length - b.value.length)
+    .forEach(({ name, value, index }, position) => {
+      const budget = Math.min(value.length, Math.floor(remaining / (fields.length - position)));
+      remaining -= budget;
+      const excerpt = value.length <= budget ? value : `${value.slice(0, budget - 1).replace(/[\uD800-\uDBFF]$/, '').trimEnd()}…`;
+      excerpts[index] = `${name}: ${excerpt}`;
+    });
+  return excerpts.join('; ');
 }
 
 /** Concepts used lately, so the next one is told what not to repeat. Newest first, trimmed, no repeats. */

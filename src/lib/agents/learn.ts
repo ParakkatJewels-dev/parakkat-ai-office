@@ -31,9 +31,10 @@ export async function learnFromData(db: SupabaseClient) {
   for (const c of camps || []) {
     const r = byId.get(String(c.external_ids?.meta?.campaign_id || '')); if (!r || !Number(r.spend)) continue;
     const x = roas(Number(r.revenue), Number(r.spend));
-    const verdict = x >= 3 ? 'Worth repeating.' : x >= 1.5 ? 'Paid back; improve before repeating.' : 'Lost money; do not repeat this approach unchanged.';
-    const lesson = `"${c.name}" (${c.occasion || 'campaign'}) returned ${x.toFixed(1)}x on Meta: ${inr(Number(r.spend))} spent, ${Number(r.purchases)} purchases, ${inr(Number(r.revenue))} revenue. ${verdict}`;
-    for (const d of ['strategy', 'perf']) results.push({ department_id: d, lesson, decision: x >= 1.5 ? 'worked' : 'failed', source_id: c.id });
+    if (r.revenue == null || r.purchases == null || !Number.isFinite(x)) continue;
+    const verdict = 'Observed provider attribution only; costs, returns, measurement coverage and causal effect are unverified. ROAS does not establish profit, a winning creative or permission to scale.';
+    const lesson = `"${c.name}" (${c.occasion || 'campaign'}) has recorded ${x.toFixed(1)}x platform-attributed ROAS on Meta (snapshot ${new Date().toISOString().slice(0,10)}): ${inr(Number(r.spend))} spent, ${Number(r.purchases)} attributed purchases, ${inr(Number(r.revenue))} revenue. ${verdict}`;
+    for (const d of ['strategy', 'perf']) results.push({ department_id: d, lesson, decision: 'data', source_id: c.id });
   }
   for (const l of results) {
     const { data: had } = await db.from('lessons').select('id').eq('source', 'results').eq('source_id', l.source_id!).eq('department_id', l.department_id).limit(1);
@@ -48,12 +49,10 @@ export async function learnFromData(db: SupabaseClient) {
     const lesson = `Best sellers in the last 30 days: ${top.slice(0, 3).map(p => `${p.title} (${inr(Number(p.revenue))}, ${p.units} sold)`).join('; ')}. Feature these first.`;
     for (const d of ['insights', 'strategy', 'creative']) fresh.push({ department_id: d, lesson, decision: 'data' });
   }
-  const rated = ((ads || []) as { platform: string; campaign_name: string; ad_name: string; spend: number; revenue: number }[])
-    .map(a => ({ ...a, x: roas(Number(a.revenue), Number(a.spend)) })).filter(a => Number(a.spend) >= 2000);
-  if (rated.length >= 2) {
-    const best = [...rated].sort((a, b) => b.x - a.x)[0], worst = [...rated].sort((a, b) => a.x - b.x)[0];
-    fresh.push({ department_id: 'perf', decision: 'data', lesson: `Best ad this month: ${best.platform} "${best.ad_name || best.campaign_name}" at ${best.x.toFixed(1)}x. Weakest: "${worst.ad_name || worst.campaign_name}" at ${worst.x.toFixed(1)}x on ${inr(Number(worst.spend))}. Move budget towards the first.` });
-    fresh.push({ department_id: 'creative', decision: 'data', lesson: `The ad creative that earned most per rupee this month was "${best.ad_name || best.campaign_name}" (${best.x.toFixed(1)}x). Learn from its style.` });
+  const observedAds = ((ads || []) as {platform:string;spend:number;revenue:number}[]);
+  if (observedAds.length) {
+    const note = `Recorded ad sample since ${since}: ${observedAds.length} rollup rows. Names may combine different campaigns. Platform attribution and conversion definitions may differ; this sample does not establish profit, creative causality or a budget allocation. Use stable campaign/account IDs, mature comparison windows, verified tracking and costs before an experiment or scaling proposal.`;
+    for (const department_id of ['perf','creative']) fresh.push({ department_id, decision:'data', lesson:note });
   }
   const fmt = new Map<string, { saves: number; n: number }>();
   (posts || []).forEach(p => { if (p.saves == null) return; const k = (p.media_type || 'post').toLowerCase().replace('_album', '').replace('_', ' '); const f = fmt.get(k) || { saves: 0, n: 0 }; f.saves += Number(p.saves); f.n++; fmt.set(k, f); });

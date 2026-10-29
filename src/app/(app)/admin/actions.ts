@@ -1,4 +1,5 @@
 'use server';
+import {prepareCampaignRetry} from '@/lib/agents/campaign-checkpoint-core.mjs';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
@@ -14,7 +15,9 @@ import { normalizeOdooUrl, guessDb } from '@/lib/connectors/odoo-core.mjs';
 import { connectionRows } from '@/lib/connectors/connect';
 import { chosen } from '@/lib/connectors/accounts.mjs';
 import { errText } from '@/lib/errors';
-import { setPaused } from '@/lib/pause';
+import { checkPause, setPaused } from '@/lib/pause';
+import { runOpportunityReview } from '@/lib/agents/opportunities';
+import { withUsage } from '@/lib/usage';
 
 async function admin() {
   const u = await requireUser();
@@ -52,7 +55,19 @@ export async function runCampaign(form: FormData) {
 }
 export async function nextStep(form: FormData) {
   await admin();
-  try { await advance(supabaseAdmin(), String(form.get('id'))); } catch (e) { await fail(e); }
+  try {
+    await checkPause();
+    const db=supabaseAdmin(),id=String(form.get('id'));
+    if(form.get('retry')==='1'){
+      const previous=await db.from('agent_runs').select('state,status,automation_task_id').eq('id',id).maybeSingle();
+      if(previous.error||!previous.data||previous.data.status!=='failed')throw new Error('This campaign changed. Refresh before retrying.');
+      if(previous.data.automation_task_id)throw new Error('Retry this campaign from its task in Automations after correcting its inputs.');
+      const state=prepareCampaignRetry(previous.data.state);
+      const saved=await db.from('agent_runs').update({status:'running',state,error:null,finished_at:null}).eq('id',id).eq('status','failed').select('id').maybeSingle();
+      if(saved.error||!saved.data)throw new Error('This campaign changed. Refresh before retrying.');
+    }
+    await advance(db,id);
+  } catch (e) { await fail(e); }
   await done();
 }
 export async function togglePause(form: FormData) {
@@ -72,10 +87,22 @@ export async function syncNow() {
   after(async () => { try { await runClaimed(db, holder!); } catch { /* kept in sync_last for the Admin page */ } });
   await done('Sync started. It runs in the background, so you can carry on; the bar at the top shows when it is done.');
 }
+/** The same bounded review is used by the hourly scheduler and an explicit manager request. */
+export async function findOpportunitiesNow() {
+  const { user } = await admin();
+  try { await checkPause(); } catch (error) { await fail(error); }
+  after(async () => {
+    try {
+      await withUsage({ feature: 'autopilot:opportunities' }, () => runOpportunityReview(supabaseAdmin(), { trigger: 'manual', requestedBy: user.id }));
+    } catch { /* The runner owns its progress and outcome under the same lease as scheduled reviews. */ }
+  });
+  revalidatePath('/admin');
+  redirect(`/admin?tab=operations&reviewRequested=${Date.now()}&msg=${encodeURIComponent('Opportunity review requested. The AI leads will review the latest evidence and send their proposals to Approvals. Progress appears below.')}#opportunities`);
+}
 export async function publishAgain(form: FormData) {
   await admin();
   try { await publishApproved(supabaseAdmin(), String(form.get('id'))); } catch (e) { await fail(e); }
-  await done('Published.');
+  await done('Published to Meta. Delivery is subject to Meta review and account status.');
 }
 export async function saveBrandBook(form: FormData) {
   const { user } = await admin();

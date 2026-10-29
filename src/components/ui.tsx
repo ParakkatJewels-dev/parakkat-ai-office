@@ -1,6 +1,7 @@
 // Building blocks shared by the Dashboard, Approvals and Admin pages.
 import { Icon, type IconName } from './Icon';
 import { DEPT_COLOR } from '@/office/engine.mjs';
+import { pageNumbers } from './pagination-core.mjs';
 
 export function PageHead({ title, sub, children }: { title: string; sub?: React.ReactNode; children?: React.ReactNode }) {
   return (
@@ -38,7 +39,7 @@ export function Stepper({ steps }: { steps: { label: string; state: 'done' | 'no
 }
 
 export const inr = (n: number) => n >= 1e7 ? `₹${(n / 1e7).toFixed(2)}Cr` : n >= 1e5 ? `₹${(n / 1e5).toFixed(1)}L` : `₹${Math.round(n).toLocaleString('en-IN')}`;
-export const when = (d: string | null | undefined) => d ? new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+export const when = (d: string | null | undefined) => d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
 type Params = Record<string, string | string[] | undefined>;
 /** The page a list is on, from its own search param (lists on one screen page separately). */
@@ -55,21 +56,21 @@ export function Pager({ sp, param = 'page', page, size, total, hasMore, anchor, 
 }) {
   const pages = total != null ? Math.max(1, Math.ceil(total / size)) : null;
   const more = pages != null ? page < pages : !!hasMore;
-  if (page === 1 && !more) return null;
   const href = (n: number) => {
     const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(sp)) if (v != null && k !== param && k !== 'msg' && k !== 'error') q.set(k, String(v));
+    for (const [k, v] of Object.entries(sp)) if (v != null && k !== param && k !== 'msg' && k !== 'error') for (const item of Array.isArray(v) ? v : [v]) q.append(k, item);
     if (n > 1) q.set(param, String(n));
     const s = q.toString();
     return `?${s}${anchor ? `#${anchor}` : ''}`;
   };
   const from = shown ? (page - 1) * size + 1 : 0, to = (page - 1) * size + shown;
   return (
-    <nav className="pager" aria-label="Pages">
+    <nav className="pager" aria-label={`${anchor || param} pages`}>
       <span className="sm">{shown ? `${from.toLocaleString('en-IN')}–${to.toLocaleString('en-IN')}` : 'None'}{total != null ? ` of ${total.toLocaleString('en-IN')}` : ''}</span>
       <div className="pager-btns">
         {page > 1 ? <a className="btn ghost sm-btn" href={href(page - 1)} rel="prev">Previous</a> : <span className="btn ghost sm-btn" aria-disabled="true">Previous</span>}
-        {pages != null && <span className="sm">Page {page} of {pages}</span>}
+        {pages != null && pageNumbers(Math.min(page,pages),pages).map((number,index)=>number==='ellipsis'?<span className="pagination-ellipsis" key={`gap-${index}`} aria-hidden="true">…</span>:<a className={`pager-page ${number===page?'is-current':''}`} key={number} href={href(number)} aria-label={`Page ${number}`} aria-current={number===page?'page':undefined}>{number}</a>)}
+        {pages != null && page > pages && <span className="sm">This page is empty. Choose an earlier page.</span>}
         {more ? <a className="btn ghost sm-btn" href={href(page + 1)} rel="next">Next</a> : <span className="btn ghost sm-btn" aria-disabled="true">Next</span>}
       </div>
     </nav>

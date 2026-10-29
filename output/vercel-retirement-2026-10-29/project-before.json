@@ -1,0 +1,719 @@
+{
+  "accountId": "team_S8OrkT9Yk97mKBe70rcNID0f",
+  "creator": {
+    "type": "user",
+    "user": {
+      "id": "NHVZs7zzDACv1fKh6883hyDl"
+    },
+    "via": {
+      "type": "app",
+      "app": {
+        "id": "cl_fzv45fEJlUxAAuJXKR92CRdAHnBh2jOm",
+        "clientId": "cl_fzv45fEJlUxAAuJXKR92CRdAHnBh2jOm"
+      }
+    }
+  },
+  "alias": [],
+  "speedInsights": {
+    "id": "GpcYlAVtlpFoisJOdKUqgJPI9fd",
+    "hasData": false
+  },
+  "autoExposeSystemEnvs": true,
+  "autoAssignCustomDomains": false,
+  "autoAssignCustomDomainsUpdatedBy": "NHVZs7zzDACv1fKh6883hyDl",
+  "buildCommand": null,
+  "commandForIgnoringBuildStep": null,
+  "createdAt": 1792830048030,
+  "crons": {
+    "enabledAt": 1792830112796,
+    "disabledAt": 1793008960240,
+    "updatedAt": 1792993839809,
+    "deploymentId": "dpl_HVZkmNmnyVMNnXm9rooccWZtzZ9D",
+    "definitions": [
+      {
+        "host": "parakkat-ai-office-fzdtl7mtt-parakkat-jewels.vercel.app",
+        "path": "/api/seo",
+        "schedule": "30 1 * * 1"
+      },
+      {
+        "host": "parakkat-ai-office-fzdtl7mtt-parakkat-jewels.vercel.app",
+        "path": "/api/sync",
+        "schedule": "30 0 * * *"
+      }
+    ]
+  },
+  "deploymentExpiration": {
+    "expirationDays": 30,
+    "expirationDaysProduction": 30,
+    "expirationDaysCanceled": 30,
+    "expirationDaysErrored": 30,
+    "deploymentsToKeep": 10
+  },
+  "devCommand": null,
+  "directoryListing": false,
+  "env": [
+    {
+      "type": "plain",
+      "value": "https://gcctwmavpitooogjfdkk.supabase.co",
+      "target": [
+        "production",
+        "preview",
+        "development"
+      ],
+      "configurationId": null,
+      "id": "ZdzsT0UxMtc1gUT2",
+      "key": "NEXT_PUBLIC_SUPABASE_URL",
+      "createdAt": 1792830061371,
+      "updatedAt": 1792830061371,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "plain",
+      "value": "sb_publishable_k74xSN2PJ8mfByxP_ogS8g_LwXfAHdq",
+      "target": [
+        "production",
+        "preview",
+        "development"
+      ],
+      "configurationId": null,
+      "id": "VYzcXthSH3SHT9Tc",
+      "key": "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "createdAt": 1792830061371,
+      "updatedAt": 1792830061371,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production",
+        "preview"
+      ],
+      "configurationId": null,
+      "comment": "Shared with Supabase Vault secret parakkat_cron_secret for pg_cron ticks",
+      "visibility": "secret",
+      "id": "M8vr8hRwDKf91a45",
+      "key": "CRON_SECRET",
+      "createdAt": 1792830173620,
+      "updatedAt": 1792830173620,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "comment": "",
+      "visibility": "secret",
+      "id": "AkGYryNqYCsLzxLw",
+      "key": "SUPABASE_SERVICE_ROLE_KEY",
+      "createdAt": 1792830401174,
+      "updatedAt": 1792830401174,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "visibility": "secret",
+      "id": "OTGx2QpmoiYQc3xR",
+      "key": "OPENAI_API_KEY",
+      "createdAt": 1792830401174,
+      "updatedAt": 1792850071333,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "customEnvironmentIds": []
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "visibility": "secret",
+      "id": "5w6qDlxZfSk003vC",
+      "key": "GEMINI_API_KEY",
+      "createdAt": 1792830401174,
+      "updatedAt": 1792830401174,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "comment": "",
+      "visibility": "secret",
+      "id": "mWQXR5J1z4SA6OxO",
+      "key": "SHOPIFY_CLIENT_ID",
+      "createdAt": 1792841406385,
+      "updatedAt": 1792841976318,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "customEnvironmentIds": []
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "visibility": "secret",
+      "id": "E8SmLI1D7QF6VXST",
+      "key": "SHOPIFY_CLIENT_SECRET",
+      "createdAt": 1792841406385,
+      "updatedAt": 1792841997348,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "customEnvironmentIds": []
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "visibility": "secret",
+      "id": "VT8Kndws0yr1pNlN",
+      "key": "SHOPIFY_ADMIN_TOKEN",
+      "createdAt": 1792841406385,
+      "updatedAt": 1792841406385,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "visibility": "secret",
+      "id": "AEoV6G88nlo4qyR2",
+      "key": "SHOPIFY_STORE_DOMAIN",
+      "createdAt": 1792841406385,
+      "updatedAt": 1792841406385,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "comment": "",
+      "visibility": "secret",
+      "id": "UkLjyTSjb4K1Dop9",
+      "key": "META_APP_ID",
+      "createdAt": 1792842862747,
+      "updatedAt": 1792842862747,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "visibility": "secret",
+      "id": "A4Z27KQARkX9UcTc",
+      "key": "META_APP_SECRET",
+      "createdAt": 1792842862747,
+      "updatedAt": 1792842862747,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "comment": "",
+      "visibility": "secret",
+      "id": "MFLPM4lI47VouGK6",
+      "key": "GOOGLE_OAUTH_CLIENT_ID",
+      "createdAt": 1792844042605,
+      "updatedAt": 1792844042605,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "visibility": "secret",
+      "id": "aa0HELu62YgkXxl1",
+      "key": "GOOGLE_OAUTH_CLIENT_SECRET",
+      "createdAt": 1792844042605,
+      "updatedAt": 1792844042605,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "comment": "",
+      "visibility": "secret",
+      "id": "ZfVhheQ87REk3RGA",
+      "key": "GOOGLE_ADS_DEVELOPER_TOKEN",
+      "createdAt": 1792844326165,
+      "updatedAt": 1792844326165,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "comment": "",
+      "visibility": "secret",
+      "id": "LSAOI8nGjEx6rL3f",
+      "key": "GOOGLE_ADS_API_VERSION",
+      "createdAt": 1792845653617,
+      "updatedAt": 1792845653617,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    },
+    {
+      "type": "sensitive",
+      "value": "",
+      "target": [
+        "production"
+      ],
+      "configurationId": null,
+      "comment": "",
+      "visibility": "secret",
+      "id": "U4kPUtlQrLDwQPsw",
+      "key": "JEV_API_KEY",
+      "createdAt": 1792849547657,
+      "updatedAt": 1792849547657,
+      "createdBy": "NHVZs7zzDACv1fKh6883hyDl",
+      "updatedBy": null
+    }
+  ],
+  "framework": "nextjs",
+  "gitForkProtection": true,
+  "gitLFS": false,
+  "id": "prj_kn6NZnww92DNxApOqYwDoLyL57gm",
+  "installCommand": null,
+  "jobs": {
+    "lint": {
+      "targets": [
+        "production",
+        "preview"
+      ]
+    },
+    "typecheck": {
+      "targets": [
+        "production",
+        "preview"
+      ]
+    }
+  },
+  "lastRollbackTarget": null,
+  "lastAliasRequest": null,
+  "name": "parakkat-ai-office",
+  "nodeVersion": "24.x",
+  "outputDirectory": null,
+  "sandbox": {
+    "failoverRegions": [],
+    "region": "iad1"
+  },
+  "productionDeploymentsFastLane": true,
+  "defaultResourceConfig": {
+    "fluid": true,
+    "functionDefaultRegions": [
+      "iad1"
+    ],
+    "functionDefaultTimeout": 300,
+    "functionDefaultMemoryType": "standard",
+    "functionZeroConfigFailover": false,
+    "elasticConcurrencyEnabled": true
+  },
+  "resourceConfig": {
+    "fluid": true,
+    "functionDefaultRegions": [
+      "iad1"
+    ],
+    "elasticConcurrencyEnabled": true,
+    "buildMachineType": "standard",
+    "buildMachineSelection": "elastic",
+    "elasticBuildMachine": {
+      "cores": 4,
+      "memory": 8192,
+      "label": "standard"
+    }
+  },
+  "rootDirectory": null,
+  "serverlessFunctionRegion": "iad1",
+  "skewProtectionMaxAge": 43200,
+  "sourceFilesOutsideRootDirectory": true,
+  "enableAffectedProjectsDeployments": true,
+  "ssoProtection": {
+    "deploymentType": "all_except_custom_domains"
+  },
+  "updatedAt": 1793008986263,
+  "live": false,
+  "enableExternalRewriteCaching": true,
+  "gitComments": {
+    "onCommit": false,
+    "onPullRequest": true
+  },
+  "gitProviderOptions": {
+    "createDeployments": "disabled",
+    "disableRepositoryDispatchEvents": true
+  },
+  "paused": true,
+  "webAnalytics": {
+    "id": "gXTqHgXLv8iCqikHnFW2MrFpK"
+  },
+  "oidcTokenConfig": {
+    "enabled": true,
+    "issuerMode": "team"
+  },
+  "usageStatus": {
+    "kind": "flat"
+  },
+  "hasDeployments": true,
+  "link": {
+    "type": "github",
+    "repo": "parakkat-ai-office",
+    "repoId": 1431919764,
+    "org": "ParakkatJewels-dev",
+    "repoOwnerId": 306480377,
+    "gitCredentialId": "cred_62e123ee8ab555a79e8485cdf5d516690d6b7eaf",
+    "productionBranch": "main",
+    "createdAt": 1792830047854,
+    "updatedAt": 1792830047854,
+    "deployHooks": []
+  },
+  "latestDeployments": [
+    {
+      "alias": [
+        "parakkat-ai-office-git-fix-read-only-odo-670bb2-parakkat-jewels.vercel.app"
+      ],
+      "aliasAssigned": 1792994524985,
+      "aliasError": null,
+      "automaticAliases": [
+        "parakkat-ai-office-git-fix-read-only-odo-670bb2-parakkat-jewels.vercel.app"
+      ],
+      "builds": [],
+      "createdAt": 1792994487298,
+      "createdIn": "sfo1",
+      "creator": {
+        "uid": "NHVZs7zzDACv1fKh6883hyDl",
+        "email": "digitalparakkat@gmail.com",
+        "username": "digitalparakkat-5680",
+        "githubLogin": "claude"
+      },
+      "deploymentHostname": "parakkat-ai-office-4d9q3yoln-parakkat-jewels",
+      "forced": false,
+      "id": "dpl_HJLSH1tzCza2K2jHMWBcQvuq4xgp",
+      "meta": {
+        "githubCommitAuthorName": "Claude",
+        "githubCommitAuthorEmail": "noreply@anthropic.com",
+        "githubCommitMessage": "Enforce read-only Odoo and Shopify; Odoo sales sync a day at a time\n\nOdoo calls are limited to an allowlist of read methods and Shopify to GraphQL\nqueries; anything else is refused before a request is sent, with tests.\nOdoo sales are read and saved one day at a time, so a slow server keeps\nevery day it finished, and an hourly job fills in the 90 days. Sales orders\ncount under their warehouse (the showroom). The stock sync only looks up\nthe Odoo products behind Shopify SKUs instead of the whole catalogue.\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_011KVYufKSy8VP5QTTKP9kje",
+        "githubCommitOrg": "ParakkatJewels-dev",
+        "githubCommitRef": "fix/read-only-odoo-shopify",
+        "githubCommitRepo": "parakkat-ai-office",
+        "githubCommitSha": "02fd2a4a5b58b18884f8cbc49ebe986f79dbdbfc",
+        "githubDeployment": "1",
+        "githubOrg": "ParakkatJewels-dev",
+        "githubRepo": "parakkat-ai-office",
+        "githubRepoOwnerType": "User",
+        "githubCommitRepoId": "1431919764",
+        "githubRepoId": "1431919764",
+        "githubRepoVisibility": "public",
+        "githubHost": "github.com",
+        "githubCommitAuthorLogin": "claude",
+        "githubCommitVerification": "verified",
+        "repoPushedAt": "1792994485000",
+        "branchAlias": "parakkat-ai-office-git-fix-read-only-odo-670bb2-parakkat-jewels.vercel.app",
+        "githubPrId": "20",
+        "lambdaRuntimeStats": "{\"nodejs\":7}"
+      },
+      "name": "parakkat-ai-office",
+      "plan": "pro",
+      "private": true,
+      "readyState": "READY",
+      "readySubstate": "STAGED",
+      "target": null,
+      "teamId": "team_S8OrkT9Yk97mKBe70rcNID0f",
+      "type": "LAMBDAS",
+      "url": "parakkat-ai-office-4d9q3yoln-parakkat-jewels.vercel.app",
+      "userId": "NHVZs7zzDACv1fKh6883hyDl",
+      "withCache": false,
+      "buildingAt": 1792994488423,
+      "readyAt": 1792994524841,
+      "previewCommentsEnabled": true,
+      "oidcTokenClaims": {
+        "sub": "owner:parakkat-jewels:project:parakkat-ai-office:environment:preview",
+        "iss": "https://oidc.vercel.com/parakkat-jewels",
+        "scope": "owner:parakkat-jewels:project:parakkat-ai-office:environment:preview",
+        "aud": "https://vercel.com/parakkat-jewels",
+        "owner": "parakkat-jewels",
+        "owner_id": "team_S8OrkT9Yk97mKBe70rcNID0f",
+        "project": "parakkat-ai-office",
+        "project_id": "prj_kn6NZnww92DNxApOqYwDoLyL57gm",
+        "environment": "preview",
+        "plan": "pro"
+      }
+    },
+    {
+      "alias": [
+        "parakkat-ai-office.vercel.app",
+        "parakkat-ai-office-parakkat-jewels.vercel.app",
+        "parakkat-ai-office-git-main-parakkat-jewels.vercel.app"
+      ],
+      "aliasAssigned": 1792993839522,
+      "aliasError": null,
+      "automaticAliases": [
+        "parakkat-ai-office-parakkat-jewels.vercel.app",
+        "parakkat-ai-office-git-main-parakkat-jewels.vercel.app"
+      ],
+      "builds": [],
+      "createdAt": 1792993799150,
+      "createdIn": "sfo1",
+      "creator": {
+        "uid": "NHVZs7zzDACv1fKh6883hyDl",
+        "email": "digitalparakkat@gmail.com",
+        "username": "digitalparakkat-5680",
+        "githubLogin": "ParakkatJewels-dev"
+      },
+      "deploymentHostname": "parakkat-ai-office-fzdtl7mtt-parakkat-jewels",
+      "forced": false,
+      "id": "dpl_HVZkmNmnyVMNnXm9rooccWZtzZ9D",
+      "meta": {
+        "githubCommitAuthorName": "ParakkatJewels-dev",
+        "githubCommitAuthorEmail": "it@parakkatjewels.com",
+        "githubCommitMessage": "Banners learn from past designs in Drive; redesign any AI image (#19)\n\n* Banners learn from past designs in Drive; redesign any AI image\n\n- Design library: the Super Admin picks Google Drive folders of past designs in\n  Design Studio. A background job reads them a page at a time (subfolders too)\n  and the Banner Designer studies each design's occasion, style, palette,\n  layout and type from Drive's preview.\n- Every banner and Studio order starts from the three closest past designs as\n  style references, and the Creative Director writes a fresh concept that is\n  told which concepts were used lately, so designs vary.\n- Campaign banners now go through the same drawing and team-lead check as\n  Studio orders, with the headline set on the image.\n- Redesign with an optional note on Studio images and on campaign banners in\n  Approvals. Orders and redesigns draw in the background; the page shows\n  progress and refreshes itself, and earlier versions are kept.\n- Google sign-in asks for drive.readonly; reconnect Google o",
+        "githubCommitOrg": "ParakkatJewels-dev",
+        "githubCommitRef": "main",
+        "githubCommitRepo": "parakkat-ai-office",
+        "githubCommitSha": "4b811befa07366c79a2cc5eedbcff19295c45bdc",
+        "githubDeployment": "1",
+        "githubOrg": "ParakkatJewels-dev",
+        "githubRepo": "parakkat-ai-office",
+        "githubRepoOwnerType": "User",
+        "githubCommitRepoId": "1431919764",
+        "githubRepoId": "1431919764",
+        "githubRepoVisibility": "public",
+        "githubHost": "github.com",
+        "githubCommitAuthorLogin": "ParakkatJewels-dev",
+        "githubCommitVerification": "verified",
+        "repoPushedAt": "1792993796000",
+        "branchAlias": "parakkat-ai-office-git-main-parakkat-jewels.vercel.app",
+        "lambdaRuntimeStats": "{\"nodejs\":7}"
+      },
+      "name": "parakkat-ai-office",
+      "plan": "pro",
+      "private": true,
+      "readyState": "READY",
+      "readySubstate": "PROMOTED",
+      "target": "production",
+      "teamId": "team_S8OrkT9Yk97mKBe70rcNID0f",
+      "type": "LAMBDAS",
+      "url": "parakkat-ai-office-fzdtl7mtt-parakkat-jewels.vercel.app",
+      "userId": "NHVZs7zzDACv1fKh6883hyDl",
+      "withCache": false,
+      "buildingAt": 1792993800008,
+      "readyAt": 1792993839273,
+      "previewCommentsEnabled": true,
+      "oidcTokenClaims": {
+        "sub": "owner:parakkat-jewels:project:parakkat-ai-office:environment:production",
+        "iss": "https://oidc.vercel.com/parakkat-jewels",
+        "scope": "owner:parakkat-jewels:project:parakkat-ai-office:environment:production",
+        "aud": "https://vercel.com/parakkat-jewels",
+        "owner": "parakkat-jewels",
+        "owner_id": "team_S8OrkT9Yk97mKBe70rcNID0f",
+        "project": "parakkat-ai-office",
+        "project_id": "prj_kn6NZnww92DNxApOqYwDoLyL57gm",
+        "environment": "production",
+        "plan": "pro"
+      }
+    }
+  ],
+  "targets": {
+    "production": {
+      "alias": [
+        "parakkat-ai-office.vercel.app",
+        "parakkat-ai-office-parakkat-jewels.vercel.app",
+        "parakkat-ai-office-git-main-parakkat-jewels.vercel.app"
+      ],
+      "aliasAssigned": 1792993839522,
+      "aliasError": null,
+      "automaticAliases": [
+        "parakkat-ai-office-parakkat-jewels.vercel.app",
+        "parakkat-ai-office-git-main-parakkat-jewels.vercel.app"
+      ],
+      "builds": [],
+      "createdAt": 1792993799150,
+      "createdIn": "sfo1",
+      "creator": {
+        "uid": "NHVZs7zzDACv1fKh6883hyDl",
+        "email": "digitalparakkat@gmail.com",
+        "username": "digitalparakkat-5680",
+        "githubLogin": "ParakkatJewels-dev"
+      },
+      "deploymentHostname": "parakkat-ai-office-fzdtl7mtt-parakkat-jewels",
+      "forced": false,
+      "id": "dpl_HVZkmNmnyVMNnXm9rooccWZtzZ9D",
+      "meta": {
+        "githubCommitAuthorName": "ParakkatJewels-dev",
+        "githubCommitAuthorEmail": "it@parakkatjewels.com",
+        "githubCommitMessage": "Banners learn from past designs in Drive; redesign any AI image (#19)\n\n* Banners learn from past designs in Drive; redesign any AI image\n\n- Design library: the Super Admin picks Google Drive folders of past designs in\n  Design Studio. A background job reads them a page at a time (subfolders too)\n  and the Banner Designer studies each design's occasion, style, palette,\n  layout and type from Drive's preview.\n- Every banner and Studio order starts from the three closest past designs as\n  style references, and the Creative Director writes a fresh concept that is\n  told which concepts were used lately, so designs vary.\n- Campaign banners now go through the same drawing and team-lead check as\n  Studio orders, with the headline set on the image.\n- Redesign with an optional note on Studio images and on campaign banners in\n  Approvals. Orders and redesigns draw in the background; the page shows\n  progress and refreshes itself, and earlier versions are kept.\n- Google sign-in asks for drive.readonly; reconnect Google o",
+        "githubCommitOrg": "ParakkatJewels-dev",
+        "githubCommitRef": "main",
+        "githubCommitRepo": "parakkat-ai-office",
+        "githubCommitSha": "4b811befa07366c79a2cc5eedbcff19295c45bdc",
+        "githubDeployment": "1",
+        "githubOrg": "ParakkatJewels-dev",
+        "githubRepo": "parakkat-ai-office",
+        "githubRepoOwnerType": "User",
+        "githubCommitRepoId": "1431919764",
+        "githubRepoId": "1431919764",
+        "githubRepoVisibility": "public",
+        "githubHost": "github.com",
+        "githubCommitAuthorLogin": "ParakkatJewels-dev",
+        "githubCommitVerification": "verified",
+        "repoPushedAt": "1792993796000",
+        "branchAlias": "parakkat-ai-office-git-main-parakkat-jewels.vercel.app",
+        "lambdaRuntimeStats": "{\"nodejs\":7}"
+      },
+      "name": "parakkat-ai-office",
+      "plan": "pro",
+      "private": true,
+      "readyState": "READY",
+      "readySubstate": "PROMOTED",
+      "target": "production",
+      "teamId": "team_S8OrkT9Yk97mKBe70rcNID0f",
+      "type": "LAMBDAS",
+      "url": "parakkat-ai-office-fzdtl7mtt-parakkat-jewels.vercel.app",
+      "userId": "NHVZs7zzDACv1fKh6883hyDl",
+      "withCache": false,
+      "buildingAt": 1792993800008,
+      "readyAt": 1792993839273,
+      "previewCommentsEnabled": true,
+      "oidcTokenClaims": {
+        "sub": "owner:parakkat-jewels:project:parakkat-ai-office:environment:production",
+        "iss": "https://oidc.vercel.com/parakkat-jewels",
+        "scope": "owner:parakkat-jewels:project:parakkat-ai-office:environment:production",
+        "aud": "https://vercel.com/parakkat-jewels",
+        "owner": "parakkat-jewels",
+        "owner_id": "team_S8OrkT9Yk97mKBe70rcNID0f",
+        "project": "parakkat-ai-office",
+        "project_id": "prj_kn6NZnww92DNxApOqYwDoLyL57gm",
+        "environment": "production",
+        "plan": "pro"
+      }
+    },
+    "preview": {
+      "alias": [
+        "parakkat-ai-office-git-fix-read-only-odo-670bb2-parakkat-jewels.vercel.app"
+      ],
+      "aliasAssigned": 1792994524985,
+      "aliasError": null,
+      "automaticAliases": [
+        "parakkat-ai-office-git-fix-read-only-odo-670bb2-parakkat-jewels.vercel.app"
+      ],
+      "builds": [],
+      "createdAt": 1792994487298,
+      "createdIn": "sfo1",
+      "creator": {
+        "uid": "NHVZs7zzDACv1fKh6883hyDl",
+        "email": "digitalparakkat@gmail.com",
+        "username": "digitalparakkat-5680",
+        "githubLogin": "claude"
+      },
+      "deploymentHostname": "parakkat-ai-office-4d9q3yoln-parakkat-jewels",
+      "forced": false,
+      "id": "dpl_HJLSH1tzCza2K2jHMWBcQvuq4xgp",
+      "meta": {
+        "githubCommitAuthorName": "Claude",
+        "githubCommitAuthorEmail": "noreply@anthropic.com",
+        "githubCommitMessage": "Enforce read-only Odoo and Shopify; Odoo sales sync a day at a time\n\nOdoo calls are limited to an allowlist of read methods and Shopify to GraphQL\nqueries; anything else is refused before a request is sent, with tests.\nOdoo sales are read and saved one day at a time, so a slow server keeps\nevery day it finished, and an hourly job fills in the 90 days. Sales orders\ncount under their warehouse (the showroom). The stock sync only looks up\nthe Odoo products behind Shopify SKUs instead of the whole catalogue.\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_011KVYufKSy8VP5QTTKP9kje",
+        "githubCommitOrg": "ParakkatJewels-dev",
+        "githubCommitRef": "fix/read-only-odoo-shopify",
+        "githubCommitRepo": "parakkat-ai-office",
+        "githubCommitSha": "02fd2a4a5b58b18884f8cbc49ebe986f79dbdbfc",
+        "githubDeployment": "1",
+        "githubOrg": "ParakkatJewels-dev",
+        "githubRepo": "parakkat-ai-office",
+        "githubRepoOwnerType": "User",
+        "githubCommitRepoId": "1431919764",
+        "githubRepoId": "1431919764",
+        "githubRepoVisibility": "public",
+        "githubHost": "github.com",
+        "githubCommitAuthorLogin": "claude",
+        "githubCommitVerification": "verified",
+        "repoPushedAt": "1792994485000",
+        "branchAlias": "parakkat-ai-office-git-fix-read-only-odo-670bb2-parakkat-jewels.vercel.app",
+        "githubPrId": "20",
+        "lambdaRuntimeStats": "{\"nodejs\":7}"
+      },
+      "name": "parakkat-ai-office",
+      "plan": "pro",
+      "private": true,
+      "readyState": "READY",
+      "readySubstate": "STAGED",
+      "target": null,
+      "teamId": "team_S8OrkT9Yk97mKBe70rcNID0f",
+      "type": "LAMBDAS",
+      "url": "parakkat-ai-office-4d9q3yoln-parakkat-jewels.vercel.app",
+      "userId": "NHVZs7zzDACv1fKh6883hyDl",
+      "withCache": false,
+      "buildingAt": 1792994488423,
+      "readyAt": 1792994524841,
+      "previewCommentsEnabled": true,
+      "oidcTokenClaims": {
+        "sub": "owner:parakkat-jewels:project:parakkat-ai-office:environment:preview",
+        "iss": "https://oidc.vercel.com/parakkat-jewels",
+        "scope": "owner:parakkat-jewels:project:parakkat-ai-office:environment:preview",
+        "aud": "https://vercel.com/parakkat-jewels",
+        "owner": "parakkat-jewels",
+        "owner_id": "team_S8OrkT9Yk97mKBe70rcNID0f",
+        "project": "parakkat-ai-office",
+        "project_id": "prj_kn6NZnww92DNxApOqYwDoLyL57gm",
+        "environment": "preview",
+        "plan": "pro"
+      }
+    }
+  },
+  "features": {
+    "webAnalytics": false
+  },
+  "protectedSourcemaps": true,
+  "avatar": null,
+  "avatarDarkMode": null
+}

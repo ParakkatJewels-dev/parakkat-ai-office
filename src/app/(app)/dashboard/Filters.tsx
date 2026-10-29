@@ -18,7 +18,7 @@ export function Filters({ accounts, from, to }: { accounts: Account[]; from: str
   const shown = accounts.filter(a => !platform || a.platform === platform);
   const any = range !== '30' || platform || account;
   return (
-    <div className={`filters ${pending ? 'loading' : ''}`} role="search" aria-label="Dashboard filters">
+    <div className={`filters ${pending ? 'loading' : ''}`} role="search" aria-label="Dashboard filters" aria-busy={pending}>
       <span className="filters-ic">{pending ? <span className="spin" aria-hidden="true" /> : <Icon name="filter" size={16} />}</span>
       <label className="fl">Dates<select className="in" value={range} onChange={e => set({ range: e.target.value === '30' ? null : e.target.value, ...(e.target.value === 'custom' ? { from, to } : { from: null, to: null }) })}>
         {RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>

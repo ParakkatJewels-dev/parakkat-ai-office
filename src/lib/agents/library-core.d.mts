@@ -1,9 +1,13 @@
 export function folderIdFrom(input: unknown): string | null;
 export const DESIGN_MIMES: string[];
 export function isDesignFile(mime: string): boolean;
-export function childrenQuery(folderId: string, since?: string | null): string;
+export function childrenQuery(folderId: string): string;
 export function bigThumb(link: string, size?: number): string;
 export function searchWords(...texts: string[]): string;
-export function refLine(r: { occasion?: string | null; style?: string | null; layout?: string | null; palette?: string | null; typography?: string | null }, i: number): string;
+export type DesignReferenceSelection = {productTitles?:string[];direction?:string;format?:string;previousIds?:string[];limit?:number};
+export function designReferenceQueries(words:string[], options?:DesignReferenceSelection):string[];
+export function rankDesignReferences<T extends {id:string;[key:string]:any}>(refs:T[],words:string[],options?:DesignReferenceSelection):T[];
+export function referenceFingerprint(r: {fingerprint?: Record<string, unknown> | null; style?: string | null; layout?: string | null; palette?: string | null; typography?: string | null}): string;
+export function refLine(r: { occasion?: string | null; fingerprint?: Record<string, unknown> | null; style?: string | null; layout?: string | null; palette?: string | null; typography?: string | null }, i: number): string;
 export function recentConcepts(rows: { concept?: string | null }[], max?: number): string[];
 export function versionPath(path: string, n: number): string;

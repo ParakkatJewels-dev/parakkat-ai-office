@@ -1,0 +1,10 @@
+export const HIGGSFIELD_IMAGE_MODELS: {id:string;name:string}[];
+export function validProviderId(value:unknown):boolean;
+export function generationParams(model:string,ratio:string,descriptor:any):Record<string,any>;
+export function quoteCredits(result:any,params:Record<string,any>):number;
+export function availableCredits(result:any):number;
+export function receiptQuality(result:any,params:Record<string,any>):{actualSettings:Record<string,unknown>;warning?:string};
+export function publicMediaUrl(value:string,resolve?:(hostname:string,options:any)=>Promise<{address:string}[]>):Promise<string>;
+export const fetchPublicMedia:typeof fetch;
+export function createPublicMediaFetcher(options?:any):typeof fetch;
+export function readImageResponse(response:Response,maxBytes?:number):Promise<{bytes:Buffer;type:string}>;

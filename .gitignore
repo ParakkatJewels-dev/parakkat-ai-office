@@ -8,3 +8,6 @@ out
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+# Never commit exported OAuth credentials or an in-project auth store.
+.chatgpt/
+chatgpt-credentials*.json

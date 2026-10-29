@@ -1,0 +1,1 @@
+export function headTaskDepartments(role:string,head:{id:string;enabled:boolean;is_lead:boolean;department_id:string}|null,task:{created_by:string|null;department_id:string;input:Record<string,any>},departments:Array<{id:string;human_head_role:string;ai_lead_agent:string|null}>):string[];

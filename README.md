@@ -41,3 +41,5 @@ npm run seed:gen              # after editing src/office/roster.mjs
 ```
 
 Deploying: see [docs/DEPLOY.md](docs/DEPLOY.md).
+
+For a VPS with **ChatGPT OAuth instead of an OpenAI API key**, follow [docs/SELF_HOST.md](docs/SELF_HOST.md). This uses the official Sign in with ChatGPT flow, keeps renewable credentials in protected storage on the VPS, and sends agent reasoning through your connected ChatGPT plan. Staff still sign in through Supabase; Gemini image generation remains a separate provider.

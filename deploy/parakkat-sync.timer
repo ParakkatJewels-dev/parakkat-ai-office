@@ -1,0 +1,10 @@
+[Unit]
+Description=Sync Parakkat AI Office data daily at 06:00 India time
+
+[Timer]
+OnCalendar=*-*-* 00:30:00 UTC
+Persistent=true
+Unit=parakkat-job@sync.service
+
+[Install]
+WantedBy=timers.target

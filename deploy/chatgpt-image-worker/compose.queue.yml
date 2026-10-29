@@ -1,0 +1,31 @@
+# Load only after the authenticated Linux pilot and backend integration checks.
+# This override is never included by the pilot Compose file.
+services:
+  worker:
+    profiles: [queue]
+    entrypoint: ["node", "/opt/chatgpt-image-worker/worker.mjs"]
+    command: []
+    user: "0:0"
+    environment:
+      CHATGPT_IMAGE_WORKER_URL: ${CHATGPT_IMAGE_WORKER_URL:?Set the authenticated image-worker endpoint}
+      CHATGPT_IMAGE_WORKER_SECRET_FILE: /run/secrets/image-worker
+      CHATGPT_IMAGE_WORKER_DIRECTORY: /work
+      CHATGPT_IMAGE_CODEX_UID: "1000"
+      CHATGPT_IMAGE_CODEX_GID: "1000"
+      CHATGPT_IMAGE_POLL_SECONDS: "900"
+      CHATGPT_IMAGE_SANDBOX: workspace-write
+    secrets:
+      - source: image-worker
+        target: image-worker
+        uid: "0"
+        gid: "0"
+        mode: 0400
+    # The supervisor owns control records; only its Codex child runs as UID1000.
+    # DAC_READ_SEARCH permits reading child-owned results, not bypassing writes.
+    cap_add: [CHOWN, SETUID, SETGID, DAC_READ_SEARCH, KILL]
+    restart: unless-stopped
+    stop_grace_period: 26m
+
+secrets:
+  image-worker:
+    file: ${CHATGPT_IMAGE_WORKER_SECRET_PATH:?Set a root-owned mode0600 or0400 credential file}

@@ -1,0 +1,27 @@
+Create a finished carousel card for PARAKKAT JEWELS. Produce the image, not a text description.
+
+Canvas: 4:5 aspect ratio; target 1080 × 1350. Language: English.
+
+This is card 2 of a five-card carousel. Keep all cards consistent in typography, colour, lighting and spacing. Generate this card as a separate finished image, not a collage of all cards.
+
+Brief: Five-card Ring carousel from recorded Shopify sales, 2026-09-27 to 2026-10-26 UTC. Card 2 of 5. Use the selected uploaded design as the background style reference and the official Shopify product photograph without changing the jewellery. Draft for human review; do not publish.
+
+Approved headline: CZ Grid Rectangle Face Stone Gents Ring Gold Layered
+
+PRODUCT IDENTITY — the attached product files are the authoritative sources:
+product-1.png: CZ Grid Rectangle Face Stone Gents Ring Gold Layered (Shopify product 10007145677119)
+Preserve the exact jewellery silhouette, stone count and colours, setting, motifs, metal tone and proportions. Do not substitute similar jewellery. Avoid cropping or obscuring its distinguishing features.
+
+STYLE REFERENCES — attach these actual past designs:
+style-1.png: hf_20261005_112345_ded7cfbd-f5ba-4cc4-9fcd-047aaa59a36d.png. Primary art direction. Visual brief: Sophisticated, masculine mood set against a textured dark slate-blue studio background with subtle soft reflections. Crisp directional lighting highlights the high-polish gold facets and brilliant yellow CZ stone without distracting props.; Composition: Brand logo and tagline anchored at top center, followed by headline; vertical feature badges along left; prominent central ring with product title, pricing, and SKU centered at bottom.; Palette: slate blue, rich gold, bright yellow, crisp white; Typography: Classic elegant serif for headline and product title, paired with clean geometric sans-serif for trust icons and SKU specifications.; How it was made: Sophisticated, masculine mood set against a textured dark slate-blue studio background with subtle soft reflections. Crisp directional lighting highlights the high-polish gold facets and brilliant yellow CZ stone without distracting props. Brand logo and tagline anchored at top center, followed by headline; vertical feature badges along left; prominent central ring with product title, pricing, and SKU centered at bottom.; Avoid: Use only the art direction; do not copy the original jewellery or words.
+Use their typography, hierarchy, lighting and level of finish as guidance. Their jewellery, prices, claims and offer badges are not approved content for this image.
+
+The attached previous-artwork.png is the previous version. Preserve its approved product identity, wording and brand treatment except for the requested changes below. Do not simply re-export it.
+
+REQUESTED REVISION (takes priority over earlier art direction): Try a new direction while keeping each product faithful to its official Shopify photo.
+
+Brand: PARAKKAT JEWELS. Keep the brand name accurate and legible. Do not invent logo symbols, offers, prices, discounts, certifications or material claims. Use only explicitly approved copy. Produce a polished, cohesive jewellery photograph with clean spacing and controlled detail.
+
+Before returning the image, inspect product fidelity, typography, spelling, brand accuracy and the requested changes. Export the finished image as a still PNG, JPEG or WebP. A person will review it in AI Office before approval.
+
+AI Office artwork request: design/891a5e0d-7a71-4c9a-bcd0-a6ae2d6076d5 · b748737c-8e80-40fe-9e0f-08a9ecbddbba · intended version 4.

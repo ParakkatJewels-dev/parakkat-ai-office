@@ -1,0 +1,251 @@
+{
+  "desktop": [
+    {
+      "label": "Dashboard desktop",
+      "bodyOverflow": false,
+      "heading": "Dashboard",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "dark",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "Dashboard light desktop",
+      "bodyOverflow": false,
+      "heading": "Dashboard",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "Studio desktop",
+      "bodyOverflow": false,
+      "heading": "Design Studio",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "Settings desktop",
+      "bodyOverflow": false,
+      "heading": "Workspace settings",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "agents desktop",
+      "bodyOverflow": false,
+      "heading": "Agent reports",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "agents/manage desktop",
+      "bodyOverflow": false,
+      "heading": "Agent management",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "approvals desktop",
+      "bodyOverflow": false,
+      "heading": "Approvals",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "automations desktop",
+      "bodyOverflow": false,
+      "heading": "Automations",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "outcomes desktop",
+      "bodyOverflow": false,
+      "heading": "Outcomes",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "usage desktop",
+      "bodyOverflow": false,
+      "heading": "Usage and billing",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "seo desktop",
+      "bodyOverflow": false,
+      "heading": "SEO",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "Agent detail loaded",
+      "bodyOverflow": false,
+      "heading": "AI Chief Marketing Officer Active today",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "Outcomes loaded",
+      "bodyOverflow": false,
+      "heading": "Outcomes",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "Usage loaded desktop",
+      "bodyOverflow": false,
+      "heading": "Usage and billing",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "Approvals loaded desktop",
+      "bodyOverflow": false,
+      "heading": "Approvals",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    },
+    {
+      "label": "Agent management loaded desktop",
+      "bodyOverflow": false,
+      "heading": "Agent management",
+      "mainScrollWidth": 1855,
+      "mainWidth": 1855,
+      "shell": "shell workspace",
+      "theme": "light",
+      "unlabelledFields": [],
+      "viewport": 2073
+    }
+  ],
+  "responsive": {
+    "method": "same-origin static DOM/CSS fixture with existing artwork in a 390px iframe; not mobile end-to-end",
+    "images": [
+      {
+        "fit": "contain",
+        "height": 422.5,
+        "naturalWidth": 1122,
+        "parentHeight": 422.5,
+        "width": 338
+      },
+      {
+        "fit": "contain",
+        "height": 422.5,
+        "naturalWidth": 1122,
+        "parentHeight": 422.5,
+        "width": 338
+      },
+      {
+        "fit": "contain",
+        "height": 422.5,
+        "naturalWidth": 1122,
+        "parentHeight": 422.5,
+        "width": 338
+      },
+      {
+        "fit": "contain",
+        "height": 422.5,
+        "naturalWidth": 1122,
+        "parentHeight": 422.5,
+        "width": 338
+      },
+      {
+        "fit": "contain",
+        "height": 422.5,
+        "naturalWidth": 1122,
+        "parentHeight": 422.5,
+        "width": 338
+      }
+    ],
+    "mainScrollWidth": 390,
+    "mainWidth": 390,
+    "scrollWidth": 390,
+    "width": 390
+  },
+  "officeUnchanged": true,
+  "release": "workspace-ui-20261029-r2",
+  "finishingChecks": {
+    "studio": {
+      "images": 5,
+      "version": 4,
+      "naturalDimensions": [
+        1122,
+        1402
+      ],
+      "heightAndParent": 400,
+      "objectFit": "contain"
+    },
+    "usage": {
+      "direction": "row",
+      "gap": 2,
+      "widthAndScrollWidth": 1176,
+      "cardHeight": 235.5
+    },
+    "synthetic90BarMobile": {
+      "viewportAndDocumentScrollWidth": 390,
+      "chartAndScrollWidth": 336
+    },
+    "seo": {
+      "alignItems": "start"
+    }
+  }
+}

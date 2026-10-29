@@ -1,5 +1,7 @@
 # Deploying to Supabase and Vercel
 
+For ChatGPT OAuth on your own VPS, use [Self-hosting with ChatGPT](SELF_HOST.md) instead. The setup below remains the Vercel/API-key deployment path.
+
 About 30 minutes. You need admin access to Supabase, Vercel, Shopify, Meta Business and Google Ads.
 
 ## 1. Supabase

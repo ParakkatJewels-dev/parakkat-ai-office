@@ -38,6 +38,7 @@ before(async () => {
   await db.exec(read('supabase/migrations/20261024001100_reviews_usage.sql'));
   await db.exec(read('supabase/migrations/20261026000000_design_library.sql'));
   await db.exec(read('supabase/migrations/20261026000100_odoo.sql'));
+  await db.exec(read('supabase/migrations/20261026000300_conversation_product_sales.sql'));
   // what Supabase grants signed-in users by default
   await db.exec(`grant usage on schema public, auth to authenticated; grant all on all tables in schema public to authenticated; grant execute on function auth.uid() to authenticated;`);
   for (const [k, id] of Object.entries(U)) await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [id, { full_name: k }]);
@@ -269,4 +270,49 @@ test('branch sales compare each branch with the same number of days before', asy
   assert.deepEqual(rows.map(r => [r.branch, r.kind, Number(r.orders), Number(r.revenue), Number(r.prev_revenue)]), [['Thrissur', 'showroom', 4, 400, 200], ['Website', 'online', 1, 50, 0]]);
   const signedIn = await as('ecom', 'select count(*)::int as n from odoo_branch_daily');
   assert.equal(signedIn.rows[0].n, 4);
+});
+
+test('conversation sales use both date bounds, keep product quantities and distinguish unknown stock from zero', async () => {
+  await db.exec(`insert into products (id,title,status,inventory,odoo_stock) values
+    (801,'Recorded zero','ACTIVE',9,0), (802,'Unknown stock','ACTIVE',null,null),
+    (803,'Shopify fallback','ARCHIVED',4,null);
+    insert into orders_daily(day,product_id,units,revenue) values
+    ('2040-10-19',801,100,1000), ('2040-10-20',801,2,200), ('2040-10-26',801,3,300),
+    ('2040-10-27',801,200,2000), ('2040-10-22',802,1,100), ('2040-10-22',803,1,100),
+    ('2040-10-22',804,1,100);`);
+  const q = `select * from conversation_product_sales('2040-10-20','2040-10-26',26)`;
+  const { rows } = await as('ecom', q);
+  assert.deepEqual(rows.map(r => [r.product_id,Number(r.units),r.stock,r.stock_source]),
+    [[801,5,0,'odoo'],[802,1,null,null],[803,1,4,'shopify'],[804,1,null,null]]);
+  assert.equal(rows[3].title,null,'missing catalogue does not drop recorded sales');
+  assert.equal(Number(rows[0].revenue),500);
+  assert.equal(Number(rows[0].window_units),8);
+  assert.equal(Number(rows[0].window_product_count),4);
+  assert.equal(rows[0].window_first_recorded_day.toISOString().slice(0,10),'2040-10-20');
+  assert.equal(rows[0].window_last_recorded_day.toISOString().slice(0,10),'2040-10-26');
+  assert.equal(rows[0].last_sale_day.toISOString().slice(0,10),'2040-10-26');
+  const limited = (await as('ecom',`select * from conversation_product_sales('2040-10-20','2040-10-26',1)`)).rows;
+  assert.equal(limited.length,1);
+  assert.equal(Number(limited[0].window_units),8,'limit does not truncate window totals');
+  assert.equal(Number(limited[0].window_product_count),4);
+  assert.equal((await as('ecom',`select * from conversation_product_sales('2040-10-26','2040-10-20',26)`)).rows.length,0);
+});
+
+test('conversation sales inherit caller RLS for sales and stock; anonymous callers cannot execute', async () => {
+  await db.exec(`create policy "test restricted sale" on orders_daily as restrictive for select to authenticated using (product_id <> 801);
+    create policy "test restricted product" on products as restrictive for select to authenticated using (id <> 803);`);
+  try {
+    const { rows } = await as('ecom',`select * from conversation_product_sales('2040-10-20','2040-10-26',26)`);
+    assert.equal(rows.length,3);
+    assert.equal(Number(rows[0].window_units),3,'hidden sales are excluded even from totals');
+    const hidden = rows.find(r => r.product_id === 803);
+    assert.equal(hidden.title,null); assert.equal(hidden.stock,null); assert.equal(hidden.stock_source,null);
+    const { rows: [permissions] } = await db.query(`select
+      has_function_privilege('anon','conversation_product_sales(date,date,integer)','execute') as anon,
+      has_function_privilege('authenticated','conversation_product_sales(date,date,integer)','execute') as authenticated`);
+    assert.deepEqual(permissions,{anon:false,authenticated:true});
+  } finally {
+    await db.exec(`drop policy "test restricted sale" on orders_daily; drop policy "test restricted product" on products;
+      delete from orders_daily where product_id between 801 and 804; delete from products where id between 801 and 804;`);
+  }
 });

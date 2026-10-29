@@ -1,7 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess } from './vault';
-import { normalizeOdooUrl, guessDb, istDay, utcStart, addDays, m2o, skuOf, orderBranch, totals, salesWindows } from './odoo-core.mjs';
+import { normalizeOdooUrl, guessDb, istDay, utcStart, addDays, m2o, skuOf, orderBranch, totals, runSalesDays, odooDeadline, isMissingOdooModel, type OdooSalesState } from './odoo-core.mjs';
 
 /**
  * Odoo, the ERP: sales for every showroom and the online store, and the stock actually on hand.
@@ -31,14 +31,22 @@ export class Odoo {
   private mode: 'json2' | 'jsonrpc' | null = null;
   private uid: number | null = null;
   version = '';
+  private deadline = Infinity;
+  private fieldCache = new Map<string, Set<string> | null>();
   constructor(private c: OdooCfg) {}
+  until(deadline: number) { this.deadline = deadline; return this; }
 
   private async post(path: string, body: unknown, headers: Record<string, string> = {}) {
-    const res = await fetch(this.c.url + path, {
+    const remaining = this.deadline - Date.now();
+    if (remaining < 1000) throw odooDeadline();
+    let res: Response;
+    try { res = await fetch(this.c.url + path, {
       method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body),
-      signal: AbortSignal.timeout(60_000), redirect: 'error',
-    });
-    const text = await res.text();
+      signal: AbortSignal.timeout(Math.max(1, Math.min(60_000, remaining))), redirect: 'error',
+    }); } catch (error) { if (Date.now() >= this.deadline) throw odooDeadline(); throw error; }
+    let text: string;
+    try { text = await res.text(); }
+    catch (error) { if (Date.now() >= this.deadline) throw odooDeadline(); throw error; }
     let data: any = null; try { data = JSON.parse(text); } catch { /* an HTML error page */ }
     return { res, data };
   }
@@ -88,7 +96,14 @@ export class Odoo {
 
   /** The fields a model has, or null when the model is not installed or this user cannot read it. */
   async fields(model: string): Promise<Set<string> | null> {
-    try { return new Set(Object.keys(await this.call<Record<string, unknown>>(model, 'fields_get', { attributes: ['type'] }))); } catch { return null; }
+    if (this.fieldCache.has(model)) return this.fieldCache.get(model)!;
+    try {
+      const fields = new Set(Object.keys(await this.call<Record<string, unknown>>(model, 'fields_get', { attributes: ['type'] })));
+      this.fieldCache.set(model, fields); return fields;
+    } catch (error) {
+      if (!isMissingOdooModel(error, model)) throw error;
+      this.fieldCache.set(model, null); return null;
+    }
   }
 
   /** Every matching record, read in pages of 2,000 by id so nothing is skipped or read twice. */
@@ -99,7 +114,7 @@ export class Odoo {
       out.push(...rows);
       if (rows.length < STEP) return out;
       last = rows[rows.length - 1].id;
-      if (Date.now() > deadline) throw new Error(`Ran out of time reading ${model}; the last good numbers are kept. The next sync tries again.`);
+      if (Date.now() > deadline) throw odooDeadline();
     }
   }
 }
@@ -146,7 +161,7 @@ async function put(db: SupabaseClient, table: string, rows: Record<string, unkno
  * falling back to Shopify's count.
  */
 export async function syncOdooStock(db: SupabaseClient, deadline: number) {
-  const o = await odooClient(), started = new Date().toISOString();
+  const o = (await odooClient()).until(deadline), started = new Date().toISOString();
   const pf = await o.fields('product.product');
   // only goods that are counted in stock; services and consumables have no stock to plan with
   const storable = pf?.has('is_storable') ? [['is_storable', '=', true]] : pf?.has('detailed_type') ? [['detailed_type', '=', 'product']] : [['type', '=', 'product']];
@@ -190,7 +205,8 @@ async function readSales(o: Odoo, from: string, to: string, deadline: number, on
   const t = totals(), names = new Map<number, Prod>(), start = utcStart(from), end = utcStart(addDays(to, 1));
   const lines: { pid: number; day: string | null; branch: string; kind: string; units: number; revenue: number; order: number | null }[] = [];
 
-  if (await o.fields('report.pos.order')) {
+  const posFields = await o.fields('report.pos.order');
+  if (posFields) {
     const branch = await posBranches(o);
     const pos = await o.all<any>('report.pos.order', [['date', '>=', start], ['date', '<', end], ['state', 'not in', ['draft', 'cancel']]],
       ['date', 'config_id', 'product_id', 'product_qty', 'price_total', 'order_id'], deadline);
@@ -213,47 +229,37 @@ async function readSales(o: Odoo, from: string, to: string, deadline: number, on
         const oid = m2o(l.order_id)?.id as number, x = byId.get(oid), pid = m2o(l.product_id)?.id; if (!x || !pid) continue;
         lines.push({ pid, day: x.day, branch: x.branch, kind: x.kind, units: l.product_uom_qty, revenue: l.price_total, order: oid });
       }
-      if (Date.now() > deadline) throw new Error('Ran out of time reading sales orders; the last good numbers are kept. The next sync tries again.');
+      if (Date.now() > deadline) throw odooDeadline();
     }
   }
 
+  if (!posFields && !sf) throw new Error('Neither Odoo sales orders nor POS reports are available; the last good totals are kept.');
   await products(o, lines.map(l => l.pid), names);
   for (const l of lines) {
     const p = names.get(l.pid);
     t.add({ ...l, sku: p ? skuOf(p) : `odoo:${l.pid}`, product: p?.display_name || '' });
   }
-  return t;
+  const coverage = posFields && sf ? 'sales orders and POS' : posFields ? 'POS only; sales orders unavailable' : 'sales orders only; POS module unavailable';
+  return { branchRows: t.branchRows(), lineRows: t.lineRows(), coverage };
 }
 
 /** Replace the totals for days from..to with what was just read. */
-async function writeSales(db: SupabaseClient, from: string, to: string, t: ReturnType<typeof totals>) {
-  for (const table of ['odoo_branch_daily', 'odoo_sales_daily']) {
-    const { error } = await db.from(table).delete().gte('day', from).lte('day', to);
-    if (error) throw new Error(`Could not clear ${table}: ${error.message}`);
-  }
-  await put(db, 'odoo_branch_daily', t.branchRows(), 'day,branch');
-  await put(db, 'odoo_sales_daily', t.lineRows(), 'day,branch,sku');
-}
-
-/**
- * Branch sales: the last three days every sync, and 90 days back over the first syncs, a fortnight at a time.
- * A window is written only once all of it has been read, so a sync cut short never leaves half a day.
- */
+/** Each complete day and its pending-day cursor commit together. An interrupted day is simply repeated. */
 export async function syncOdooSales(db: SupabaseClient, deadline: number) {
-  const o = await odooClient(), c = (await config())!;
+  const o = (await odooClient()).until(deadline - 8000), c = (await config())!;
   const today = istDay(new Date().toISOString())!;
-  const { data: saved } = await db.from('sync_cursors').select('state').eq('name', 'odoo_sales').maybeSingle();
-  const st: { oldest?: string; newest?: string } = saved?.state || {};
-  let days = 0, more = false;
-  for (const [i, w] of salesWindows(today, st.oldest, st.newest).entries()) {
-    // the backfill waits for the next sync when there is not time for it
-    if (i > 0 && Date.now() > deadline - 30_000) { more = true; break; }
-    const t = await readSales(o, w.from, w.to, deadline, c.online);
-    await writeSales(db, w.from, w.to, t);
-    if (i === 0) { st.newest = w.to; st.oldest = st.oldest && st.oldest < w.from ? st.oldest : w.from; } else st.oldest = w.from;
-    days += t.branchRows().length;
-    await db.from('sync_cursors').upsert({ name: 'odoo_sales', state: st, updated_at: new Date().toISOString() });
-  }
-  if (st.oldest && st.oldest > addDays(today, -89)) more = true;
-  return { days, from: st.oldest, more };
+  const { data: saved, error: cursorError } = await db.from('sync_cursors').select('state').eq('name', 'odoo_sales').maybeSingle();
+  if (cursorError) throw new Error('Could not read the Odoo sales checkpoint.');
+  const result = await runSalesDays({ today, state: (saved?.state || {}) as OdooSalesState, deadline,
+    read: w => readSales(o, w.from, w.to, deadline - 8000, c.online),
+    commit: async (w, t, state) => {
+      const { error } = await db.rpc('replace_odoo_sales_day', { p_day: w.from, p_branches: t.branchRows, p_sales: t.lineRows, p_state: state })
+        .abortSignal(AbortSignal.timeout(Math.max(1, Math.min(15_000, deadline - Date.now()))));
+      if (error) throw new Error('Could not commit the complete Odoo sales day; its prior data and checkpoint are preserved.');
+    },
+  });
+  // Also save a pending first day when the stock pass consumed this run's sales budget.
+  const { error } = await db.from('sync_cursors').upsert({ name: 'odoo_sales', state: result.state, updated_at: new Date().toISOString() });
+  if (error) throw new Error('Could not save the Odoo sales continuation.');
+  return result;
 }

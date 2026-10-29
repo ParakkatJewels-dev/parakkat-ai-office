@@ -1,0 +1,299 @@
+import studioStyles from './Studio.module.css';
+import { redirect } from 'next/navigation';
+import { requireUser } from '@/lib/auth/session';
+import { FORMATS, LANGS, canDesign, canUseStudio } from '@/lib/agents/design';
+import { Icon } from '@/components/Icon';
+import { PageHead, Pager, pageOf, rangeOf, when } from '@/components/ui';
+import { PRODUCT_PAGE as PAGE } from '@/lib/limits';
+import { StudioForm } from './StudioForm';
+import { reviewImage, redesign, redesignCarousel, scanNow, removeFolder, markRef, orderCarousel, retryCarousel } from './actions';
+import { FolderPicker } from './FolderPicker';
+import { Refresher } from '@/components/Refresher';
+import { Locked, Submit } from '@/components/forms';
+import { ROLE_LABEL, type AppRole } from '@/lib/roles';
+import { readLibraryRuntime } from './library-progress';
+import { libraryDisplayState, readLibraryFolderPages, safeLibraryNote } from './library-status.mjs';
+import { LibraryProgress } from './LibraryProgress';
+import { ImageViewer } from './ImageViewer';
+import { referenceFingerprint } from '@/lib/agents/library-core.mjs';
+import { byId } from '@/lib/agents/people';
+import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
+import { ChatGPTArtwork } from './ChatGPTArtwork';
+
+export const maxDuration = 300;
+const GALLERY = 18, LIBRARY = 24;
+
+const SHOW = { all: 'All', awaiting: 'Awaiting artwork', todo: 'Not reviewed', good: 'Good', bad: 'Bad' } as const;
+const FROM = { all: 'Everything', design: 'Studio orders', creative: 'Campaign banners' } as const;
+const KIND: Record<string, string> = { banner: 'Campaign banner', story: 'Story', catalogue_page: 'Catalogue page', email: 'Email' };
+const REFS = { all: 'In use', pinned: 'Pinned', hidden: 'Hidden', waiting: 'Waiting', failed: 'Failed', skipped: 'Skipped' } as const;
+const BUSY = ['queued', 'making', 'generating'];
+
+export default async function Studio({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const { db, role } = await requireUser();
+  if (!(await canUseStudio(db, role))) redirect('/office');
+  const creativeAccess = await canDesign(db, role);
+  const handoff = isChatGPTHandoff();
+  const sp = await searchParams, tab = sp.tab === 'order' ? 'order' : sp.tab === 'library' ? 'library' : 'gallery';
+  if (tab === 'library' && !creativeAccess) redirect('/studio');
+  const show = (sp.show && sp.show in SHOW ? sp.show : 'all') as keyof typeof SHOW, from = (sp.from && sp.from in FROM ? sp.from : 'all') as keyof typeof FROM;
+  const carousel = sp.carousel && /^[0-9a-f-]{36}$/i.test(sp.carousel) ? sp.carousel : null;
+  const gp = pageOf(sp, 'gp'), [g0, g1] = rangeOf(gp, GALLERY);
+  const qs = (patch: Record<string, string | null>) => { const q = new URLSearchParams(); for (const [k, v] of Object.entries({ tab: sp.tab, show: sp.show, from: sp.from, carousel, ...patch })) if (v && !(k === 'show' && v === 'all') && !(k === 'from' && v === 'all')) q.set(k, v); return `/studio${q.size ? `?${q}` : ''}`; };
+
+  let list = db.from('ai_images').select('source, id, kind, brief, headline, language, image_path, status, lead_note, error, created_at, campaign_name, verdict, review, reviewer_role, reviewed_at, concept, ref_ids, versions, redo_note,carousel_id,carousel_index,artwork_request_id,artwork_origin,imported_at,imported_by', { count: 'exact' });
+  if (carousel) list = list.eq('carousel_id', carousel);
+  if (from !== 'all') list = list.eq('source', from);
+  if (show === 'awaiting') list = list.eq('status', 'awaiting_import');
+  else if (show === 'todo') list = list.is('verdict', null).not('image_path','is',null).neq('status','awaiting_import').neq('status','generating'); else if (show !== 'all') list = list.eq('verdict', show);
+  const [{ data: items, count }, { count: total }, { count: todo }, { count: good }, { count: bad }, prod, { count: busy }, { count: library }] = await Promise.all([
+    (carousel ? list.order('carousel_index', { ascending: true }) : list.order('created_at', { ascending: false })).range(g0, g1),
+    db.from('ai_images').select('id', { count: 'exact', head: true }),
+    db.from('ai_images').select('id', { count: 'exact', head: true }).is('verdict', null).not('image_path','is',null).neq('status','awaiting_import').neq('status','generating'),
+    db.from('ai_images').select('id', { count: 'exact', head: true }).eq('verdict', 'good'),
+    db.from('ai_images').select('id', { count: 'exact', head: true }).eq('verdict', 'bad'),
+    // the order form's first page of products; the picker loads the rest as you search
+    tab === 'order' ? db.from('products').select('id, title, price, image_url', { count: 'exact' }).eq('status', 'ACTIVE').not('image_url', 'is', null).order('updated_at', { ascending: false }).range(0, PAGE - 1) : Promise.resolve({ data: [], count: 0 }),
+    db.from('ai_images').select('id', { count: 'exact', head: true }).in('status', BUSY),
+    db.from('design_refs').select('id', { count: 'exact', head: true }).eq('status', 'ready').eq('hidden', false),
+  ]);
+  const products = prod.data || [];
+  // the past designs each image was built from, shown small under it
+  const refIds = [...new Set((items || []).flatMap(d => (d.ref_ids || []) as string[]))];
+  const { data: usedRefs } = refIds.length ? await db.from('design_refs').select('id, name, occasion, fingerprint, style, palette, layout, typography').in('id', refIds) : { data: [] };
+  const R = new Map((usedRefs || []).map(r => [r.id, r]));
+  const paths = (items || []).map(d => d.image_path).filter(Boolean) as string[];
+  const [views, downloads] = paths.length ? await Promise.all([
+    db.storage.from('creatives').createSignedUrls(paths, 3600),
+    Promise.all(paths.map(p => db.storage.from('creatives').createSignedUrl(p, 3600, { download: `parakkat-${p.split('/').pop()}` }))),
+  ]) : [{ data: [] }, []];
+  const view = (p: string) => views.data?.find(s => s.path === p)?.signedUrl ?? undefined;
+  const dl = (p: string) => downloads[paths.indexOf(p)]?.data?.signedUrl;
+  const back = qs({ gp: gp > 1 ? String(gp) : null });
+
+  return (
+    <div className={`page ${studioStyles.studioPage}`}>
+      {sp.error && <p className="flash" role="alert">{sp.error}</p>}
+      {sp.msg && <p className="flash ok" role="status">{sp.msg}</p>}
+      {sp.made && !sp.msg && <p className="flash ok">{handoff ? 'Artwork request prepared. Open its generation controls to check Higgsfield progress, connection and credits.' : 'Design ordered. It is first in the gallery and takes about a minute; you can leave this page.'}</p>}
+      <Refresher active={(busy || 0) > 0 && tab === 'gallery'}>{busy} design{busy === 1 ? ' is' : 's are'} being generated. This page updates on its own.</Refresher>
+      <PageHead title="Design Studio" sub="Create, review, and refine your brand’s visual work."><a href="/studio?tab=order" className="btn"><Icon name="plus" size={17}/>Create a design</a></PageHead>
+      <section className={studioStyles.summary} aria-label="Studio summary">
+        <div><span>All artwork</span><strong>{total || 0}</strong></div>
+        <a href={qs({ show: 'todo', tab: null })}><span>Awaiting review</span><strong>{todo || 0}</strong></a>
+        <a href={qs({ show: 'good', tab: null })}><span>Reviewed good</span><strong>{good || 0}</strong></a>
+        {creativeAccess ? <a href="/studio?tab=library"><span>Design references</span><strong>{library || 0}</strong></a> : <div><span>In progress</span><strong>{busy || 0}</strong></div>}
+      </section>
+      {handoff && <p className={studioStyles.handoffNotice}><b>Human review required.</b> Higgsfield generates with account credits. ChatGPT artwork is created externally and imported.</p>}
+
+      <nav className="tabs" aria-label="Design Studio">
+        <a href={qs({ tab: null })} className={tab === 'gallery' ? 'on' : ''} aria-current={tab === 'gallery' ? 'page' : undefined}><Icon name="spark" size={16} />Gallery and reviews</a>
+        <a href="/studio?tab=order" className={tab === 'order' ? 'on' : ''} aria-current={tab === 'order' ? 'page' : undefined}><Icon name="plus" size={16} />Order a design</a>
+        {creativeAccess && <a href="/studio?tab=library" className={tab === 'library' ? 'on' : ''} aria-current={tab === 'library' ? 'page' : undefined}><Icon name="eye" size={16} />Design library</a>}
+      </nav>
+
+      {tab === 'library' ? <Library db={db} sp={sp} role={role} /> : tab === 'order' ? (
+        <div className={`studio one ${studioStyles.orderLayout}`}>
+          <StudioForm handoff={handoff} products={products as any} more={(prod.count || 0) > products.length} formats={Object.entries(FORMATS).filter(([id]) => id !== 'carousel_card').map(([id, f]) => ({ id, label: f.label, ratio: f.ratio, size: f.size }))} />
+          <form action={orderCarousel} className={`card studio-form ${studioStyles.carouselForm}`}>
+            <div className="card-head"><div><h3>Five-card best-seller carousel</h3><p className="sub">Uses the latest complete 30-day Shopify category ranking, positive preferred stock and official product photos. {handoff ? 'Generate five separate 4:5 images in sales order using the connected Higgsfield account and its credits. Each finished card is saved for human review.' : 'Five separate 4:5 cards arrive in the gallery for review.'}</p></div></div>
+            <label className="field">Shopify product category<select name="category" defaultValue="Ring"><option value="Ring">Rings</option><option value="Earrings">Earrings</option><option value="Necklace">Necklaces</option><option value="Pendant">Pendants</option><option value="Bangle">Bangles</option><option value="Bracelet">Bracelets</option><option value="Chain">Chains</option><option value="Anklet">Anklets</option></select></label>
+            <label className="field">Design reference (optional)<input name="reference" placeholder="Paste a Design Library image’s Drive file link" /></label>
+            <p className="sub">Leave this empty to use the best matching library design. {handoff ? 'The reference pack includes the style reference and official product photos. Check product identity and consistency when reviewing each imported card.' : 'The reference guides the style. Each product is newly rendered and checked against its Shopify photo.'}</p>
+            <Submit icon="spark" pending="Preparing five cards…">{handoff ? 'Generate five artwork cards' : 'Create five cards'}</Submit>
+          </form>
+        </div>
+      ) : (
+        <section className={`card ${studioStyles.galleryCard}`}>
+          <div className="card-head"><div><h3>{carousel ? 'Five-card carousel' : 'Gallery'}</h3><p className="sub">{carousel ? 'Review each card here. New versions stay in these same five positions.' : `Newest first · ${count || 0} designs match these filters.`}</p></div><div className={studioStyles.galleryActions}>{carousel && (items || []).some(item => ['failed', 'needs_fix'].includes(item.status)) && <form action={retryCarousel}><input type="hidden" name="carousel" value={carousel} /><Submit small icon="sync" pending="Preparing…">{handoff ? 'Prepare cards needing work' : 'Retry cards needing work'}</Submit></form>}{carousel && <a className="btn ghost sm-btn" href="/studio">All designs</a>}</div></div>
+          {carousel && (items || []).length === 5 && <details className={studioStyles.bulkRedo}><summary><Icon name="sync" size={16} />{handoff ? 'Revise all 5 cards' : 'Redesign all 5 cards'}</summary><form action={redesignCarousel}><input type="hidden" name="carousel" value={carousel} />{handoff && <label className="field">Revision provider<select name="provider" defaultValue=""><option value="">Keep each card’s saved provider</option><option value="chatgpt">ChatGPT — create outside AI Office and import</option><option value="higgsfield">Higgsfield — generate here using credits</option></select></label>}<label className="field">New direction for the full set<textarea name="note" className="in" rows={2} maxLength={600} placeholder="Describe the new background, palette, mood or layout. Keep each product faithful to its Shopify photo." /></label><Submit small icon="spark" pending="Preparing revisions…" disabled={(items || []).some(item => BUSY.includes(item.status))}>{handoff ? 'Request five revisions' : 'Generate five new versions'}</Submit><p className="sm">{handoff ? 'The five cards keep their order and previous images. ChatGPT prepares briefs for manual generation and import. Higgsfield generates using its account credits. Every replacement requires human review.' : 'Previous images remain available while the replacements are made. This generates a new shared style and five product images, then checks each product against its Shopify photo.'}</p></form></details>}
+          {!handoff && carousel && (items || []).some(item => item.kind === 'carousel_card' && !item.concept?.includes('Product identity was checked')) && <p className="sub">Some cards use the earlier photo-based method. Redesign all 5 to create newly rendered product images with a product-match check.</p>}
+          <div className={`seg-row ${studioStyles.filterBar}`}>
+            <div className="seg" role="group" aria-label="Review">{Object.entries(SHOW).map(([k, l]) => <a key={k} href={qs({ show: k, gp: null })} className={show === k ? 'on' : ''} aria-current={show === k ? 'page' : undefined}>{l}</a>)}</div>
+            <div className="seg" role="group" aria-label="Made for">{Object.entries(FROM).map(([k, l]) => <a key={k} href={qs({ from: k, gp: null })} className={from === k ? 'on' : ''} aria-current={from === k ? 'page' : undefined}>{l}</a>)}</div>
+          </div>
+          {(items || []).length ? <ul className={`gallery ${studioStyles.galleryGrid}`}>{items!.map(d => {
+            const f = FORMATS[d.kind as keyof typeof FORMATS], awaitingImport = d.status === 'awaiting_import', generating = d.status === 'generating', generated = d.artwork_origin === 'higgsfield_oauth', importProvider = d.artwork_origin === 'higgsfield_import' ? 'Higgsfield' : ['chatgpt','chatgpt_import'].includes(d.artwork_origin || '') ? 'ChatGPT' : null;
+            return (
+              <li key={`${d.source}-${d.id}`} id={`d-${d.id}`} className={`${sp.made === d.id ? 'new' : ''} ${d.verdict ? `rv-${d.verdict}` : ''} ${studioStyles.galleryItem} ${awaitingImport || generating ? studioStyles.awaitingItem : ''}`} aria-busy={BUSY.includes(d.status)}>
+                <div className={`art ${BUSY.includes(d.status) ? studioStyles.artBusy : ''}`} style={{ aspectRatio: f?.ratio.replace(':', '/') || '1' }}>
+                  {d.image_path && view(d.image_path) ? <img src={view(d.image_path)} alt={d.headline || d.brief} loading="lazy" /> : BUSY.includes(d.status) ? <div className={studioStyles.skeleton} aria-hidden="true"><i /><i /><i /></div> : <span className="sub">{awaitingImport ? 'Awaiting artwork' : d.status === 'failed' ? 'Artwork needs attention' : 'Image unavailable'}</span>}
+                  {awaitingImport && d.image_path && <span className={studioStyles.progressOverlay}>Previous image · awaiting revision</span>}
+                  {d.verdict && !BUSY.includes(d.status) && <span className={`verdict ${d.verdict}`}>{d.verdict === 'good' ? 'Good' : 'Bad'}</span>}
+                  {d.kind === 'carousel_card' && d.status === 'needs_fix' && !BUSY.includes(d.status) && <span className="verdict bad">Product match needs correction</span>}
+                  {BUSY.includes(d.status) && <span className={studioStyles.progressOverlay} role="status"><span className="spin" aria-hidden="true" />{generating ? 'Generating with Higgsfield' : handoff ? 'Preparing artwork request' : d.image_path ? `New version in progress · v${(d.versions || 0) + 2}` : d.status === 'making' ? 'Generating image' : 'Queued for image generation'}</span>}
+                  {!BUSY.includes(d.status) && d.versions > 0 && <span className="ver">v{d.versions + 1}</span>}
+                </div>
+                <div className="meta">
+                  <div className={studioStyles.cardMeta}><b>{d.carousel_index ? `Carousel card ${d.carousel_index}/5` : f?.label || KIND[d.kind] || d.kind}</b><span className="sm">{d.source === 'design' ? 'Studio order' : 'Campaign'}</span></div>
+                  {importProvider && <p className={studioStyles.importLabel}><span>{importProvider} artwork</span>{d.verdict ? 'Human review recorded' : 'Human review required'}{d.imported_at ? ` · Imported ${when(d.imported_at)}` : ''}</p>}
+                  {generated && <p className={studioStyles.importLabel}><span>Generated with Higgsfield</span>{d.verdict ? 'Human review recorded' : 'Human review required'}</p>}
+                  {d.carousel_id && !carousel && <a className="sm" href={`/studio?carousel=${d.carousel_id}`}>View all five cards</a>}
+                  {d.campaign_name && <span className="sm clip">{d.campaign_name}</span>}
+                  {BUSY.includes(d.status) && <p className={studioStyles.agentProgress} role="status"><span className="spin" aria-hidden="true" />{generating ? 'Higgsfield is generating this image; it will be saved for human review.' : handoff ? 'Preparing the artwork brief and references' : `${byId[f?.maker || 'designer']?.name || 'Designer'} ${d.status === 'making' ? 'is generating this image' : 'is next to generate this image'}`}</p>}
+                  <h4 className={studioStyles.artworkTitle}>{d.headline || (d.brief ? `${d.brief.slice(0,100)}${d.brief.length > 100 ? '…' : ''}` : `${f?.label || KIND[d.kind] || 'Studio'} artwork`)}</h4>
+                  <details className={studioStyles.briefDetails}><summary>Brief and requirements</summary><p>{d.brief}</p></details>
+                  {(d.error || (!importProvider && !generated && !awaitingImport && !generating && d.lead_note)) && <p className={`sm ${d.error ? 'err' : ''}`}>{d.error ? `${d.image_path ? 'The last revision needs attention: ' : ''}${d.error}` : `${d.kind === 'carousel_card' ? d.concept?.includes('Product identity was checked') ? 'Product check' : 'Earlier method' : 'AI lead'}: ${d.lead_note}`}</p>}
+                  {(awaitingImport || generating) && <ChatGPTArtwork key={d.artwork_request_id || d.id} source={d.source as 'design' | 'creative'} id={d.id} requestId={d.artwork_request_id} status={d.status} initialProvider={importProvider === 'ChatGPT' ? 'chatgpt' : 'higgsfield'} title={d.headline || d.brief} />}
+
+                  <div className={studioStyles.fileActions}><span className="sm">{LANGS[d.language as keyof typeof LANGS] || d.language} · {when(d.created_at)}</span>
+                    {d.image_path && view(d.image_path) && <ImageViewer src={view(d.image_path)!} title={d.headline || d.brief} download={dl(d.image_path)} />}
+                    {d.image_path && dl(d.image_path) && <a className="btn ghost sm-btn" href={dl(d.image_path)}><Icon name="arrow" size={16} />Download</a>}</div>
+                  {d.image_path && !awaitingImport && !BUSY.includes(d.status) && (
+                    <details className={studioStyles.reviewDisclosure} open={sp.made===d.id}><summary>{d.verdict ? 'View or update review' : 'Review this design'}</summary><Locked key={`${d.verdict}-${d.reviewed_at}`} action={reviewImage} saved={!!d.verdict} className="review" label="Save review"
+                      savedNote={d.verdict ? `${d.reviewer_role ? ROLE_LABEL[d.reviewer_role as AppRole] : 'Reviewed'}${d.review ? `: ${d.review}` : ''}` : undefined}>
+                      <input type="hidden" name="source" value={d.source} /><input type="hidden" name="id" value={d.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="image_path" value={d.image_path} /><input type="hidden" name="request_id" value={d.artwork_request_id || ''} />
+                      <div className="verdicts" role="radiogroup" aria-label="Your review">
+                        <label className="vg"><input type="radio" name="verdict" value="good" defaultChecked={d.verdict === 'good'} required disabled={d.kind === 'carousel_card' && d.status !== 'ready'} /><span>Good</span></label>
+                        <label className="vb"><input type="radio" name="verdict" value="bad" defaultChecked={d.verdict === 'bad'} /><span>Bad</span></label>
+                      </div>
+                      <textarea name="note" className="in" rows={2} defaultValue={d.review || ''} placeholder="What works or what is wrong (needed for Bad)" aria-label="Review note" />
+                    </Locked></details>
+                  )}
+                  {d.kind === 'carousel_card' && !carousel && <a className="btn ghost sm-btn" href={`/studio?carousel=${d.carousel_id}`}>{handoff ? 'Prepare the five-card set' : 'Redesign the five-card set'}</a>}
+                  {(d.image_path || d.status === 'failed' || d.status === 'needs_fix' || (handoff && awaitingImport)) && !BUSY.includes(d.status) && (handoff || d.kind !== 'carousel_card' || ['failed', 'needs_fix'].includes(d.status)) && (
+                    <details className="redo"><summary><Icon name="sync" size={14} />{handoff ? awaitingImport ? 'Prepare a new artwork brief' : 'Request artwork revision' : d.kind === 'carousel_card' ? 'Retry card' : 'Redesign'}</summary>
+                      <form action={redesign}>
+                        <input type="hidden" name="source" value={d.source} /><input type="hidden" name="id" value={d.id} /><input type="hidden" name="back" value={`${back}#d-${d.id}`} />
+                        {handoff && awaitingImport && <input type="hidden" name="prepare_only" value="1" />}
+                        {handoff && !awaitingImport && <label className="field">Revision provider<select name="provider" defaultValue={importProvider === 'ChatGPT' ? 'chatgpt' : 'higgsfield'}><option value="chatgpt">ChatGPT — create outside AI Office and import</option><option value="higgsfield">Higgsfield — generate here using credits</option></select></label>}
+                        {handoff && !awaitingImport && <p className="sm">ChatGPT prepares a brief for manual generation and import. Higgsfield generates using its account credits.</p>}
+                        {(handoff || d.kind !== 'carousel_card') && <textarea name="note" className="in" rows={2} maxLength={600} placeholder="What to change (optional). Preserve the exact product and required text." aria-label="What to change" />}
+                        {handoff && awaitingImport && <p className="sm">This replaces the current brief without starting generation. Existing artwork stays available. If a previous submission is uncertain, check Higgsfield before starting another image.</p>}
+                        <Submit small icon="sync" pending="Preparing…">{handoff ? awaitingImport ? 'Prepare a new artwork brief' : 'Request artwork revision' : d.kind === 'carousel_card' ? 'Retry card' : 'Make a new version'}</Submit>
+                      </form>
+                    </details>
+                  )}
+                  {(d.concept || (d.ref_ids || []).length > 0) && <details className="built"><summary>How it was made{(d.ref_ids || []).length ? ` · ${(d.ref_ids || []).length} past design${(d.ref_ids || []).length === 1 ? '' : 's'}` : ''}</summary>
+                    {(d.ref_ids || []).length > 0 && <div className="ref-thumbs">{(d.ref_ids as string[]).map(r => R.get(r)).filter(Boolean).map(r => r && <p key={r.id} className="sm"><b>{r.name}</b>{r.occasion ? ` · ${r.occasion}` : ''}<br />{referenceFingerprint(r)}</p>)}</div>}
+                    {d.concept && !importProvider && !generated && !awaitingImport && !generating && <p className="sm">{d.concept}</p>}
+                    {generated && <p className="sm">Generated through the connected Higgsfield account and saved in AI Office. Product identity, text and brand details require human review.</p>}
+                    {importProvider && <p className="sm">Created in {importProvider} and imported into AI Office. Product identity, text and brand details require human review.</p>}
+                    {d.redo_note && <p className="sm">You asked: {d.redo_note}</p>}
+                  </details>}
+                </div>
+              </li>
+            );
+          })}</ul> : <div className="empty"><Icon name="spark" size={26} /><p>{show === 'todo' ? 'Nothing waiting for review.' : 'No images yet. Order one, or they arrive as campaigns are made.'}</p></div>}
+          <Pager sp={sp} param="gp" page={gp} size={GALLERY} total={count} shown={(items || []).length} />
+        </section>
+      )}
+    </div>
+  );
+}
+
+type Db = Awaited<ReturnType<typeof requireUser>>['db'];
+
+/** Past Parakkat designs from Drive that the designers take their standard from. */
+async function Library({ db, sp, role }: { db: Db; sp: Record<string, string | undefined>; role: AppRole }) {
+  const admin=role==='super_admin';
+  const handoff=isChatGPTHandoff();
+  const show = (sp.lib && sp.lib in REFS ? sp.lib : 'all') as keyof typeof REFS, q = (sp.q || '').trim().slice(0, 80);
+  const lp = pageOf(sp, 'lp'), [l0, l1] = rangeOf(lp, LIBRARY);
+  let list = db.from('design_refs').select('id, drive_id, name, status, error, kind, occasion, style, palette, layout, typography, fingerprint, tags, quality, pinned, hidden, uses, folder_id', { count: 'exact' });
+  if (show === 'waiting') list = list.eq('status','new');
+  else if (show === 'failed' || show === 'skipped') list = list.eq('status',show);
+  else { list = list.eq('status', 'ready'); list = show === 'hidden' ? list.eq('hidden', true) : list.eq('hidden', false); if (show === 'pinned') list = list.eq('pinned', true); }
+  if (q) list = list.textSearch('search', q, { type: 'websearch', config: 'simple' });
+  type Folder={id:string;root_id:string;name:string;scanned_at:string|null;page_token:string|null;error:string|null};
+  const [items,folders,ready,hidden,waiting,failed,skipped,pendingFolders,folderErrors,folderCount,indexed,jobResult,runtime] = await Promise.all([
+    list.order('pinned', { ascending: false }).order('created_at', { ascending: false }).range(l0, l1),
+    readLibraryFolderPages<Folder>((from,to)=>db.from('design_library_folders').select('id,root_id,name,scanned_at,page_token,error').order('id').range(from,to)),
+    db.from('design_refs').select('id', { count: 'exact', head: true }).eq('status', 'ready').eq('hidden', false),
+    db.from('design_refs').select('id', { count: 'exact', head: true }).eq('status','ready').eq('hidden',true),
+    db.from('design_refs').select('id', { count: 'exact', head: true }).eq('status', 'new'),
+    db.from('design_refs').select('id', { count: 'exact', head: true }).eq('status','failed'),
+    db.from('design_refs').select('id', { count: 'exact', head: true }).eq('status','skipped'),
+    db.from('design_library_folders').select('id',{count:'exact',head:true}).or('scanned_at.is.null,page_token.not.is.null,error.not.is.null'),
+    db.from('design_library_folders').select('id',{count:'exact',head:true}).not('error','is',null),
+    db.from('design_library_folders').select('id',{count:'exact',head:true}),
+    db.from('design_refs').select('id',{count:'exact',head:true}),
+    db.from('autopilot_jobs').select('last_run_at, last_result').eq('name', 'library').maybeSingle(),
+    readLibraryRuntime(db,role),
+  ]);
+  const {data:refs,count}=items, roots=folders.rows,job=jobResult.data;
+  const picked = roots.filter(f => f.id === f.root_id);
+  const sub = (root: string) => roots.filter(f => f.root_id === root);
+  const countsError=[ready,hidden,waiting,failed,skipped,pendingFolders,folderErrors,folderCount,indexed].some(result=>result.error || result.count==null);
+  const status=libraryDisplayState(runtime,{pendingFolders:pendingFolders.count,waiting:waiting.count,failed:failed.count,folderErrors:folderErrors.count,readError:countsError});
+  const rootCounts=new Map(await Promise.all(picked.map(async root=>{
+    if(!folders.complete)return [root.id,null] as const;
+    const ids=sub(root.id).map(folder=>folder.id),chunks=[];
+    for(let i=0;i<ids.length;i+=100)chunks.push(ids.slice(i,i+100));
+    const counts=await Promise.all(chunks.map(part=>db.from('design_refs').select('id',{count:'exact',head:true}).in('folder_id',part)));
+    return [root.id,counts.some(result=>result.error || result.count==null)?null:counts.reduce((sum,result)=>sum+(result.count || 0),0)] as const;
+  })));
+  const qs = (patch: Record<string, string | null>) => { const u = new URLSearchParams({ tab: 'library' }); for (const [k, v] of Object.entries({ lib: sp.lib, q: sp.q, ...patch })) if (v && !(k === 'lib' && v === 'all')) u.set(k, v); return `/studio?${u}`; };
+  const back = qs({ lp: lp > 1 ? String(lp) : null });
+  return <>
+    <LibraryProgress status={status}/>
+    {handoff && <p className={studioStyles.handoffNotice}>Gemini image study is disabled. Folder scans discover files; saved reference notes remain available for artwork packs.</p>}
+    {!folders.complete && <p className="flash" role="alert">The full folder list could not be loaded. Folder totals below may be incomplete; refresh to try again.</p>}
+    <div className={studioStyles.librarySetup}>
+      <section className="card">
+        <div className="card-head"><div><h3>Where the past designs come from</h3><p className="sub">Selected Drive folders and their subfolders. {handoff ? 'Saved visual fingerprints guide reference selection. Original reference images are read for generation or a downloaded artwork pack.' : 'AI Office studies each design, saves its visual fingerprint, and removes the imported preview from AI Office storage.'} Original Drive files stay in Drive.</p></div>
+          <form action={scanNow}><Submit ghost small icon="sync" pending="Queuing…" disabled={status.active || countsError}>{(pendingFolders.count || 0)>0?'Resume scan':!handoff && (waiting.count || 0)>0?'Resume study':'Read folders again'}{!handoff && (failed.count || 0)>0?' and retry failures':''}</Submit></form></div>
+        <p className="sm">{handoff ? 'Scans discover supported images, PDFs, Photoshop and Illustrator files. New image studies remain disabled.' : 'The library studies available image previews of supported images, PDFs, Photoshop and Illustrator files.'} A PDF or design-file preview does not cover every page or layer. Unsupported formats are excluded.</p>
+        {picked.length ? <ul className={`rows ${studioStyles.folderRows}`}>{picked.map(f => {
+          const all = sub(f.id), files=rootCounts.get(f.id), errors=all.filter(x=>x.error),pending=all.filter(x=>!x.scanned_at || x.page_token || x.error).length;
+          const lastRead=all.map(x=>x.scanned_at).filter((value):value is string=>!!value).sort().at(-1);
+          return (
+            <li key={f.id}><span className="tile-ic"><Icon name="doc" size={16} /></span>
+              <div className="grow"><b className="clip">{f.name}</b>
+                <span className="sm">{files==null?'Indexed count unavailable':`${files} indexed design file${files===1?'':'s'}`} · {all.length} known folder{all.length===1?'':'s'} · {pending} pending</span>
+                {lastRead && <span className="sm">Latest folder read {when(lastRead)}</span>}
+                {errors.length>0 && <details className="sm err"><summary>{errors.length} folder error{errors.length===1?'':'s'}</summary>{errors.slice(0,5).map(folder=><p key={folder.id}>{folder.name}: {safeLibraryNote(folder.error)}</p>)}{errors.length>5 && <p>{errors.length-5} more folders reported errors.</p>}</details>}</div>
+              <a className="btn ghost sm-btn" href={`https://drive.google.com/drive/folders/${f.id}`} target="_blank" rel="noreferrer">Open in Drive</a>
+              {admin && <form action={removeFolder}><input type="hidden" name="id" value={f.id} /><Submit ghost danger small confirm="Remove this folder and its subfolders from the library? Their saved fingerprints will be deleted from AI Office. The original Google Drive files stay unchanged." confirmTitle="Remove library folder" confirmLabel="Remove folder" pending="Removing…" disabled={status.active}>Remove</Submit></form>}
+            </li>
+          );
+        })}</ul> : <div className="empty"><Icon name="doc" size={26} /><p>No folders yet.{admin ? ' Add the Drive folders where your past designs are kept.' : ' The Super Admin adds them from this tab.'}</p></div>}
+        {admin ? <FolderPicker /> : null}
+        {admin && <p className="sm">Drive is read with the Google sign-in on Admin, Connections. If Google was connected before this, press Reconnect there once so Drive is allowed.</p>}
+      </section>
+      <section className={`card ${studioStyles.libraryProgress}`}>
+        <div className="card-head"><div><h3>Library progress</h3><p className="sub">{runtime.lastFinishedAt?`Last finished pass ${when(runtime.lastFinishedAt)}`:job?.last_run_at?`Last scheduled attempt ${when(job.last_run_at)}`:'No completed pass recorded yet'}</p></div></div>
+        <div className="facts one">
+          <div><small>Known folders pending / discovered</small><b>{pendingFolders.count ?? '—'} / {folderCount.count ?? '—'}</b></div>
+          <div><small>Design files indexed so far</small><b>{indexed.count ?? '—'}</b></div>
+          <div><small>Ready to use</small><b>{ready.count ?? '—'}</b></div>
+          <div><small>Hidden ready designs</small><b>{hidden.count ?? '—'}</b></div>
+          <div><small>Waiting to be studied</small><b>{waiting.count ?? '—'}</b></div>
+          <div><small>Failed — can be retried</small><b>{failed.count ?? '—'}</b></div>
+          <div><small>Skipped — not a finished design</small><b>{skipped.count ?? '—'}</b></div>
+        </div>
+        {(runtime.lastResult || job?.last_result) && <p className="sm">Latest recorded result: {safeLibraryNote(runtime.lastResult || job?.last_result)}</p>}
+        <p className="sm">More folders and files may be discovered as the scan continues. Scheduled passes run about every nine minutes; Resume scan requests an earlier pass.</p>
+      </section>
+    </div>
+
+    <section className={`card ${studioStyles.libraryCard}`}>
+      <div className="card-head"><div><h3>Past designs</h3><p className="sub">Pin the ones you want the designers to follow more; hide any that should not be followed. {count || 0} shown.</p></div></div>
+      <div className={`seg-row ${studioStyles.filterBar}`}>
+        <div className="seg" role="group" aria-label="Show">{Object.entries(REFS).map(([k, l]) => <a key={k} href={qs({ lib: k, lp: null })} className={show === k ? 'on' : ''} aria-current={show === k ? 'page' : undefined}>{l}</a>)}</div>
+        <form action="/studio" className="inline"><input type="hidden" name="tab" value="library" />{sp.lib && <input type="hidden" name="lib" value={sp.lib} />}
+          <input className="in" type="search" name="q" defaultValue={q} placeholder="Search: Onam, bridal, green…" aria-label="Search the library" /><button className="btn ghost sm-btn" type="submit">Search</button></form>
+      </div>
+      {items.error && <p className="flash" role="alert">These library items could not be loaded. Refresh to try again.</p>}
+      {(refs || []).length ? <ul className={`gallery lib ${studioStyles.libraryGrid}`}>{refs!.map(r => (
+        <li key={r.id} className={r.pinned ? 'pinned' : ''}>
+          <div className={studioStyles.referenceStatus}><span>{r.status === 'ready' ? 'Visual fingerprint saved' : r.status === 'failed' ? 'Could not read' : r.status==='skipped'?'Skipped':'Waiting to be studied'}</span>
+            {r.pinned && <span className="ver">Pinned</span>}</div>
+          <div className="meta">
+            <div className="conn-top"><b className="clip" title={r.name}>{r.name}</b>{r.occasion && <span className="pill">{r.occasion}</span>}</div>
+            {r.error ? <p className={`sm ${r.status==='failed'?'err':''}`}>{safeLibraryNote(r.error)}</p> : r.status==='ready' && <details className={studioStyles.referenceNotes}><summary>Reference notes</summary><p>{referenceFingerprint(r)}</p></details>}
+            {r.drive_id && <a className="sm" href={`https://drive.google.com/file/d/${encodeURIComponent(r.drive_id)}/view`} target="_blank" rel="noreferrer">View source in Drive</a>}
+            {r.status === 'ready' && <span className="sm">{[r.kind, r.quality ? `finish ${r.quality}/5` : null, r.uses ? `used ${r.uses} time${r.uses === 1 ? '' : 's'}` : 'not used yet'].filter(Boolean).join(' · ')}</span>}
+            {r.status === 'ready' && <div className="conn-top">
+              <form action={markRef}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="what" value={r.pinned ? 'unpin' : 'pin'} />
+                <Submit ghost small icon="pin" pending="Saving…">{r.pinned ? 'Unpin' : 'Pin'}</Submit></form>
+              <form action={markRef}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="what" value={r.hidden ? 'show' : 'hide'} />
+                <Submit ghost small icon={r.hidden ? 'eye' : 'x'} pending="Saving…">{r.hidden ? 'Use again' : 'Hide'}</Submit></form>
+            </div>}
+          </div>
+        </li>
+      ))}</ul> : !items.error && <div className="empty"><Icon name="eye" size={26} /><p>{q ? `Nothing in the library matches "${q}".` : picked.length ? `No designs match this view. ${show==='all'?'Ready designs appear here after they are studied.':''}` : 'Add a Drive folder above to start the library.'}</p></div>}
+      <Pager sp={sp} param="lp" page={lp} size={LIBRARY} total={count} shown={(refs || []).length} />
+    </section>
+  </>;
+}

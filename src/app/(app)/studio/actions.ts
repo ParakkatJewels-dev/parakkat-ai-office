@@ -4,16 +4,43 @@ import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { after } from 'next/server';
-import { queueDesign, queueRedesign, drawItem, canDesign, type Format, type Source, LANGS } from '@/lib/agents/design';
+import { queueDesign, queueRedesign, drawItem, canDesign, canUseStudio, type Format, type Source, LANGS } from '@/lib/agents/design';
 import { folderIdFrom } from '@/lib/agents/library-core.mjs';
 import { folderInfo } from '@/lib/connectors/drive';
 import { errText } from '@/lib/errors';
 import { ROLE_LABEL, type AppRole } from '@/lib/roles';
+import { resetLibraryScan, scanLibrary } from '@/lib/agents/library';
+import { withLibraryFolderEdit } from './library-folder-edit';
+import { readLibraryFolderPages } from './library-status.mjs';
+import { queueSalesCarousel, queueCarouselRedesign } from '@/lib/agents/carousel';
+import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
+import { startAutomaticArtwork } from '@/lib/artwork/generation';
+import { chatGPTRevisionMessage, revisionArtworkProvider, type ArtworkProvider, type RevisionArtwork } from '@/lib/artwork/provider-routing.mjs';
 
-/** A head orders a design. It is drawn in the background, so they can leave the page; the gallery shows it arriving. */
+async function startRequestedArtwork(source: Source, items: RevisionArtwork[], userId: string, role: string, selected?: ArtworkProvider | null) {
+  if (process.env.CHATGPT_IMAGE_WORKER_ENABLED === 'true' && selected !== 'higgsfield') {
+    const { queueChatGPTArtworkBatch } = await import('@/lib/artwork/request-chatgpt');
+    return queueChatGPTArtworkBatch(source, items, userId, role);
+  }
+  let started = 0, reason = '', manual = 0;
+  for (const item of items) {
+    if (revisionArtworkProvider(selected,item.artwork_origin) === 'chatgpt') { manual++; continue; }
+    const id = item.id;
+    try {
+      const result = await startAutomaticArtwork({ source, id, userId, role });
+      if (result.started) started++;
+      else if (result.reason) reason = result.reason;
+    } catch { reason = 'Automatic generation could not be confirmed. Open the request to check its status before trying again.'; }
+  }
+  const automatic = started ? `Higgsfield generation queued for ${started} image${started === 1 ? '' : 's'}. Finished images will appear here for human review.${reason ? ` ${reason}` : ''}`
+    : manual < items.length ? `Artwork request${items.length - manual === 1 ? '' : 's'} saved. ${reason || 'Open the request to check the Higgsfield connection and credits.'}` : '';
+  return [manual ? chatGPTRevisionMessage(manual) : '',automatic].filter(Boolean).join(' ');
+}
+
+/** An explicit Studio order can start one Higgsfield job using the connected account. */
 export async function orderDesign(form: FormData) {
   const { db, role, user } = await requireUser();
-  if (!(await canDesign(db, role))) redirect('/office');
+  if (!(await canUseStudio(db, role))) redirect('/office');
   let id = '';
   try {
     const lang = String(form.get('language') || 'en') as keyof typeof LANGS;
@@ -25,9 +52,89 @@ export async function orderDesign(form: FormData) {
     redirect(`/studio?tab=order&error=${encodeURIComponent(errText(e))}`);
   }
   // runs after the page has answered; the tick picks it up if this call is cut short
-  after(() => drawItem(supabaseAdmin(), 'design', id).catch(() => null));
+  if (!isChatGPTHandoff()) after(() => drawItem(supabaseAdmin(), 'design', id).catch(() => null));
   revalidatePath('/studio');
-  redirect(`/studio?made=${id}#d-${id}`);
+  const note = isChatGPTHandoff() ? await startRequestedArtwork('design', [{id}], user.id, role) : '';
+  redirect(`/studio?made=${id}${note ? `&msg=${encodeURIComponent(note)}` : ''}#d-${id}`);
+}
+
+/** Create five separate, reviewable cards from the latest complete category-sales window. */
+export async function orderCarousel(form: FormData) {
+  const { db, role, user } = await requireUser();
+  if (!(await canUseStudio(db, role))) redirect('/office');
+  let carouselId = '', cards: { id: string }[] = [];
+  try {
+    const result = await queueSalesCarousel(supabaseAdmin(), db, {
+      userId: user.id, role, category: String(form.get('category') || ''), referenceId: String(form.get('reference') || '').trim() || undefined,
+    });
+    carouselId = result.carouselId;
+    cards = result.cards;
+  } catch (e) {
+    redirect(`/studio?tab=order&error=${encodeURIComponent(errText(e))}`);
+  }
+  if (!isChatGPTHandoff()) after(async () => { for (const card of cards) await drawItem(supabaseAdmin(), 'design', card.id).catch(() => false); });
+  revalidatePath('/studio');
+  const note = isChatGPTHandoff() ? await startRequestedArtwork('design', cards, user.id, role) : 'Five carousel cards are queued. Each product is generated from and checked against its official Shopify photo and will appear here for review.';
+  redirect(`/studio?carousel=${carouselId}&msg=${encodeURIComponent(note)}`);
+}
+
+/** Explicit retry after a reference/image-provider failure; no automatic duplicate image charge. */
+export async function retryCarousel(form: FormData) {
+  const { db, role, user } = await requireUser();
+  if (!(await canUseStudio(db, role))) redirect('/office');
+  const id = String(form.get('carousel') || '');
+  if (!/^[0-9a-f-]{36}$/i.test(id)) redirect('/studio?error=Unknown%20carousel');
+  let note = '';
+  try {
+    const selected = form.get('provider') ? revisionArtworkProvider(form.get('provider')) : null;
+    const [set, cards] = await Promise.all([
+      db.from('carousel_sets').select('id,background_status,started_at').eq('id',id).maybeSingle(),
+      db.from('designs').select('id,status,artwork_origin').eq('carousel_id',id).order('carousel_index'),
+    ]);
+    if (set.error || !set.data || cards.error || cards.data?.length !== 5) throw new Error('This carousel is not available to your account.');
+    if (cards.data.some(card => ['queued','making','generating'].includes(card.status))) throw new Error('The carousel is still being prepared. Check it again shortly.');
+    if (!cards.data.some(card => ['failed','needs_fix'].includes(card.status))) throw new Error('There are no cards needing work to retry.');
+    const admin = supabaseAdmin();
+    if (isChatGPTHandoff()) {
+      const pending = cards.data.filter(card => ['failed','needs_fix'].includes(card.status));
+      for (const card of pending) await queueRedesign(admin, 'design', card.id, 'Generate a new version preserving its exact product and carousel position.');
+      note = await startRequestedArtwork('design', pending, user.id, role, selected);
+    } else {
+      const startedAt = Date.parse(set.data.started_at || '');
+      if (set.data.background_status === 'failed' || (set.data.background_status === 'making' && (!Number.isFinite(startedAt) || startedAt < Date.now() - 8 * 60_000))) {
+        const reset = await admin.from('carousel_sets').update({background_status:'queued',started_at:null,error:null,background_path:null}).eq('id',id);
+        if (reset.error) throw reset.error;
+      } else if (set.data.background_status === 'making') throw new Error('The reference background is still being generated.');
+      const pending = await admin.from('designs').update({status:'queued',queued_at:new Date().toISOString(),error:null}).eq('carousel_id',id).in('status',['failed','needs_fix']).select('id');
+      if (pending.error || !pending.data?.length) throw pending.error || new Error('No cards needing work were available to retry.');
+      after(async () => { for (const card of pending.data!) await drawItem(supabaseAdmin(),'design',card.id).catch(() => false); });
+    }
+    revalidatePath('/studio');
+  } catch (error) {
+    redirect(`/studio?carousel=${id}&error=${encodeURIComponent(errText(error))}`);
+  }
+  redirect(`/studio?carousel=${id}&msg=${encodeURIComponent(isChatGPTHandoff() ? note : 'Retry queued. The gallery will update when the reference design and cards are ready.')}`);
+}
+
+/** Request a new shared art direction while retaining each card's previous image. */
+export async function redesignCarousel(form: FormData) {
+  const { db, role, user } = await requireUser();
+  if (!(await canUseStudio(db, role))) redirect('/office');
+  const id = String(form.get('carousel') || '');
+  let cards: RevisionArtwork[] = [], selected: ArtworkProvider | null = null;
+  try {
+    selected = form.get('provider') ? revisionArtworkProvider(form.get('provider')) : null;
+    const queued = await queueCarouselRedesign(supabaseAdmin(), db, {
+      userId: user.id, role, carouselId: id, note: String(form.get('note') || ''),
+    });
+    cards = queued.cards;
+  } catch (error) {
+    redirect(`/studio?carousel=${encodeURIComponent(id)}&error=${encodeURIComponent(errText(error))}`);
+  }
+  if (!isChatGPTHandoff()) after(async () => { for (const card of cards) await drawItem(supabaseAdmin(), 'design', card.id).catch(() => false); });
+  revalidatePath('/studio');
+  const note = isChatGPTHandoff() ? await startRequestedArtwork('design', cards, user.id, role, selected) : 'A new version of all five cards is queued. Their previous images stay visible while the replacements are generated.';
+  redirect(`/studio?carousel=${id}&msg=${encodeURIComponent(note)}`);
 }
 
 /**
@@ -36,71 +143,111 @@ export async function orderDesign(form: FormData) {
  * Studio orders need the Creative head or the Super Admin; a campaign banner, anyone whose sign-off the campaign needs.
  */
 export async function redesign(form: FormData) {
-  const { db, role } = await requireUser();
+  const { db, role, user } = await requireUser();
   const back = String(form.get('back') || '/studio'), source = String(form.get('source')), id = String(form.get('id'));
   const to = (k: 'msg' | 'error', t: string) => `${back.split('#')[0]}${back.includes('?') ? '&' : '?'}${k}=${encodeURIComponent(t)}${back.includes('#') ? `#${back.split('#')[1]}` : ''}`;
+  let selected: ArtworkProvider | null = null, origin: string | null = null;
   try {
+    selected = form.get('provider') ? revisionArtworkProvider(form.get('provider')) : null;
     if (!['design', 'creative'].includes(source) || !/^[0-9a-f-]{36}$/.test(id)) throw new Error('Unknown image.');
-    if (source === 'design' && !(await canDesign(db, role))) throw new Error('Only the Creative head or the Super Admin can redesign Studio orders.');
+    if (source === 'design') {
+      if (!(await canUseStudio(db, role))) throw new Error('Only an authorized department head can redesign Studio orders.');
+      const { data: design } = await db.from('designs').select('format,status,artwork_origin').eq('id', id).maybeSingle();
+      if (!design) throw new Error('That design is not one you can change.');
+      origin = design.artwork_origin;
+      if (!isChatGPTHandoff() && design.format === 'carousel_card' && !['failed','needs_fix'].includes(design.status)) throw new Error('This card can be retried when generation or its product-match check needs correction.');
+    }
     if (source === 'creative') {
       // read through the person's own access: heads see only the campaigns that need their sign-off
-      const { data: c } = await db.from('creatives').select('id, campaigns(status)').eq('id', id).maybeSingle();
+      const { data: c } = await db.from('creatives').select('id,artwork_origin,campaigns(status)').eq('id', id).maybeSingle();
       if (!c) throw new Error('That banner is not one you can change.');
-      if ((c.campaigns as any)?.status === 'live') throw new Error('This campaign is live. Its banner can no longer change.');
+      origin = c.artwork_origin;
+      if (['approved', 'publishing', 'publish_review', 'live'].includes((c.campaigns as any)?.status)) throw new Error('This campaign is approved. Its banner and copy are frozen.');
     }
     await queueRedesign(supabaseAdmin(), source as Source, id, String(form.get('note') || ''));
   } catch (e) {
     redirect(to('error', errText(e)));
   }
-  after(() => drawItem(supabaseAdmin(), source as Source, id).catch(() => null));
+  if (!isChatGPTHandoff()) after(() => drawItem(supabaseAdmin(), source as Source, id).catch(() => null));
   revalidatePath(back.split(/[?#]/)[0]);
-  redirect(to('msg', 'Redesign started. It takes about a minute; this page updates on its own and you can leave it.'));
+  const note = isChatGPTHandoff() ? form.get('prepare_only') === '1' ? 'Fresh artwork brief prepared. Check the generation status and credit cost before starting a new image. The previous artwork stays available.' : await startRequestedArtwork(source as Source, [{id,artwork_origin:origin}], user.id, role, selected) : 'Redesign started. It takes about a minute; this page updates on its own and you can leave it.';
+  redirect(to('msg', note));
 }
 
 /** Super Admin: add a Drive folder of past designs, by link or from the search. The library job reads it next. */
 export async function addFolder(form: FormData) {
   const { role, user } = await requireUser();
   if (role !== 'super_admin') redirect('/studio');
+  let queued=false;
   try {
     const id = folderIdFrom(form.get('folder'));
     if (!id) throw new Error('Paste a Google Drive folder link, or pick a folder from the search.');
     const f = await folderInfo(id);
-    const admin = supabaseAdmin();
-    const { error } = await admin.from('design_library_folders').upsert({ id: f.id, root_id: f.id, name: f.name, added_by: user.id, page_token: null, scanned_at: null, error: null });
-    if (error) throw error;
-    await admin.from('autopilot_jobs').upsert({ name: 'library', last_run_at: null });
+    await withLibraryFolderEdit(async(admin,check)=>{
+      // Adding an already indexed folder must not reset its progress or its parent/root association.
+      await check();
+      const { error } = await admin.from('design_library_folders').upsert({ id: f.id, root_id: f.id, name: f.name, added_by: user.id, page_token: null, scanned_at: null, error: null },{onConflict:'id',ignoreDuplicates:true});
+      if (error) throw new Error('The folder could not be saved. Try again.');
+      await check();
+      const scheduled=await admin.from('autopilot_jobs').upsert({name:'library',last_run_at:null,last_result:'queued: a folder was added'});
+      if(scheduled.error)throw new Error('The folder is saved, but an earlier scan could not be queued. Use Resume scan to try again.');
+      queued=true;
+    });
   } catch (e) {
     redirect(`/studio?tab=library&error=${encodeURIComponent(errText(e))}`);
   }
+  if(queued)after(()=>scanLibrary(supabaseAdmin(),{trigger:'manual'}).catch(()=>null));
   revalidatePath('/studio');
-  redirect(`/studio?tab=library&msg=${encodeURIComponent('Folder added. The Banner Designer starts reading it within a few minutes, in the background.')}`);
+  redirect(`/studio?tab=library&msg=${encodeURIComponent('Folder saved and a scan queued. Progress below shows when a worker is active; paused agents or connection issues may delay it.')}`);
 }
 
 /** Super Admin: stop using a folder. Its subfolders and the designs read from them go with it. */
 export async function removeFolder(form: FormData) {
   const { role } = await requireUser();
   if (role !== 'super_admin') redirect('/studio');
-  const id = String(form.get('id') || ''), admin = supabaseAdmin();
-  const { data: subs } = await admin.from('design_library_folders').select('id').eq('root_id', id);
-  const ids = [id, ...(subs || []).map(s => s.id)];
-  const { data: files } = await admin.from('design_refs').select('image_path').in('folder_id', ids).not('image_path', 'is', null).limit(5000);
-  const paths = (files || []).map(f => f.image_path!);
-  for (let i = 0; i < paths.length; i += 500) await admin.storage.from('creatives').remove(paths.slice(i, i + 500));
-  await admin.from('design_library_folders').delete().in('id', ids);
+  const id = String(form.get('id') || '');
+  try {
+    await withLibraryFolderEdit(async(admin,check)=>{
+      const root=await admin.from('design_library_folders').select('id').eq('id',id).eq('root_id',id).maybeSingle();
+      if(root.error || !root.data)throw new Error('This selected folder could not be found. Nothing was removed.');
+      const folders=await readLibraryFolderPages<{id:string}>((from,to)=>admin.from('design_library_folders').select('id').eq('root_id',id).order('id').range(from,to));
+      if(!folders.complete)throw new Error('The complete folder list could not be read. Nothing was removed.');
+      const ids=folders.rows.map(folder=>folder.id),paths:string[]=[];
+      for(let offset=0;offset<ids.length;offset+=100) {
+        const files=await readLibraryFolderPages<{image_path:string}>((from,to)=>admin.from('design_refs').select('id,image_path').in('folder_id',ids.slice(offset,offset+100)).not('image_path','is',null).order('id').range(from,to));
+        if(!files.complete)throw new Error('The indexed designs could not be fully read. Nothing was removed.');
+        paths.push(...files.rows.map(file=>file.image_path));
+      }
+      for(let offset=0;offset<paths.length;offset+=250) {
+        await check();
+        const removed=await admin.storage.from('creatives').remove(paths.slice(offset,offset+250));
+        if(removed.error)throw new Error('Some saved previews could not be removed. Retry the folder removal.');
+      }
+      // Keep the chosen root until the last write, so a partial failure remains visible and retryable.
+      await check();
+      const children=await admin.from('design_library_folders').delete().eq('root_id',id).neq('id',id);
+      if(children.error)throw new Error('Some library folders could not be removed. Retry the folder removal.');
+      await check();
+      const removed=await admin.from('design_library_folders').delete().eq('id',id).eq('root_id',id);
+      if(removed.error)throw new Error('The selected folder could not be removed. Retry the folder removal.');
+    });
+  } catch(error) {redirect(`/studio?tab=library&error=${encodeURIComponent(errText(error))}`);}
   revalidatePath('/studio');
   redirect(`/studio?tab=library&msg=${encodeURIComponent('Folder removed from the library.')}`);
 }
 
-/** Read the folders again now: the library job runs on the next tick instead of waiting its turn. */
+/** Queue a protected continuation, preserving unfinished discovery. A worker starts after the response. */
 export async function scanNow() {
   const { db, role } = await requireUser();
   if (!(await canDesign(db, role))) redirect('/office');
-  const admin = supabaseAdmin();
-  await admin.from('design_library_folders').update({ scanned_at: null, error: null }).is('page_token', null);
-  await admin.from('design_refs').update({ status: 'new', error: null }).eq('status', 'failed');
-  await admin.from('autopilot_jobs').upsert({ name: 'library', last_run_at: null });
+  let message='';
+  try {
+    const result=await resetLibraryScan(supabaseAdmin());
+    message=result.summary;
+    if(!result.busy)after(()=>scanLibrary(supabaseAdmin(),{trigger:'manual'}).catch(()=>null));
+  } catch(error) {redirect(`/studio?tab=library&error=${encodeURIComponent(errText(error))}`);}
   revalidatePath('/studio');
-  redirect(`/studio?tab=library&msg=${encodeURIComponent('Reading the folders again in the background. New designs show up here as they are studied.')}`);
+  redirect(`/studio?tab=library&msg=${encodeURIComponent(message)}`);
 }
 
 /** A head pins a past design (use it more) or hides it (never use it). */
@@ -109,7 +256,10 @@ export async function markRef(form: FormData) {
   if (!(await canDesign(db, role))) redirect('/office');
   const id = String(form.get('id') || ''), what = String(form.get('what') || ''), back = String(form.get('back') || '/studio?tab=library');
   const patch = what === 'pin' ? { pinned: true, hidden: false } : what === 'unpin' ? { pinned: false } : what === 'hide' ? { hidden: true, pinned: false } : what === 'show' ? { hidden: false } : null;
-  if (patch && /^[0-9a-f-]{36}$/.test(id)) await supabaseAdmin().from('design_refs').update(patch).eq('id', id);
+  if (patch && /^[0-9a-f-]{36}$/.test(id)) {
+    const result=await supabaseAdmin().from('design_refs').update(patch).eq('id', id);
+    if(result.error)redirect(`/studio?tab=library&error=${encodeURIComponent('The reference could not be updated. Try again.')}`);
+  }
   revalidatePath('/studio');
   redirect(back);
 }
@@ -120,18 +270,23 @@ export async function markRef(form: FormData) {
  */
 export async function reviewImage(form: FormData) {
   const { db, role, user } = await requireUser();
-  if (!(await canDesign(db, role))) redirect('/office');
+  if (!(await canUseStudio(db, role))) redirect('/office');
   const back = String(form.get('back') || '/studio');
   try {
     const source = String(form.get('source')), id = String(form.get('id')), verdict = String(form.get('verdict')), note = String(form.get('note') || '').trim().slice(0, 600);
+    const imagePath = String(form.get('image_path') || ''), requestId = String(form.get('request_id') || '') || null;
     if (!['design', 'creative'].includes(source) || !/^[0-9a-f-]{36}$/.test(id)) throw new Error('Unknown image.');
     if (!['good', 'bad'].includes(verdict)) throw new Error('Choose Good or Bad.');
     if (verdict === 'bad' && !note) throw new Error('Say what is wrong, so the designers can fix it next time.');
     const admin = supabaseAdmin();
     // read through the head's own access, so a head can only review what they can see
-    const { data: img } = await db.from('ai_images').select('kind, brief, headline').eq('source', source).eq('id', id).maybeSingle();
+    const { data: img } = await db.from('ai_images').select('kind, brief, headline, status,image_path,artwork_request_id').eq('source', source).eq('id', id).maybeSingle();
     if (!img) throw new Error('That image is not one you can review.');
-    const { error } = await admin.from('image_reviews').upsert({ source, item_id: id, verdict, note: note || null, reviewer: user.id, reviewer_role: role, updated_at: new Date().toISOString() });
+    if (img.status === 'awaiting_import') throw new Error('Save the finished image before reviewing this new artwork request.');
+    if (['queued','making','generating'].includes(img.status)) throw new Error('This artwork is still being generated. Review it once the finished image is saved.');
+    if (!imagePath || img.image_path !== imagePath || (img.artwork_request_id || null) !== requestId) throw new Error('This artwork has changed since you opened the review. Refresh the page and review the current image.');
+    if (img.kind === 'carousel_card' && verdict === 'good' && img.status !== 'ready') throw new Error('The product match has not passed. Retry this card before marking it Good.');
+    const { error } = await admin.rpc('review_artwork', { p_source: source, p_id: id, p_image_path: imagePath, p_request_id: requestId, p_verdict: verdict, p_note: note || null, p_reviewer: user.id, p_reviewer_role: role });
     if (error) throw error;
     const what = `${img.kind.replace('_', ' ')} "${(img.headline || img.brief || '').slice(0, 80)}"`;
     const lesson = verdict === 'good'

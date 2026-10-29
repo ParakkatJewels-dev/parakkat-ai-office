@@ -1,0 +1,103 @@
+{
+  "release": "chatgpt-image-worker-20261029-r1",
+  "mode": "drain",
+  "at": "2026-10-29T11:13:11.199Z",
+  "safe": true,
+  "systemStateBefore": {
+    "id": 1,
+    "paused": true,
+    "paused_at": "2026-10-29T11:12:49.71+00:00",
+    "paused_by": null,
+    "reason": "chatgpt-image-worker-20261029-r1"
+  },
+  "systemStateAfter": {
+    "id": 1,
+    "paused": true,
+    "paused_at": "2026-10-29T11:12:49.71+00:00",
+    "paused_by": null,
+    "reason": "chatgpt-image-worker-20261029-r1"
+  },
+  "activity": {
+    "at": "2026-10-29T11:13:10.778Z",
+    "blocking": {
+      "agent_tasks_running": {
+        "count": 0
+      },
+      "agent_meetings_running": {
+        "count": 0
+      },
+      "agent_runs_running": {
+        "count": 0
+      },
+      "automation_tasks_running": {
+        "count": 0
+      },
+      "automation_task_live_leases": {
+        "count": 0
+      },
+      "automation_actions_executing": {
+        "count": 0
+      },
+      "designs_active": {
+        "count": 0
+      },
+      "creatives_active": {
+        "count": 0
+      },
+      "carousel_backgrounds_active": {
+        "count": 0
+      },
+      "job_locks_live": {
+        "count": 0
+      },
+      "higgsfield_active": {
+        "count": 0
+      },
+      "higgsfield_live_leases": {
+        "count": 0
+      },
+      "higgsfield_projects_creating": {
+        "count": 0
+      },
+      "chatgpt_images_active": {
+        "count": 0
+      },
+      "chatgpt_images_live_leases": {
+        "count": 0
+      },
+      "recent_text_reservations": {
+        "count": 0
+      }
+    },
+    "informational": {
+      "agent_tasks_queued": {
+        "count": 0
+      },
+      "automation_tasks_queued": {
+        "count": 0
+      },
+      "designs_queued": {
+        "count": 0
+      },
+      "creatives_queued": {
+        "count": 0
+      },
+      "higgsfield_queued": {
+        "count": 0
+      },
+      "higgsfield_uncertain": {
+        "count": 0
+      },
+      "chatgpt_images_queued": {
+        "count": 0
+      },
+      "chatgpt_images_uncertain": {
+        "count": 0
+      },
+      "old_text_reservations": {
+        "count": 0
+      }
+    },
+    "blockerNames": []
+  }
+}

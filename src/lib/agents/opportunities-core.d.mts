@@ -1,0 +1,26 @@
+export const MAX_OPPORTUNITIES: number;
+export function opportunityReviewDue(trigger: string, lastRunAt: string | null | undefined, now?: number, every?: number): boolean;
+export function opportunityEvidenceFingerprint(evidence:unknown):string;
+export function opportunityEvidenceGate(saved:any,fingerprint:string,now?:number):'unchanged'|'backoff'|'ready';
+export type OpportunityFact = { id: string; category: string; source: string; text: string; dateFrom?: string; dateTo?: string; observedAt?: string; limitation?: string; departmentId?: string };
+export type OpportunityLead = { id: string; name: string; department_id: string; role_desc: string; enabled: boolean; is_lead: boolean };
+export type OpportunityCandidate = { id: string; agentId: string; departmentId: string; title: string; finding: string; nextStep: string; successMetric: string; priority: string; evidence: { sourceId: string; quote: string }[]; titleKey: string; evidenceKey: string; fingerprint: string };
+export type OpportunityTurn = { agentId: string; summary: string; candidates: OpportunityCandidate[] };
+export type OpportunityReview = { summary: string; decisions: { candidateId: string; decision: string; note: string }[] };
+export function opportunityText(value: unknown, max?: number): string;
+export function opportunityWindows(now?: Date): { current: { from: string; to: string }; previous: { from: string; to: string }; observedAt: string };
+export function opportunityProductFacts(current: any, previous: any, window: { from: string; to: string }, previousWindow: { from: string; to: string }): OpportunityFact[];
+export function opportunityAdFacts(rows: any[], truncated: boolean, window: { from: string; to: string }): OpportunityFact[];
+export function selectOpportunityLeads(agents: OpportunityLead[], facts: OpportunityFact[], recentLeads?: string[]): OpportunityLead[];
+export function opportunityKeys(candidate: Pick<OpportunityCandidate, 'title' | 'evidence'>, departmentId: string): { titleKey: string; evidenceKey: string; fingerprint: string };
+export function normalizeOpportunityTurn(value: unknown, lead: OpportunityLead, facts: OpportunityFact[]): OpportunityTurn;
+export function normalizeOpportunityReview(value: unknown, candidates: OpportunityCandidate[]): OpportunityReview;
+export function duplicateOpportunity(candidate: OpportunityCandidate, recent: any[]): boolean;
+export function coordinateOpportunities(options: {
+  leads: OpportunityLead[]; facts: OpportunityFact[]; recent?: any[];
+  ask(lead: OpportunityLead | null, step: any): Promise<unknown>;
+  saveTurn(turn: OpportunityTurn): Promise<void>;
+  saveReview(review: OpportunityReview): Promise<void>;
+  forward(candidate: OpportunityCandidate, note: string): Promise<void>;
+}): Promise<{ summary: string; turns: OpportunityTurn[]; forwarded: OpportunityCandidate[]; duplicates: string[] }>;
+export function opportunityFailure(error: unknown): string;

@@ -5,6 +5,7 @@ import { Icon } from '@/components/Icon';
 import { Submit } from '@/components/forms';
 import { PageHead, Tile, Avatar, Pager, pageOf, rangeOf, inr, when } from '@/components/ui';
 import { runSeoNow } from './actions';
+import styles from './Seo.module.css';
 
 export const maxDuration = 300;
 
@@ -44,9 +45,9 @@ export default async function Seo({ searchParams }: { searchParams: Promise<Reco
   const A = Object.fromEntries((agents || []).map(a => [a.id, a.name])), top = biggest?.[0], last = latest?.[0]?.updated_at;
 
   return (
-    <div className="page">
-      {sp.msg && <p className="flash ok">{sp.msg}</p>}
-      {sp.error && <p className="flash">{sp.error}</p>}
+    <div className={`page ${styles.page}`}>
+      {sp.msg && <p className="flash ok" role="status">{sp.msg}</p>}
+      {sp.error && <p className="flash" role="alert">{sp.error}</p>}
       <PageHead title="SEO" sub="What people in Kerala search for, from Google Trends and Google Ads Keyword Planner. The SEO Desk checks every Monday, and the Campaign Strategist uses it when planning.">
         <form action={runSeoNow}><Submit icon="sync" pending="Checking searches…">Run the SEO check now</Submit></form>
       </PageHead>
@@ -58,14 +59,14 @@ export default async function Seo({ searchParams }: { searchParams: Promise<Reco
         <Tile icon="spark" tone="violet" label="Winnable terms" value={easy || 0} sub="Real volume, low or medium competition" />
       </section>
 
-      {(conns || []).some(c => c.status === 'error') && <div className="banner bad-banner"><Icon name="plug" size={20} /><span>{(conns || []).filter(c => c.status === 'error').map(c => `${c.provider === 'google_trends' ? 'Google Trends' : 'Keyword Planner'}: ${c.last_error}`).join(' · ')}</span></div>}
+      {(conns || []).some(c => c.status === 'error') && <div className="banner bad-banner" role="alert"><Icon name="plug" size={20} /><span>{(conns || []).filter(c => c.status === 'error').map(c => `${c.provider === 'google_trends' ? 'Google Trends' : 'Keyword Planner'}: ${c.last_error}`).join(' · ')}</span></div>}
 
       <div className="bento">
         <section className="card s8">
           <div className="card-head"><div><h3>Keywords by monthly searches</h3><p className="sub">Keyword Planner, India. Bids are the top-of-page range in Google Ads.</p></div>
-            <form className="find" role="search"><Icon name="search" size={16} /><input name="q" defaultValue={q} placeholder="Filter keywords" aria-label="Filter keywords" /></form></div>
-          {byVolume?.length ? <div className="tablewrap"><table className="table">
-            <thead><tr><th>Search term</th><th className="r">Searches a month</th><th>Competition</th><th className="r">Bid range</th><th>Trend</th></tr></thead>
+            <form className="inline" role="search" action="/seo"><label className="find"><Icon name="search" size={16}/><input name="q" defaultValue={q} placeholder="Filter keywords" aria-label="Filter keywords"/></label><button type="submit" className="btn ghost sm-btn">Search</button>{q && <a href="/seo" className="btn ghost sm-btn">Clear</a>}</form></div>
+          {byVolume?.length ? <div className="tablewrap" tabIndex={0} role="region" aria-label="Keyword search results"><table className="table">
+            <thead><tr><th scope="col">Search term</th><th scope="col" className="r">Searches a month</th><th scope="col">Competition</th><th scope="col" className="r">Bid range</th><th scope="col">Trend</th></tr></thead>
             <tbody>{byVolume.map(k => <tr key={k.keyword}>
               <td><b>{k.keyword}</b>{k.rising && <span className="pill warn">rising</span>}</td>
               <td className="r num">{k.avg_monthly_searches!.toLocaleString('en-IN')}</td>

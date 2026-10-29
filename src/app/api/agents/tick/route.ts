@@ -7,6 +7,7 @@ import { drainDesignQueue } from '@/lib/agents/design';
 import { isCron } from '@/lib/auth/session';
 import { errText } from '@/lib/errors';
 import { isPaused } from '@/lib/pause';
+import { refreshOutcomeMonitoring } from '@/lib/outcomes/service';
 
 export const maxDuration = 300;
 
@@ -36,5 +37,7 @@ export async function POST(req: Request) {
     const { data: lock } = await db.rpc('acquire_job_lock', { p_name: 'designs', p_holder: holder, p_seconds: 200 });
     if (lock) try { designs = await drainDesignQueue(db); } finally { await db.rpc('release_job_lock', { p_name: 'designs', p_holder: holder }); }
   }
-  return NextResponse.json({ moved, autopilot, designs });
+  let outcomes:unknown=null;
+  if(Date.now()-t0<180000&&!await isPaused(true))try{outcomes=await refreshOutcomeMonitoring(db);}catch{outcomes={error:'Outcome monitoring could not complete; saved evidence is retained.'};}
+  return NextResponse.json({ moved, autopilot, designs,outcomes });
 }

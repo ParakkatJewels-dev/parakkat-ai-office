@@ -1,5 +1,5 @@
 // Everything around the campus: avenues and a back road with signalled crossings, mixed Kerala traffic that stops at
-// red lights, people on the pavements, apartment blocks, hills on the horizon, and a sky that follows the clock in
+// red lights, people on the pavements, a woodland belt, distant buildings, hills, and a sky that follows the clock in
 // Kerala with sunrise, sunset, stars and the real phase of the moon.
 //
 // Speed: static pieces go into the campus's merge group (one draw per material) and never cast shadows; pedestrians
@@ -195,7 +195,21 @@ export function buildWorld(c) {
     parts.forEach(m => { m.instanceMatrix.needsUpdate = true; });
   }
 
-  /* ---------- apartment blocks ---------- */
+  /* ---------- layered woodland, with buildings kept beyond the campus grounds ---------- */
+  if (c.landscape) {
+    for (let row = 0; row < 3; row++) {
+      for (let x = -151; x <= 151; x += 10) {
+        c.landscape.tree(x + (rnd() - .5) * 5, -48 - row * 13 - rnd() * 6, 1.1 + rnd() * .55);
+      }
+    }
+    // Loose groves frame both sides when the map is rotated, without crowding
+    // the entrances or the roads the agents walk across.
+    for (const side of [-1, 1]) for (let z = -35; z < 76; z += 12) {
+      if (Math.abs(z - MAIN_Z) < 9) continue;
+      c.landscape.tree(side * (132 + rnd() * 14), z, 1.2 + rnd() * .5);
+      c.landscape.tree(side * (155 + rnd() * 10), z - 5, 1.1 + rnd() * .6);
+    }
+  }
   const facade = tex((g, w, h) => {
     g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
     for (let r = 0; r < 8; r++) for (let k = 0; k < 4; k++) { const x = k * 32 + 6, y = r * 32 + 8; g.fillStyle = '#4a5a6a'; g.fillRect(x, y, 20, 16); g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(x, y, 20, 3); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(k * 32, r * 32 + 28, 32, 4); }
@@ -217,24 +231,27 @@ export function buildWorld(c) {
     block(w + .3, .4, d + .3, roofM, x, h - .1, z);
     block(1.6, 1.4, 1.6, tankM, x + w / 4, h + .8, z - d / 4);
   }
-  const H = () => 18 + ((rnd() * 7) | 0) * 3;
-  for (let x = -170; x <= 170; x += 24) { if (Math.abs(x - AVE[0]) < 14 || Math.abs(x - AVE[1]) < 14) continue; tower(x + rnd() * 4, -62 - rnd() * 6, 14, 10, H()); tower(x + 10 + rnd() * 4, -92 - rnd() * 8, 16, 12, H() + 9); }
-  // lower blocks on the camera side so they never hide the campus
-  for (let x = -170; x <= 170; x += 22) { if (Math.abs(x - AVE[0]) < 14 || Math.abs(x - AVE[1]) < 14) continue; tower(x + rnd() * 4, 104 + rnd() * 6, 14, 10, Math.round(H() * .2) * 3); if (rnd() > .35) tower(x + 8, 132 + rnd() * 6, 16, 12, Math.round(H() * .27) * 3); }
-  [-1, 1].forEach(sd => { for (let z = -40; z <= 70; z += 22) if (Math.abs(z - MAIN_Z) > 12) tower(sd * (138 + rnd() * 6), z, 12, 14, H()); });
+  const H = () => 9 + ((rnd() * 4) | 0) * 3;
+  for (let x = -170; x <= 170; x += 46) tower(x + rnd() * 4, -158 - rnd() * 22, 14, 10, H());
+  for (let x = -170; x <= 170; x += 55) tower(x + rnd() * 4, 176 + rnd() * 12, 14, 10, H() * .65);
+  [-1, 1].forEach(sd => { for (let z = -50; z <= 90; z += 48) tower(sd * (202 + rnd() * 12), z, 12, 14, H()); });
 
   /* ---------- hills on the horizon, hazed towards the sky colour ---------- */
   const hillLayers = [[440, '#3f6340', 45, 85, 30], [530, '#55745f', 75, 130, 26], [610, '#71899a', 105, 175, 22]].map(([r, base, hMin, hMax, n], li) => {
-    const mat = new THREE.MeshStandardMaterial({ color: base, roughness: 1, flatShading: true, fog: false }), geos = [];
+    const mat = new THREE.MeshStandardMaterial({ color: base, roughness: 1, fog: false }), geos = [];
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + rnd() * .2, rr = r + (rnd() - .5) * 40, h = hMin + rnd() * (hMax - hMin), rad = h * (1.15 + rnd() * .55);
-      const g = new THREE.ConeGeometry(rad, h, 7, 3), p = g.attributes.position;
-      for (let k = 0; k < p.count; k++) if (p.getY(k) > -h / 2 + .01) { p.setX(k, p.getX(k) * (.85 + rnd() * .3)); p.setZ(k, p.getZ(k) * (.85 + rnd() * .3)); p.setY(k, p.getY(k) + (rnd() - .5) * h * .08); }
-      g.translate(Math.cos(a) * rr, h / 2 - .4, Math.sin(a) * rr); geos.push(g.toNonIndexed()); g.dispose();
+      const g = new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;
+      for (let k = 0; k < p.count; k++) {
+        const x = p.getX(k), y = p.getY(k), z = p.getZ(k);
+        p.setXYZ(k, x * rad, y * h * (.84 + .16 * Math.sin(x * 4 + li) * Math.cos(z * 3)), z * rad * .85);
+      }
+      g.computeVertexNormals(); g.translate(Math.cos(a) * rr, -.4, Math.sin(a) * rr); geos.push(g.toNonIndexed()); g.dispose();
     }
     let total = 0; geos.forEach(g => { total += g.attributes.position.count; });
-    const pos = new Float32Array(total * 3); let o = 0; geos.forEach(g => { pos.set(g.attributes.position.array, o); o += g.attributes.position.array.length; });
-    const merged = new THREE.BufferGeometry(); merged.setAttribute('position', new THREE.BufferAttribute(pos, 3)); merged.computeVertexNormals();
+    const pos = new Float32Array(total * 3), normal = new Float32Array(total * 3); let o = 0;
+    geos.forEach(g => { pos.set(g.attributes.position.array, o); normal.set(g.attributes.normal.array, o); o += g.attributes.position.array.length; g.dispose(); });
+    const merged = new THREE.BufferGeometry(); merged.setAttribute('position', new THREE.BufferAttribute(pos, 3)); merged.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
     const mesh = new THREE.Mesh(merged, mat); scene.add(mesh);
     return { mat, base, haze: .25 + li * .2 };
   });

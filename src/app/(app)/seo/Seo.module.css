@@ -1,0 +1,22 @@
+.page{min-width:0;gap:12px}
+.page :global(.bento){align-items:start}
+.page :global(.card){min-width:0;padding:14px;border-radius:6px}
+.page :global(.card-head){gap:12px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-start}
+.page :global(.card-head) :global(.inline){gap:8px;flex-wrap:wrap;max-width:100%}
+.page :global(.find){min-width:0;flex:1 1 180px;min-height:40px;border-radius:4px}
+.page :global(.find) input{min-width:0;width:100%;font-size:14px}
+.page :global(.tablewrap){max-width:100%;overflow:auto;border:1px solid var(--line);border-radius:4px}
+.page :global(.table){min-width:610px;font-size:13px}
+.page :global(.table) :is(th,td){padding:10px 12px;vertical-align:middle}
+.page :global(.table) th{font-size:12px;color:var(--muted);background:var(--panel-2)}
+.page :global(.table) td:first-child{white-space:normal;min-width:160px}
+.page :global(.rows)>li{padding:12px 0;gap:12px;min-width:0}
+.page :global(.rows) :global(.grow){min-width:0}
+.page :global(.report-body){border-radius:4px;font-size:14px}
+.page :global(.report-body) summary{font-size:12px;line-height:1.6;cursor:pointer}
+.page :global(.report-body) p{line-height:1.65;overflow-wrap:anywhere}
+.page :global(.tags){gap:6px}
+.page :global(.tags) :global(.pill){white-space:normal;border-radius:4px;font-size:12px}
+.page :is(a,button,summary,input,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:640px){.page :global(.card-head)>div,.page :global(.card-head)>form{width:100%}.page :global(.rows)>li{flex-wrap:wrap}.page :global(.rows)>li>:global(.pill){max-width:100%;white-space:normal}.page :global(.spark){max-width:80px}}
+@media(pointer:coarse){.page :is(button,input),.page :global(.btn){min-height:44px}}

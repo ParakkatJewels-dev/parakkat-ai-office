@@ -1,0 +1,13 @@
+export function boundedText(value: unknown, limit?: number): string;
+export function finiteNumber(value: unknown): number | null;
+export type ClosedWindow = { from: string; to: string; days: number };
+export function closedWindows(now?: Date): { observedAt: string; shopify: ClosedWindow; shopifyWeek: ClosedWindow; odoo: ClosedWindow; odooMonth: ClosedWindow; ads: ClosedWindow };
+export function odooWindowComplete(state: any, window: ClosedWindow): boolean;
+export function missingDays(rows: any[], window: ClosedWindow): string[];
+export function dataQualityFindings(input?: {connections?: any[]; cursors?: any[]; products?: any[]; folders?: any[]; libraryCounts?: Record<string, number | null>; now?: number; productsComplete?: boolean; foldersComplete?: boolean; expectedProviders?: string[]}): Array<{code:string; severity:string; detail:string}>;
+export function inventoryPlan(input: {sales?:any[];stock?:any[];rules?:any;window:ClosedWindow;salesComplete?:boolean;stockComplete?:boolean;stockFresh?:boolean}): {risks:any[];proposals:any[];warnings:string[]};
+export function catalogueIssues(products:any[]): Array<{productId:string;title:string;issues:string[]}>;
+export function validatedCatalogueDrafts(value:any,products:any[]): Array<{productId:string;title:string;description:string;seoTitle:string;seoDescription:string;malayalam:string;originalTitle:string;sourceUpdatedAt:string|null}>;
+export function validatedReply(value:any,channel?:string): {reply:string;category:string;needsHuman:boolean;questions:string[]};
+export function validatedFollowUp(value:any): {summary:string;markdown:string;blocked:boolean;missing:string[]};
+export function aggregateAds(rows:any[]): Array<{platform:string;accountId:string;adId:string;campaignId:string;campaign:string;ad:string;currency:string;spend:number;revenue:number|null;clicks:number;purchases:number|null;roas:number|null}>;

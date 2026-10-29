@@ -84,3 +84,59 @@ export function salesWindows(today, oldest, newest, backfill = 90, chunk = 15) {
   const back = addDays(start, -chunk) < floor ? floor : addDays(start, -chunk);
   return [recent, { from: back, to: addDays(start, -1) }];
 }
+
+/** Daily checkpoints keep a large backfill from starving behind the stock snapshot on every sync. */
+export function salesDayWindows(today, state = {}) {
+  const floor = addDays(today, -89), valid = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= floor && d <= today;
+  const pending = Array.isArray(state.pending) ? state.pending.filter(w => w && valid(w.from) && w.from === w.to).slice(0, 90) : [];
+  if (pending.length) return pending.map(w => ({ from: w.from, to: w.to }));
+  const out = [], seen = new Set();
+  for (const [i, w] of salesWindows(today, state.oldest, state.newest).entries()) {
+    // Catch up recent days forward; backfill backward so the recorded range stays contiguous.
+    for (let d = i ? w.to : w.from; i ? d >= w.from : d <= w.to; d = addDays(d, i ? -1 : 1)) {
+      if (!seen.has(d)) { out.push({ from: d, to: d }); seen.add(d); }
+    }
+  }
+  return out;
+}
+
+export const odooDeadline = () => Object.assign(new Error('Odoo will continue on the next sync; the last complete data is kept.'), { code: 'odoo_deadline' });
+export const isOdooDeadline = error => error?.code === 'odoo_deadline';
+
+/** Only an absent optional model is optional. Network, authentication and ACL failures must propagate. */
+export function isMissingOdooModel(error, model) {
+  const message = String(error?.message || '');
+  return message.includes(model) && /doesn.t exist|does not exist|unknown model|model[^\n]*not found|object[^\n]*not found/i.test(message);
+}
+
+/** Read first, then atomically commit that day's rows and the next cursor. Failed reads never advance. */
+export async function runSalesDays({ today, state = {}, deadline, read, commit, now = Date.now, reserveMs = 20_000 }) {
+  let saved = { ...state }, pending = salesDayWindows(today, state), completed = 0, branchDays = 0;
+  let coverage = state.coverage || null;
+  while (pending.length && now() < deadline - reserveMs) {
+    const window = pending[0];
+    let result;
+    try { result = await read(window); }
+    catch (error) { if (isOdooDeadline(error)) break; throw error; }
+    // A complete read that ran out of commit time is safe to repeat; no old totals have been touched.
+    if (now() >= deadline - 5000) break;
+    const next = { ...saved,
+      oldest: saved.oldest && saved.oldest < window.from ? saved.oldest : window.from,
+      newest: saved.newest && saved.newest > window.to ? saved.newest : window.to,
+      pending: pending.slice(1), coverage: result.coverage,
+    };
+    next.needs_continuation = !!next.pending.length || next.oldest > addDays(today, -89);
+    await commit(window, result, next);
+    saved = next; pending = next.pending; coverage = result.coverage;
+    completed++; branchDays += result.branchRows.length;
+  }
+  const more = !!pending.length || !saved.oldest || saved.oldest > addDays(today, -89);
+  return { days: branchDays, completedWindows: completed, pendingDays: pending.length,
+    from: saved.oldest || null, more, coverage, state: { ...saved, pending, needs_continuation: more } };
+}
+
+export function odooContinuationDue(state, updatedAt, lastAttempt, now = Date.now()) {
+  if (!state?.needs_continuation && !state?.pending?.length) return false;
+  const latest = Math.max(Date.parse(updatedAt || '') || 0, Number(lastAttempt) || 0);
+  return now - latest >= 120_000;
+}

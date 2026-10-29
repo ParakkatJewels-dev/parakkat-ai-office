@@ -1,0 +1,32 @@
+{
+  "job": {
+    "id": "d756bdd6-19c7-42e7-8bf0-cac2f53ce4e8",
+    "source": "design",
+    "item_id": "c28ab8b5-89d1-46ae-aaf1-c7bb277381bc",
+    "request_id": "6a8e8d9c-3d0f-4acf-b1ef-b85cacb4bc0f",
+    "state": "succeeded",
+    "dispatched_at": "2026-10-29T11:15:38.024283+00:00",
+    "completed_at": "2026-10-29T11:16:45.950275+00:00",
+    "output_path": "chatgpt-imports/design/c28ab8b5-89d1-46ae-aaf1-c7bb277381bc/6a8e8d9c-3d0f-4acf-b1ef-b85cacb4bc0f/d756bdd6-19c7-42e7-8bf0-cac2f53ce4e8.png",
+    "output_sha256": "97d0f1c086b1706ae207f6587d21f2f3db3aab6b9dc4956101b6ebca02e4aa29",
+    "error_code": null,
+    "result": {
+      "id": "c28ab8b5-89d1-46ae-aaf1-c7bb277381bc",
+      "source": "design",
+      "status": "ready",
+      "version": 1,
+      "provider": "chatgpt",
+      "image_path": "chatgpt-imports/design/c28ab8b5-89d1-46ae-aaf1-c7bb277381bc/6a8e8d9c-3d0f-4acf-b1ef-b85cacb4bc0f/d756bdd6-19c7-42e7-8bf0-cac2f53ce4e8.png"
+    }
+  },
+  "status": "ready",
+  "versionCount": 0,
+  "reviewCount": 0,
+  "width": 1122,
+  "height": 1402,
+  "format": "png",
+  "bytes": 2130088,
+  "sha256": "97d0f1c086b1706ae207f6587d21f2f3db3aab6b9dc4956101b6ebca02e4aa29",
+  "publicObjectHTTP": 400,
+  "checkedAt": "2026-10-29T11:17:17.693Z"
+}

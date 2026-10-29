@@ -1,0 +1,2 @@
+export function conversationAnswerFingerprint(prompt: string, system: string, evidence: unknown): string;
+export function reusableConversationAnswer(history: Array<{ task_id?: string; role?: string; agent_id?: string | null; content?: string; created_at?: string; metadata?: Record<string, unknown> }>, currentTaskId: string, hostId: string, prompt: string, fingerprint: string, now?: number): string | null;

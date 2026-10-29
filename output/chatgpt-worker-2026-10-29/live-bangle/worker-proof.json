@@ -1,0 +1,47 @@
+{
+  "jobId": "d756bdd6-19c7-42e7-8bf0-cac2f53ce4e8",
+  "phase": "completed",
+  "manifestHash": "3f74843f22da15ebadf9aedf24adbb18271e2062ed3f0d51025590e9ad3f8eee",
+  "nativeReceipt": {
+    "code": 0,
+    "signal": null,
+    "threadId": "01a1875f-64a8-70a3-8473-fe871e195bfb",
+    "sourceFile": "/var/lib/parakkat-chatgpt-images/codex/generated_images/01a1875f-64a8-70a3-8473-fe871e195bfb/exec-9766c727-2d5b-49ec-8f04-d7c96f4327cb.png",
+    "width": 1122,
+    "height": 1402,
+    "sha256": "97d0f1c086b1706ae207f6587d21f2f3db3aab6b9dc4956101b6ebca02e4aa29",
+    "mimeType": "image/png",
+    "bytes": 2130088
+  },
+  "files": [
+    {
+      "name": "product-1.png",
+      "sha256": "3fb1dd91d4cef70644649e5cbba8b82436fd62c6fab3835c1c4f1a3fd5e624d7",
+      "bytes": 817231
+    },
+    {
+      "name": "style-1.png",
+      "sha256": "c52acf12ae288ea9b1c89c6f959bd906eac5af825a604160f3f52dad20944e17",
+      "bytes": 1664440
+    },
+    {
+      "name": "style-2.png",
+      "sha256": "ae8b85ccbc4dca00974bd016a70811676d7611e2516800a92730f08465637545",
+      "bytes": 1654100
+    },
+    {
+      "name": "style-3.png",
+      "sha256": "32aa276d3dd4bd25eba4a0401977d845470f75b2416ac04646ce0202b02c1fd4",
+      "bytes": 1669527
+    }
+  ],
+  "outputInfo": {
+    "width": 1122,
+    "height": 1402,
+    "sha256": "97d0f1c086b1706ae207f6587d21f2f3db3aab6b9dc4956101b6ebca02e4aa29",
+    "mimeType": "image/png",
+    "bytes": 2130088
+  },
+  "nativePNGCount": 1,
+  "checkedAt": "2026-10-29T11:19:22.343Z"
+}

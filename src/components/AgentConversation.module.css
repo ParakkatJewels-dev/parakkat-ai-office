@@ -1,0 +1,79 @@
+.conversation{display:flex;flex-direction:column;min-width:0;min-height:0;gap:14px;color:var(--ink)}
+.activity{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid var(--line);background:var(--accent-soft);border-radius:8px}
+.activity>svg{color:var(--accent);flex:none;margin-top:3px}.activity p{margin:3px 0;line-height:1.45;font-size:14px}.activity time{font-size:11px;color:var(--muted)}
+.eyebrow{font-size:10px;font-family:var(--f-display);font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.controls{display:flex;align-items:flex-end;gap:8px}.history{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}.history label{font-size:12px;color:var(--muted)}.history select{width:100%;min-width:0;padding:8px 10px;border:1px solid var(--line-2);border-radius:6px;background:var(--panel-2);font-size:13px;text-overflow:ellipsis}
+.tabs{display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--line);padding-bottom:8px;min-height:37px}.tabs button{display:flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--muted);padding:6px 10px;border-radius:5px;font-size:12px;font-weight:600}.tabs button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent)}.tabs button>span{background:var(--panel-3);padding:0 5px;border-radius:4px;font-size:10px}.status{margin-left:auto;display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px;white-space:nowrap}.working{color:var(--accent)}
+.timeline{min-height:230px;max-height:520px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 3px 4px;scroll-padding-bottom:12px}.messages{display:flex;flex-direction:column;gap:13px;list-style:none;padding:0;margin:0}.message{padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);max-width:95%;overflow-wrap:anywhere}.message p{margin:7px 0 0;white-space:pre-wrap;line-height:1.55;font-size:14px}.userMessage{align-self:flex-end;background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 25%,transparent);width:88%}.agentMessage{align-self:flex-start;width:95%}.eventMessage{padding:9px 12px;border-radius:6px;background:transparent;border-left:2px solid var(--accent);width:92%;color:var(--muted)}.eventMessage p{font-size:13px;line-height:1.45}.messageMeta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--muted)}.messageMeta b{color:var(--ink);font-size:12px}.messageMeta>span{display:inline-flex;align-items:center;gap:3px;color:var(--accent);font-size:10px}.messageMeta time{margin-left:auto;font-size:10px}.errorMessage{border-color:var(--bad)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:230px;padding:22px 18px;gap:12px;color:var(--muted)}.empty>svg{color:var(--accent)}.empty h3{font-size:16px!important;letter-spacing:0!important;text-transform:none!important;color:var(--ink);margin:0!important}.empty p{font-size:13px;line-height:1.5;max-width:460px;margin:0}.suggestion{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line-2);border-radius:6px;background:var(--panel-2);color:var(--ink);font-size:12px}.suggestion:hover{border-color:var(--accent)}
+.composer{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px}.composer>label{font-size:12px;font-weight:600}.composer textarea{resize:vertical;min-height:76px;max-height:200px;border:1px solid var(--line-2);border-radius:8px;background:var(--panel-2);padding:10px 12px;line-height:1.5;font-size:14px;width:100%}.composer textarea:focus{outline:2px solid var(--accent);outline-offset:1px}.composer textarea::placeholder{color:var(--dim)}.composerBottom{display:flex;gap:10px;align-items:center;justify-content:space-between}.meetingToggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer}.meetingToggle input{accent-color:var(--accent);width:15px;height:15px;margin:0}.note{font-size:12px;color:var(--muted);line-height:1.45;margin:0}.error{display:flex;align-items:center;gap:10px;border:1px solid color-mix(in srgb,var(--bad) 30%,transparent);background:color-mix(in srgb,var(--bad) 8%,transparent);color:var(--bad);border-radius:6px;padding:9px 11px;font-size:13px}.error button{margin-left:auto;border:1px solid var(--line-2);background:var(--panel-2);color:var(--ink);border-radius:4px;padding:3px 7px;font-size:11px;flex:none}
+.meetings{display:flex;flex-direction:column;gap:14px}.meetingCard{border:1px solid var(--line-2);border-radius:8px;padding:14px;background:var(--panel-2);overflow-wrap:anywhere}.meetingHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.meetingHead>svg{color:var(--accent);flex:none}.meetingHead h3{font-size:14px!important;margin:0!important;letter-spacing:0!important;text-transform:none!important;flex:1}.participants{list-style:none;display:flex;gap:5px;flex-wrap:wrap;margin:12px 0;padding:0}.participants li{font-size:10px;padding:3px 7px;border:1px solid var(--line-2);border-radius:20px;color:var(--muted)}.meetingTurn{border-left:2px solid var(--line-2);padding:8px 0 8px 10px;margin:6px 0}.meetingTurn b{font-size:12px}.meetingTurn p,.summary p{white-space:pre-wrap;font-size:13px;line-height:1.5;margin:4px 0}.summary{border-top:1px solid var(--line-2);padding-top:12px;margin-top:12px}.summary>b{font-size:12px;color:var(--accent)}
+.compact{flex:1;overflow:hidden;gap:10px}.compact .timeline{min-height:130px;max-height:none;flex:1}.compact .activity{padding:9px 11px}.compact .activity p{font-size:12px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.compact .composer textarea{max-height:110px}.compact .empty{min-height:160px;padding:18px 10px}.compact .message{max-width:100%}.compact .message p{font-size:13px}.compact .userMessage{width:93%}.compact .agentMessage{width:100%}.compact .messageMeta{gap:5px}.compact .messageMeta time{font-size:9px}
+.drawer{position:absolute;z-index:24;right:14px;top:14px;bottom:14px;width:min(460px,calc(100% - 28px));display:flex;flex-direction:column;gap:13px;border:1px solid var(--line-2);border-radius:14px;background:var(--panel);box-shadow:var(--shadow);padding:17px;pointer-events:auto;overflow:hidden}.drawerHeader{display:flex;align-items:center;gap:10px;flex:none}.drawerAvatar{display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:50%;font-family:var(--f-display);font-size:13px;color:#fff;font-weight:600}.drawerTitle{flex:1;min-width:0}.drawerTitle h2{font-size:17px;line-height:1.3;margin:0}.drawerTitle p{font-size:11px;color:var(--muted);margin:2px 0 0}.drawerClose{display:grid;place-items:center;width:32px;height:32px;border:0;background:var(--panel-2);color:var(--muted);border-radius:6px;flex:none}.drawerLink{font-size:12px;color:var(--accent);display:inline-flex;align-items:center;gap:5px;text-decoration:none;align-self:flex-start}.drawerLink:hover{text-decoration:underline}.humanNote{font-size:14px;line-height:1.6;color:var(--muted);margin:4px 0}.profileConversation{margin:16px 0}.profileHeader{display:flex;align-items:center;gap:12px;margin-bottom:16px}.profileHeader h2{font-size:18px}.profileHeader p{font-size:13px;color:var(--muted);margin:3px 0 0}
+.drawer:global(.float){z-index:24}
+@media(max-width:860px){.drawer{left:10px;right:10px;top:10px;bottom:10px;width:auto;padding:14px}.drawerTitle h2{font-size:16px}.compact .activity p{-webkit-line-clamp:2}.compact .timeline{min-height:85px}.compact .composer textarea{min-height:64px;max-height:100px}.compact .empty{min-height:100px}.compact .empty h3{font-size:14px!important}.compact .empty p{font-size:12px}.message{max-width:100%;width:100%}.conversation .composerBottom>.btn{padding:9px 12px;font-size:12px}.meetingToggle{font-size:11px}.meetingHead h3{min-width:150px}}
+@media(prefers-reduced-motion:reduce){.conversation *{scroll-behavior:auto}}
+
+.artwork{margin-top:14px;padding:12px;border:1px solid var(--line-2);border-radius:12px;background:var(--panel);min-width:0}.artworkHeading{display:flex;align-items:flex-start;gap:8px;margin-bottom:10px}.artworkHeading b{flex:1;font-size:13px;line-height:1.45;overflow-wrap:anywhere}.artworkHeading span{font-size:11px;color:var(--muted);white-space:nowrap}.artwork>a{display:block}.artwork img{display:block;max-width:100%;max-height:420px;width:auto;height:auto;border-radius:8px;object-fit:contain}.artwork>.note{margin-top:9px}.compact .artwork{padding:9px}.compact .artwork img{max-height:300px}
+
+/* Standalone workspace only. The office map and its conversation drawer keep the base styles above. */
+:global(.workspace) .profileConversation{margin:0;padding:14px;border-radius:6px}
+:global(.workspace) .profileHeader{gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+:global(.workspace) .profileHeader>svg{color:var(--accent);flex:none}
+:global(.workspace) .profileHeader h2{font-size:16px;line-height:1.4;margin:0}
+:global(.workspace) .profileHeader p{font-size:13px;line-height:1.5;margin:3px 0 0}
+:global(.workspace) .conversation{gap:12px;font-size:14px}
+:global(.workspace) .activity{padding:10px 12px;border-radius:4px;gap:10px}
+:global(.workspace) .activity p{font-size:14px;line-height:1.5}
+:global(.workspace) .activity time,:global(.workspace) .eyebrow{font-size:12px}
+:global(.workspace) .eyebrow{text-transform:none;letter-spacing:0;font-family:var(--f-body)}
+:global(.workspace) .controls{gap:8px;flex-wrap:wrap}
+:global(.workspace) .history{min-width:200px}
+:global(.workspace) .history label{font-size:12px}
+:global(.workspace) .history select{min-height:40px;border-radius:4px;font-size:14px;background:var(--panel)}
+:global(.workspace) .controls :global(.btn){min-height:40px;border-radius:4px;font-size:13px}
+:global(.workspace) .tabs{gap:4px;padding-bottom:8px}
+:global(.workspace) .tabs button{min-height:40px;padding:8px 12px;font-size:13px;border-radius:4px}
+:global(.workspace) .tabs button>span,:global(.workspace) .status{font-size:12px}
+:global(.workspace) .timeline{min-height:240px;max-height:560px;padding:0 2px 4px}
+:global(.workspace) .messages{gap:10px}
+:global(.workspace) .message{padding:12px;border-radius:6px}
+:global(.workspace) .message p{font-size:14px;line-height:1.6;margin-top:6px}
+:global(.workspace) .userMessage{width:90%}
+:global(.workspace) .agentMessage{width:100%;max-width:100%;background:var(--panel)}
+:global(.workspace) .eventMessage{padding:10px 12px;border-radius:4px}
+:global(.workspace) .messageMeta,:global(.workspace) .messageMeta>span,:global(.workspace) .messageMeta time{font-size:12px}
+:global(.workspace) .messageMeta b{font-size:13px}
+:global(.workspace) .empty{min-height:200px;padding:20px 14px;gap:10px}
+:global(.workspace) .empty p{font-size:14px;line-height:1.5}
+:global(.workspace) .suggestion{min-height:40px;border-radius:4px;font-size:13px}
+:global(.workspace) .composer{padding-top:12px;gap:8px}
+:global(.workspace) .composer>label{font-size:13px}
+:global(.workspace) .composer textarea{min-height:88px;border-radius:4px;font-size:14px;background:var(--panel)}
+:global(.workspace) .composerBottom :global(.btn){min-height:40px;border-radius:4px;font-size:13px}
+:global(.workspace) .meetingToggle{font-size:13px;min-height:40px}
+:global(.workspace) .meetingToggle input{width:18px;height:18px}
+:global(.workspace) .note{font-size:12px;line-height:1.5}
+:global(.workspace) .error{border-radius:4px;padding:10px 12px;font-size:14px}
+:global(.workspace) .error button{min-height:40px;padding:8px 10px;font-size:13px}
+:global(.workspace) .meetings{gap:12px}
+:global(.workspace) .meetingCard{padding:12px;border-radius:6px;background:var(--panel)}
+:global(.workspace) .participants{gap:6px;margin:10px 0}
+:global(.workspace) .participants li{font-size:12px;border-radius:4px;padding:4px 7px}
+:global(.workspace) .meetingTurn p,:global(.workspace) .summary p{font-size:14px;line-height:1.6}
+:global(.workspace) .meetingTurn b,:global(.workspace) .summary>b{font-size:13px}
+:global(.workspace) .artwork{margin-top:12px;padding:12px;border-radius:6px}
+:global(.workspace) .artworkHeading b{font-size:14px}
+:global(.workspace) .artworkHeading span{font-size:12px}
+:global(.workspace) .artwork img{border-radius:4px}
+:global(.workspace) .conversation button:focus-visible,:global(.workspace) .conversation select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:680px){
+  :global(.workspace) .history{flex-basis:100%;min-width:0}
+  :global(.workspace) .history select,:global(.workspace) .controls :global(.btn),:global(.workspace) .tabs button,:global(.workspace) .suggestion,:global(.workspace) .composerBottom :global(.btn),:global(.workspace) .meetingToggle,:global(.workspace) .error button{min-height:44px}
+  :global(.workspace) .controls :global(.btn){flex:1}
+  :global(.workspace) .tabs{flex-wrap:wrap}
+  :global(.workspace) .status{white-space:normal}
+  :global(.workspace) .composerBottom{flex-wrap:wrap;gap:8px}
+  :global(.workspace) .composerBottom :global(.btn){flex:1}
+  :global(.workspace) .message{width:100%;max-width:100%}
+}

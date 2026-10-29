@@ -1,15 +1,25 @@
 'use client';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { supabaseBrowser } from '@/lib/supabase/browser';
 import type { AppRole } from '@/lib/roles';
 import { Icon } from '@/components/Icon';
+import type { AgentMeeting } from '@/components/AgentConversation';
+import conversationStyles from '@/components/AgentConversation.module.css';
+import OfficeDialogue, { type OfficeDialogueRecord } from '@/components/OfficeDialogue';
+import { directDialogueEvent, authorizedDialogueText, type DirectDialogueEvent } from '@/office/dialogue-events.mjs';
+import { useAgentWorkStatus } from '@/components/useAgentWorkStatus';
 
-export type AgentEvent = { id: number; at: string; kind: string; from_agent: string | null; to_agent: string | null; from_dept: string | null; to_dept: string | null; text: string; payload: Record<string, string> | null };
+const AgentConversation = dynamic(() => import('@/components/AgentConversation'), { loading: () => <p className="note">Opening conversation…</p> });
+
+export type AgentEvent = { id: number; at: string; kind: string; from_agent: string | null; to_agent: string | null; from_dept: string | null; to_dept: string | null; text: string; payload: Record<string, unknown> | null };
 type Office = any; // the engine is plain JS; see src/office/engine.mjs for its API
 type Stats = { total: number; active: number; buildings: { id: string; name: string; total: number; active: number }[] };
-type Item = { key: string; at: number; from: string | null; to: string | null; text: string };
-type Person = { id: string; name: string; dept: string; room: string; human?: boolean };
+type Item = { key: string; at: number; from: string | null; to: string | null; text: string; event: AgentEvent };
+type Person = { id: string; name: string; dept: string; room: string; human?: boolean; role?: string };
+type Selection = { person: Person; threadId?: string; meetingId?: string; meeting?: boolean };
 type Sky = { hour: number; live: boolean; lapse: boolean; moon: { name: string; lit: number } };
 // the sky button steps through: live Kerala time, a day in 90 seconds, then sunrise, midday, sunset and night
 const SKY_STEPS: { id: string; label: string; set: number | 'lapse' | null }[] = [
@@ -18,14 +28,24 @@ const SKY_STEPS: { id: string; label: string; set: number | 'lapse' | null }[] =
 ];
 const clock = (h: number) => { const m = Math.floor((h % 1) * 60), hh = Math.floor(h) % 24; return `${hh % 12 || 12}:${String(m).padStart(2, '0')} ${hh < 12 ? 'am' : 'pm'}`; };
 
-const who = (e: AgentEvent) => e.from_agent || e.payload?.from_person || null;
-const whom = (e: AgentEvent) => e.to_agent || e.payload?.to_person || null;
-const fromEvent = (e: AgentEvent): Item => ({ key: 'e' + e.id, at: Date.parse(e.at), from: who(e), to: whom(e), text: e.text });
+const who = (e: AgentEvent) => e.from_agent || (typeof e.payload?.from_person === 'string' ? e.payload.from_person : null);
+const whom = (e: AgentEvent) => e.to_agent || (typeof e.payload?.to_person === 'string' ? e.payload.to_person : null);
+const fromEvent = (e: AgentEvent): Item => ({ key: 'e' + e.id, at: Date.parse(e.at), from: who(e), to: whom(e), text: e.text, event: e });
 const BUILDING_COL: Record<string, string> = { hq: '#22c79f', ic: '#3b82f6', ch: '#f59e0b' };
 const ago = (t: number, now: number) => { const m = Math.round((now - t) / 6e4); return m < 1 ? 'now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
 const initials = (n: string) => n.replace(' AI', '').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
-export default function OfficeClient({ me, role, initial, seen: seen0 }: { me: string; role: AppRole; initial: AgentEvent[]; seen: Record<string, number> }) {
+async function dialogueText(event: DirectDialogueEvent, signal?: AbortSignal, onAccessLost?: () => void) {
+  if (!event.privateTask) return event.text;
+  if (!event.hostId || !event.threadId || !event.messageId) return null;
+  try {
+    const response = await fetch(`/api/agents/${encodeURIComponent(event.hostId)}/conversation?thread=${encodeURIComponent(event.threadId)}`, { cache: 'no-store', signal: AbortSignal.any([AbortSignal.timeout(8000), ...(signal ? [signal] : [])]) });
+    if (!response.ok) { if ([401, 403, 404].includes(response.status)) onAccessLost?.(); return null; }
+    return authorizedDialogueText(event, await response.json());
+  } catch { return null; }
+}
+
+export default function OfficeClient({ me, role, initial, seen: seen0, observedAt }: { me: string; role: AppRole; initial: AgentEvent[]; seen: Record<string, number>; observedAt: string }) {
   const seen = useRef<Record<string, number>>({ ...seen0 });
   const world = useRef<HTMLDivElement>(null), canvas = useRef<HTMLCanvasElement>(null), labels = useRef<HTMLDivElement>(null);
   const [office, setOffice] = useState<Office>(null);
@@ -38,7 +58,15 @@ export default function OfficeClient({ me, role, initial, seen: seen0 }: { me: s
   const [stats, setStats] = useState<Stats | null>(null);
   const [sky, setSky] = useState<Sky | null>(null), [skyStep, setSkyStep] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const workFeed = useAgentWorkStatus(observedAt);
   const [error, setError] = useState('');
+  const [selected, setSelected] = useState<Selection | null>(null);
+  const [dialogues, setDialogues] = useState<OfficeDialogueRecord[]>([]), [activeDialogue, setActiveDialogue] = useState<string | null>(null);
+  const dialogueVersion = useRef(0);
+  const authEpoch = useRef(0);
+  const deniedThreads = useRef(new Set<string>()), privateVisits = useRef(new Map<string, Set<string>>());
+  const closeConversation = useRef<HTMLButtonElement>(null);
+  const preferredMeeting = useRef<AgentMeeting | null>(null), currentMeetings = useRef<AgentMeeting[]>([]);
   const admin = role === 'super_admin';
 
   // build the campus once
@@ -51,7 +79,13 @@ export default function OfficeClient({ me, role, initial, seen: seen0 }: { me: s
           import('three'), import('three/examples/jsm/controls/OrbitControls.js'), import('@/office/engine.mjs'), import('@/office/roster.mjs')]);
         if (stop) return;
         o = createOffice({ THREE, OrbitControls, canvas: canvas.current!, labels: labels.current!, host: world.current!, roster, fill: true,
-          night: document.documentElement.dataset.theme !== 'light', avoid: () => [...(world.current?.querySelectorAll('.float') || [])] as HTMLElement[] });
+          night: document.documentElement.dataset.theme !== 'light', avoid: () => [...(world.current?.querySelectorAll('.float') || [])] as HTMLElement[],
+          onSelect: (p: Person) => setSelected({ person: { id: p.id, name: p.name, dept: p.dept, room: typeof p.room === 'string' ? p.room : p.dept, human: p.human, role: p.role } }),
+          onMeetingClick: (meeting: AgentMeeting | null) => {
+            const id = meeting?.agentId || meeting?.agent_id || 'cmo', person = roster.PEOPLE.find((p: Person) => p.id === id);
+            if (person) setSelected({ person, threadId: meeting?.threadId || meeting?.thread_id, meetingId: meeting?.id, meeting: !meeting });
+          },
+        });
         setPeople(Object.fromEntries(roster.PEOPLE.map((p: Person) => [p.id, p])));
         setColors(DEPT_COLOR);
         setOffice(o);
@@ -68,37 +102,153 @@ export default function OfficeClient({ me, role, initial, seen: seen0 }: { me: s
   // live numbers for the occupancy card
   useEffect(() => {
     if (!office) return;
-    const tick = () => { setStats(office.stats(seen.current)); setNow(Date.now()); setSky(office.sky()); };
+    const tick = () => { setStats(office.stats()); setNow(Date.now()); setSky(office.sky()); };
     tick(); const t = setInterval(tick, 1500); return () => clearInterval(t);
   }, [office]);
 
-  // live: play each new event in the office, one queue per agent so nobody is in two places at once
+  // Actual server work is independent of short speech animations and historical events.
   useEffect(() => {
     if (!office) return;
-    const queues = new Map<string, Promise<void>>();
+    office.setWorkStatuses?.(workFeed.availability==='ready'?workFeed.statuses:{});
+    setStats(office.stats());
+  }, [office,workFeed.statuses,workFeed.availability]);
+
+  const showDialogue = (event: DirectDialogueEvent, text: string | null, state: OfficeDialogueRecord['state'], open = true) => {
+    if (event.threadId && deniedThreads.current.has(event.threadId)) return;
+    if (event.threadId) {
+      const ids = privateVisits.current.get(event.threadId) || new Set<string>(); ids.add(event.id); privateVisits.current.set(event.threadId, ids);
+    }
+    setDialogues(records => {
+      const previous = records.find(r => r.id === event.id);
+      const turn = { id: event.eventId, from: event.from, to: event.to, at: event.at, text: text || event.text, privateUnavailable: event.privateTask && !text };
+      const next: OfficeDialogueRecord = { id: event.id, visitor: event.visitor, recipient: event.recipient, state, hostId: event.hostId, threadId: event.threadId,
+        turns: previous?.turns.some(t => t.id === turn.id) ? previous.turns.map(t => t.id === turn.id ? turn : t) : [...(previous?.turns || []), turn].slice(-12) };
+      return [next, ...records.filter(r => r.id !== event.id)].slice(0, 12);
+    });
+    if (open) setActiveDialogue(event.id);
+  };
+  const clearPrivateDialogue = (threadId: string | null) => {
+    if (!threadId) return;
+    deniedThreads.current.add(threadId);
+    for (const id of privateVisits.current.get(threadId) || []) office?.cancelDialogue?.(id);
+    privateVisits.current.delete(threadId);
+    setDialogues(records => records.filter(record => record.threadId !== threadId));
+  };
+
+  // Fresh shared events drive the animation. Private text is read separately under the signed-in owner's RLS.
+  useEffect(() => {
+    if (!office) return;
+    const controller = new AbortController(), received = new Set(initial.map(e => String(e.id)));
+    const started = Date.parse(observedAt), queues = new Map<string, Promise<void>>();
+    let cursor = Math.max(0, ...initial.map(e => e.id)), timer: ReturnType<typeof setTimeout>, pollRunning = false, pollAgain = false;
     const play = (e: AgentEvent) => {
-      const a = who(e), b = whom(e); if (!a || !office.byId[a]) return;
+      const a = who(e); if (!a || !office.byId[a]) return;
+      const epoch = authEpoch.current;
+      const dialogue = directDialogueEvent(e);
       const kind = e.kind === 'feedback' ? 'feedback' : 'talking';
       const job = async () => {
+        if (controller.signal.aborted || epoch !== authEpoch.current) return;
+        if (dialogue && office.byId[dialogue.recipient]) {
+          const text = await dialogueText(dialogue, controller.signal, () => { if (!controller.signal.aborted) clearPrivateDialogue(dialogue.threadId); });
+          if (controller.signal.aborted || epoch !== authEpoch.current || dialogue.threadId && deniedThreads.current.has(dialogue.threadId)) return;
+          showDialogue(dialogue, text, 'queued');
+          const played = await office.directDialogue({ id: dialogue.id, visitorId: dialogue.visitor, recipientId: dialogue.recipient, speakerId: dialogue.from,
+            text: text || e.text, createdAt: dialogue.at, phase: e.payload?.interaction_mode === 'direct' ? dialogue.phase : 'single',
+            onState: (state: OfficeDialogueRecord['state']) => { if (!controller.signal.aborted && epoch === authEpoch.current) showDialogue(dialogue, text, state, false); } });
+          if (!played && !controller.signal.aborted && epoch === authEpoch.current) showDialogue(dialogue, text, 'interrupted', false);
+          return;
+        }
+        // Table turns are already positioned by setMeeting; they never start desk visits.
         if (e.kind === 'think') return office.think(a, e.text);
-        if (b && b !== a && office.byId[b]) { office.setCarry(a, e.kind === 'report' || e.kind === 'walk' || e.kind === 'approval'); await office.walkTo(a, b); await office.say(a, e.text, kind); office.walkHome(a); }
-        else await office.say(a, e.text, kind);
+        await office.say(a, e.text, kind);
       };
-      queues.set(a, (queues.get(a) || Promise.resolve()).then(job, job));
+      const queue = dialogue?.id || a;
+      const pending = (queues.get(queue) || Promise.resolve()).then(job, job).catch(() => {});
+      queues.set(queue, pending);
+      void pending.finally(() => { if (queues.get(queue) === pending) queues.delete(queue); });
     };
-    const ch = supabaseBrowser().channel('agent_events')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agent_events' }, ({ new: e }: { new: unknown }) => {
-        const ev = e as AgentEvent; if (ev.from_agent) seen.current[ev.from_agent] = Date.parse(ev.at) || Date.now();
-        setItems(list => [fromEvent(ev), ...list].slice(0, 120)); play(ev);
-      }).subscribe();
-    return () => { supabaseBrowser().removeChannel(ch); };
+    const receive = (ev: AgentEvent) => {
+      if (controller.signal.aborted || received.has(String(ev.id))) return;
+      received.add(String(ev.id)); if (received.size > 1000) received.delete(received.values().next().value!);
+      if (ev.from_agent) seen.current[ev.from_agent] = Date.parse(ev.at) || Date.now();
+      setItems(list => [fromEvent(ev), ...list].sort((a, b) => b.at - a.at).slice(0, 120));
+      if (Date.parse(ev.at) >= started) play(ev);
+    };
+    const db = supabaseBrowser();
+    // Recover missed realtime inserts without replaying old activity as live movement.
+    const catchUp = async () => {
+      clearTimeout(timer);
+      if (pollRunning) { pollAgain = true; return; }
+      pollRunning = true;
+      try {
+        if (document.visibilityState !== 'hidden') {
+          const { data } = await db.from('agent_events').select('id,at,kind,from_agent,to_agent,from_dept,to_dept,text,payload').gt('id', cursor).gte('at', observedAt).order('id').limit(100).abortSignal(controller.signal);
+          if (!controller.signal.aborted && data) { for (const event of data) receive(event as AgentEvent); cursor = Math.max(cursor, ...data.map((e: { id: number }) => e.id)); }
+        }
+      } finally {
+        pollRunning = false;
+        if (!controller.signal.aborted) timer = setTimeout(() => { void catchUp().catch(() => {}); }, pollAgain ? 0 : 6000);
+        pollAgain = false;
+      }
+    };
+    // Realtime wakes the ordered database reader; it cannot deliver a reply ahead of its request.
+    const ch = db.channel('agent_events').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agent_events' }, () => { void catchUp().catch(() => {}); }).subscribe();
+    let accountId: string | null | undefined;
+    const { data: authListener } = db.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
+      const nextId = session?.user.id || null;
+      if (event === 'SIGNED_OUT' || accountId !== undefined && accountId !== nextId) {
+        ++authEpoch.current;
+        office.setWorkStatuses?.({});
+        ++dialogueVersion.current;
+        for (const threadId of privateVisits.current.keys()) clearPrivateDialogue(threadId);
+        setDialogues([]); setActiveDialogue(null); setSelected(null);
+      }
+      accountId = nextId;
+    });
+    void catchUp().catch(() => {});
+    return () => { controller.abort(); clearTimeout(timer); authListener.subscription.unsubscribe(); db.removeChannel(ch); };
   }, [office]);
 
   useEffect(() => { office?.setQuest(me, false); }, [office, me]);
-  useEffect(() => { office?.setInset(panel ? 336 : 0); try { localStorage.setItem('pk-chat', panel ? '1' : '0'); } catch {} }, [panel, office]);
+  useEffect(() => { office?.setInset(selected ? 488 : panel ? 336 : 0); try { localStorage.setItem('pk-chat', panel ? '1' : '0'); } catch {} }, [panel, selected, office]);
+  useEffect(() => {
+    preferredMeeting.current = null;
+    office?.setMeeting?.(currentMeetings.current.find(m => m.status === 'running' || m.status === 'planned') || currentMeetings.current[0] || null);
+  }, [selected?.person.id, selected?.threadId, office]);
+  useEffect(() => {
+    if (!selected) return;
+    closeConversation.current?.focus();
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') { setSelected(null); office?.select(null); } };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [selected?.person.id, office]);
+
+  // Restore the team's latest meeting on page load and keep the physical table in sync.
+  useEffect(() => {
+    if (!office) return;
+    const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>;
+    const update = async () => {
+      if (document.visibilityState !== 'hidden') {
+        try {
+          const response = await fetch('/api/agents/meetings', { cache: 'no-store', signal: controller.signal });
+          if (response.ok) {
+            const data = await response.json(), meetings = (data.meetings || []) as AgentMeeting[];
+            if (!controller.signal.aborted) {
+              currentMeetings.current = meetings;
+              office.setMeeting?.(preferredMeeting.current || meetings.find(m => m.status === 'running' || m.status === 'planned') || meetings[0] || null);
+            }
+          }
+        } catch { /* the next poll recovers without interrupting the campus */ }
+      }
+      if (!controller.signal.aborted) timer = setTimeout(update, 10000);
+    };
+    void update();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [office]);
 
   const cam = (fn: (o: Office) => void) => () => office && fn(office);
-  const pct = stats ? Math.round(stats.active / stats.total * 100) : 0, R = 42, C = 2 * Math.PI * R;
+  const liveReady = !!stats && workFeed.availability==='ready';
+  const pct = liveReady && stats.total ? Math.round(stats.active / stats.total * 100) : 0, R = 42, C = 2 * Math.PI * R;
   const name = (id: string | null) => (id && people[id]?.name.replace(' AI', '')) || id || 'System';
   const shown = items.slice(0, all ? 40 : 6);
 
@@ -108,7 +258,7 @@ export default function OfficeClient({ me, role, initial, seen: seen0 }: { me: s
         {error ? <div className="empty" style={{ margin: '110px 20px' }}>{error}</div> : <canvas ref={canvas} aria-label="3D Parakkat campus with AI staff at work" />}
         <div id="labels" ref={labels} />
 
-        {panel && (
+        {panel && !selected && (
           <aside className="rail float" aria-label="Office status">
             <div className="pane">
               <h3>Live Occupancy</h3>
@@ -118,15 +268,15 @@ export default function OfficeClient({ me, role, initial, seen: seen0 }: { me: s
                   <circle cx="52" cy="52" r={R} fill="none" stroke="var(--track)" strokeWidth="9" />
                   <circle cx="52" cy="52" r={R} fill="none" stroke="url(#occ)" strokeWidth="9" strokeLinecap="round" strokeDasharray={`${C * pct / 100} ${C}`} transform="rotate(-90 52 52)" style={{ transition: 'stroke-dasharray .6s' }} />
                 </svg>
-                <div><div className="occ-num">{stats ? `${stats.active}/${stats.total}` : '–'}</div><div className="occ-sub">AI staff working now</div></div>
-                <div className="occ-pct">{pct}%</div>
+                <div><div className="occ-num">{liveReady ? `${stats.active}/${stats.total}` : '–'}</div><div className="occ-sub">{workFeed.availability==='ready'?'AI staff working now':workFeed.availability==='loading'?'Checking live work…':'Live status unavailable'}</div></div>
+                <div className="occ-pct">{liveReady?`${pct}%`:'–'}</div>
               </div>
               <ul className="bars">
                 {(stats?.buildings || []).map(b => (
                   <li key={b.id}>
                     <button type="button" onClick={cam(o => o.flyTo(b.id))}>
-                      <span className="bdot" style={{ background: BUILDING_COL[b.id] }} /><span className="bname">{b.name}</span><span className="num">{b.active} / {b.total}</span>
-                      <span className="track"><i style={{ width: `${b.total ? b.active / b.total * 100 : 0}%`, background: BUILDING_COL[b.id] }} /></span>
+                      <span className="bdot" style={{ background: BUILDING_COL[b.id] }} /><span className="bname">{b.name}</span><span className="num">{liveReady?b.active:'–'} / {b.total}</span>
+                      <span className="track"><i style={{ width: `${liveReady&&b.total ? b.active / b.total * 100 : 0}%`, background: BUILDING_COL[b.id] }} /></span>
                     </button>
                   </li>
                 ))}
@@ -142,7 +292,7 @@ export default function OfficeClient({ me, role, initial, seen: seen0 }: { me: s
                     return (
                       <li key={it.key}>
                         <button type="button" className="av" style={{ background: p?.human ? '#d8c3a5' : colors[p?.dept || ''] || '#3b4b45', color: p?.human ? '#1c1c1c' : '#fff' }} onClick={cam(o => it.from && o.flyTo(it.from))} aria-label={`Show ${name(it.from)} in the office`}>{initials(name(it.from))}</button>
-                        <div className="act"><b>{name(it.from)}{it.to ? <span> → {name(it.to)}</span> : null}</b><span>{it.text}</span></div>
+                        <div className="act"><b>{name(it.from)}{it.to ? <span> → {name(it.to)}</span> : null}</b><span>{it.text}</span>{directDialogueEvent(it.event) && <button type="button" className="link" onClick={async () => { const event = directDialogueEvent(it.event); if (!event) return; const version = ++dialogueVersion.current; const text = await dialogueText(event, undefined, () => clearPrivateDialogue(event.threadId)); if (version === dialogueVersion.current) showDialogue(event, text, 'saved'); }}>View dialogue</button>}</div>
                         <time>{ago(it.at, now)}</time>
                       </li>
                     );
@@ -153,10 +303,35 @@ export default function OfficeClient({ me, role, initial, seen: seen0 }: { me: s
           </aside>
         )}
 
+        <OfficeDialogue records={dialogues} activeId={activeDialogue} name={name} onSelect={setActiveDialogue} onClose={() => { ++dialogueVersion.current; setActiveDialogue(null); }}
+          onLocate={id => office?.locateDialogue?.(id)} onOpenThread={record => { const person = record.hostId && people[record.hostId]; if (person && record.threadId) { setSelected({ person, threadId: record.threadId }); setActiveDialogue(null); } }} />
+
+        {selected && <aside className={`${conversationStyles.drawer} float`} aria-label={`${selected.person.name} conversation`}>
+          <div className={conversationStyles.drawerHeader}>
+            <span className={conversationStyles.drawerAvatar} style={{ background: selected.person.human ? '#8b765c' : colors[selected.person.dept] || '#287b69' }} aria-hidden="true">{initials(selected.person.name)}</span>
+            <div className={conversationStyles.drawerTitle}><h2>{selected.person.name}</h2><p>{selected.person.role || (selected.person.human ? 'Human team head' : 'AI team member')}</p></div>
+            <button type="button" ref={closeConversation} className={conversationStyles.drawerClose} aria-label="Close agent conversation" onClick={() => { setSelected(null); office?.select(null); }}><Icon name="x" size={18} /></button>
+          </div>
+          {selected.person.human ? <><p className={conversationStyles.humanNote}>This is a human team head. Select an AI staff member to give them a task or ask the team to hold a meeting.</p><Link className={conversationStyles.drawerLink} href="/approvals">Open approvals<Icon name="arrow" size={14} /></Link></> : <>
+            <Link className={conversationStyles.drawerLink} href={`/agents/${selected.person.id}`}>View activity and reports<Icon name="arrow" size={14} /></Link>
+            <AgentConversation key={`${selected.person.id}:${selected.threadId || ''}:${selected.meetingId || ''}:${selected.meeting ? 'meeting' : ''}`} agentId={selected.person.id} agentName={selected.person.name} compact initialThreadId={selected.threadId} initialMeetingId={selected.meetingId} requestMeeting={selected.meeting}
+              initialActivity={(() => { const event = items.find(it => it.from === selected.person.id); return event ? { text: event.text, at: new Date(event.at).toISOString() } : null; })()}
+              onMeetings={(meetings, threadId) => {
+                const visible = meetings.map(m => ({ ...m, threadId: m.threadId || threadId || undefined, agentId: m.agentId || selected.person.id }));
+                const active = visible.find(m => m.status === 'running' || m.status === 'planned') || null;
+                preferredMeeting.current = active;
+                // Apply completed states immediately so an older global poll cannot keep attendees at the table.
+                currentMeetings.current = currentMeetings.current.map(m => visible.find(v => v.id === m.id) || m);
+                if (active && !currentMeetings.current.some(m => m.id === active.id)) currentMeetings.current.unshift(active);
+                office?.setMeeting?.(active || currentMeetings.current.find(m => m.status === 'running' || m.status === 'planned') || currentMeetings.current[0] || null);
+              }} />
+          </>}
+        </aside>}
+
         <div className="dock float" role="toolbar" aria-label="Quick actions">
-          {admin ? <Link href="/admin#campaign"><Icon name="rocket" size={22} /><span>Start Campaign</span></Link> : <Link href="/dashboard"><Icon name="chart" size={22} /><span>Dashboard</span></Link>}
+          {admin ? <Link href="/admin?tab=operations#campaign"><Icon name="rocket" size={22} /><span>Start Campaign</span></Link> : <Link href="/dashboard"><Icon name="chart" size={22} /><span>Dashboard</span></Link>}
           <Link href="/approvals"><Icon name="check" size={22} /><span>Approvals</span></Link>
-          {admin ? <Link href="/admin#sync"><Icon name="sync" size={22} /><span>Sync Data</span></Link> : <button type="button" onClick={cam(o => o.flyTo(null))}><Icon name="map" size={22} /><span>Whole Campus</span></button>}
+          {admin ? <Link href="/admin?tab=connections#sync"><Icon name="sync" size={22} /><span>Sync Data</span></Link> : <button type="button" onClick={cam(o => o.flyTo(null))}><Icon name="map" size={22} /><span>Whole Campus</span></button>}
           <button type="button" onClick={() => dispatchEvent(new CustomEvent('office:find'))}><Icon name="findUser" size={22} /><span>Find a Colleague</span></button>
         </div>
 
@@ -178,7 +353,7 @@ export default function OfficeClient({ me, role, initial, seen: seen0 }: { me: s
           <span><b>{sky ? clock(sky.hour) : '–'}</b><small>{SKY_STEPS[skyStep].id === 'live' ? (sky && (sky.hour < 6.1 || sky.hour > 18.6) ? sky.moon.name : 'Kerala time') : SKY_STEPS[skyStep].label}</small></span>
         </button>
 
-        <p className="float hint">Drag to move · right-drag to turn · scroll to zoom</p>
+        <p className="float hint">Click an agent to talk · drag to move · scroll to zoom</p>
       </div>
     </section>
   );

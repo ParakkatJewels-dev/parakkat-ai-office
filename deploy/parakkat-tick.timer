@@ -1,0 +1,11 @@
+[Unit]
+Description=Advance Parakkat AI Office agents every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+Persistent=true
+Unit=parakkat-job@tick.service
+
+[Install]
+WantedBy=timers.target

@@ -1,7 +1,11 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { has } from '@/lib/env';
+import { has, opt } from '@/lib/env';
+import { getChatGPTStatus } from '@/lib/chatgpt/auth.mjs';
+import { syncGeminiStatus } from '@/lib/llm/gemini-config';
+import { syncJevStatus } from '@/lib/llm/jev-config';
+import { syncNimStatus } from '@/lib/llm/nim-config';
 import { syncProducts, syncOrders, shopifyReady } from '@/lib/connectors/shopify';
 import { syncAdInsights, syncInstagram, metaConfig } from '@/lib/connectors/meta';
 import { syncGoogleAds, googleAdsReady } from '@/lib/connectors/google';
@@ -11,6 +15,7 @@ import { learnFromData } from './learn';
 import { emit } from './events';
 import { errText } from '@/lib/errors';
 import { checkPause, isPaused } from '@/lib/pause';
+import { withAgentWork, type AgentWorkKind } from './agent-work';
 
 // ready() says whether a platform can be reached, from access connected on the Admin page or from Vercel keys, and names the account
 const JOBS: { provider: string; bot: string; ready: () => Promise<string | null | undefined>; run: (db: SupabaseClient, deadline: number) => Promise<string> }[] = [
@@ -21,21 +26,37 @@ const JOBS: { provider: string; bot: string; ready: () => Promise<string | null 
       return `${orders} product-days of orders, ${p.count} products${p.more ? ' (more next sync, it carries on where it stopped)' : ''}`;
     } },
   { provider: 'meta', bot: 'metaSync', ready: async () => (await metaConfig())?.accounts.map(metaId).join(', '),
-    run: async db => adDays(await syncAdInsights(db)) },
+    run: async (db,deadline) => adDays(await syncAdInsights(db,deadline)) },
   { provider: 'instagram', bot: 'metaSync', ready: async () => (await metaConfig())?.ig,
     run: async db => `${await syncInstagram(db)} posts` },
   { provider: 'google_ads', bot: 'googleSync', ready: async () => (await googleAdsReady())?.customers.map(c => googleId(c.id)).join(', '),
-    run: async db => adDays(await syncGoogleAds(db)) },
+    run: async (db,deadline) => adDays(await syncGoogleAds(db,deadline)) },
   // after Shopify, so newly synced products are matched to their Odoo stock; it gets at least a minute and a half of its own
   { provider: 'odoo', bot: 'shopifySync', ready: odooReady,
     run: async (db, deadline) => {
       const until = Math.min(deadline + 120_000, Math.max(deadline, Date.now() + 90_000));
       const st = await syncOdooStock(db, until), sa = await syncOdooSales(db, until);
-      return `${st.skus} products and ${st.units} pieces in ${st.warehouses} warehouses (${st.changed} Shopify products updated), ${sa.days} branch-days of sales${sa.more ? ` (back to ${sa.from}; older days next sync)` : ''}`;
+      const stock = `${st.skus} products and ${st.units} pieces in ${st.warehouses} warehouses (${st.changed} Shopify products updated)`;
+      return `${stock}; ${odooSalesResult(sa)}`;
     } },
 ];
 const adDays = (r: { count: number; accounts: number; failed: string[] }) =>
   `${r.count} ad-days from ${r.accounts} account${r.accounts === 1 ? '' : 's'}${r.failed.length ? `; could not read ${r.failed.join('; ')}` : ''}`;
+
+const odooSalesResult = (r: Awaited<ReturnType<typeof syncOdooSales>>) =>
+  `${r.days} branch-days committed across ${r.completedWindows} complete sales days; ${r.coverage || 'sales source coverage awaits the next completed day'}${r.more ? `; sales continuation pending (${r.pendingDays} queued days${r.from ? `, recorded back to ${r.from}` : ''})` : ''}`;
+
+/** A short continuation uses the same sync lease, but never repeats the large stock pass or other providers. */
+export async function continueOdooSales(db: SupabaseClient) {
+  const holder = await claimSync(db);
+  if (!holder) return BUSY;
+  try {
+    const result = await withAgentWork({agentId:'shopifySync',kind:'sync_odoo',timeoutMs:150_000},()=>syncOdooSales(db, Date.now() + 150_000));
+    const summary = odooSalesResult(result);
+    await emit(db, null, 'say', 'shopifySync', `Odoo sales continuation: ${summary}`, 'dataLead');
+    return summary;
+  } finally { await db.rpc('release_job_lock', { p_name: 'sync', p_holder: holder }); }
+}
 
 /** Pull fresh data from every connected platform. Each Data Hub bot reports to the Data Hub Lead. */
 export async function syncAll(db: SupabaseClient) {
@@ -89,7 +110,8 @@ async function syncLocked(db: SupabaseClient) {
     if (!ref) { results[j.provider] = 'not connected'; continue; }
     try {
       await emit(db, null, 'think', j.bot, `Syncing ${j.provider.replace('_', ' ')}`);
-      const msg = await j.run(db, deadline);
+      const kinds:Record<string,AgentWorkKind>={shopify:'sync_shopify',odoo:'sync_odoo',meta:'sync_meta',instagram:'sync_instagram',google_ads:'sync_google'};
+      const msg = await withAgentWork({agentId:j.bot,kind:kinds[j.provider]||'sync',timeoutMs:Math.max(1,(j.provider==='odoo'?deadline+120_000:deadline)-Date.now())},()=>j.run(db, deadline));
       results[j.provider] = msg;
       await db.from('connections').upsert({ provider: j.provider, status: 'connected', account_ref: ref, last_synced_at: new Date().toISOString(), last_error: null });
       await emit(db, null, 'say', j.bot, `Synced ${msg}.`, 'dataLead');
@@ -100,14 +122,30 @@ async function syncLocked(db: SupabaseClient) {
       await emit(db, null, 'feedback', j.bot, `Sync failed: ${msg.slice(0, 160)}`, 'dataLead');
     }
   }
-  for (const [provider, key] of [['openai', 'OPENAI_API_KEY'], ['gemini', 'GEMINI_API_KEY'], ['jev', 'JEV_API_KEY']]) {
-    await db.from('connections').upsert({ provider, status: has(key) ? 'connected' : 'not_connected' });
+  for (const [provider, key] of [['openai', 'OPENAI_API_KEY']]) {
+    const connected = has(key) && (provider !== 'openai' || opt('LLM_PROVIDER', 'openai') !== 'chatgpt');
+    await db.from('connections').upsert({ provider, status: connected ? 'connected' : 'not_connected' });
+  }
+  await syncGeminiStatus();
+  await syncJevStatus();
+  await syncNimStatus();
+  try {
+    const status = await getChatGPTStatus();
+    const active = status.accounts.find(account => account.active);
+    await db.from('connections').upsert({ provider: 'chatgpt', status: status.enabled && status.connected ? 'connected' : 'not_connected', account_ref: active?.label || null, last_error: null });
+  } catch {
+    await db.from('connections').upsert({ provider: 'chatgpt', status: 'error', account_ref: null, last_error: 'Could not read the ChatGPT connection. Check its protected credential directory on the server.' });
   }
   // with fresh numbers in, the memory updates what the agents know about results and analytics
   try {
-    const l = await learnFromData(db);
+    const l = await withAgentWork({agentId:'dataLead',kind:'learning',timeoutMs:60_000},()=>learnFromData(db));
     results.learning = `${l.results} result and ${l.analytics} analytics lessons`;
     if (l.results + l.analytics) await emit(db, null, 'say', 'dataLead', `Updated the team's memory: ${results.learning}.`, 'cmo');
   } catch (e) { results.learning = 'error: ' + (errText(e)); }
+  if(Date.now()<deadline+30000)try {
+    const {refreshOutcomeMonitoring}=await import('@/lib/outcomes/service');
+    const monitor=await refreshOutcomeMonitoring(db,{force:true});
+    results.outcomes='busy' in monitor?'Outcome monitoring is already running.':`${monitor.checked} initiatives checked without model calls.`;
+  } catch { results.outcomes='Outcome monitoring could not finish; prior records are retained.'; }
   return results;
 }

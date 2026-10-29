@@ -1,0 +1,20 @@
+[Unit]
+Description=Parakkat AI Office scheduled %i job
+After=parakkat-ai-office.service
+Requires=parakkat-ai-office.service
+
+[Service]
+Type=oneshot
+User=parakkat
+Group=parakkat
+WorkingDirectory=/srv/parakkat-ai-office
+ExecStart=/usr/bin/node --env-file=/etc/parakkat-ai-office.env /srv/parakkat-ai-office/deploy/run-job.mjs %i
+TimeoutStartSec=12min
+CPUQuota=25%
+MemoryMax=128M
+TasksMax=64
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict

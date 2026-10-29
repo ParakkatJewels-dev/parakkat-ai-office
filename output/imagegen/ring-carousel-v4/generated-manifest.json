@@ -1,0 +1,42 @@
+[
+  {
+    "index": 1,
+    "file": "/Users/sushil/Documents/PARAKKAT SOFTWARES/Parakkat Ai Office/parakkat-ai-office/output/imagegen/ring-carousel-v4/card-1.png",
+    "width": 1122,
+    "height": 1402,
+    "bytes": 2433348,
+    "sha256": "9a2e24f25715abd562e89f3c81053cf589fcc9ce6f8c52eb435a1db9d6b0208b"
+  },
+  {
+    "index": 2,
+    "file": "/Users/sushil/Documents/PARAKKAT SOFTWARES/Parakkat Ai Office/parakkat-ai-office/output/imagegen/ring-carousel-v4/card-2.png",
+    "width": 1122,
+    "height": 1402,
+    "bytes": 2079589,
+    "sha256": "7dc46394baa4b459df575115a5b632417012205e70cac6efe5d1eb2393f565f5"
+  },
+  {
+    "index": 3,
+    "file": "/Users/sushil/Documents/PARAKKAT SOFTWARES/Parakkat Ai Office/parakkat-ai-office/output/imagegen/ring-carousel-v4/card-3.png",
+    "width": 1122,
+    "height": 1402,
+    "bytes": 1945726,
+    "sha256": "712647f8ccac8e76ef09be0bba1da2a5842d8f30efca460fbeee3a52ebb32618"
+  },
+  {
+    "index": 4,
+    "file": "/Users/sushil/Documents/PARAKKAT SOFTWARES/Parakkat Ai Office/parakkat-ai-office/output/imagegen/ring-carousel-v4/card-4.png",
+    "width": 1122,
+    "height": 1402,
+    "bytes": 1976622,
+    "sha256": "016554bbde50d4b897ab8c539284cd7271cbd6b03bd830c54ac08bcff195f3e8"
+  },
+  {
+    "index": 5,
+    "file": "/Users/sushil/Documents/PARAKKAT SOFTWARES/Parakkat Ai Office/parakkat-ai-office/output/imagegen/ring-carousel-v4/card-5.png",
+    "width": 1122,
+    "height": 1402,
+    "bytes": 2096902,
+    "sha256": "83b04a7bbc128291260f59077cc3cf7468acb47654235a1919f0a26d8fb912a8"
+  }
+]

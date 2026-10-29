@@ -1,0 +1,74 @@
+
+> parakkat-ai-office@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.28
+   - Environments: .env.production.local, .env.local
+   - Experiments (use with caution):
+     · cpus: 1
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 5.8s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/20) ...
+   Generating static pages (5/20) 
+   Generating static pages (10/20) 
+   Generating static pages (15/20) 
+ ✓ Generating static pages (20/20)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                                  Size  First Load JS
+┌ ○ /                                                       229 B         104 kB
+├ ○ /_not-found                                              1 kB         104 kB
+├ ƒ /admin                                                3.53 kB         113 kB
+├ ƒ /agents                                                 455 B         181 kB
+├ ƒ /agents/[id]                                          5.83 kB         192 kB
+├ ƒ /agents/manage                                        5.36 kB         148 kB
+├ ƒ /api/agents/[id]/conversation                           229 B         104 kB
+├ ƒ /api/agents/meetings                                    229 B         104 kB
+├ ƒ /api/agents/tick                                        229 B         104 kB
+├ ƒ /api/agents/work-status                                 229 B         104 kB
+├ ƒ /api/automations                                        229 B         104 kB
+├ ƒ /api/automations/[id]/export                            229 B         104 kB
+├ ƒ /api/connect/[provider]                                 229 B         104 kB
+├ ƒ /api/connect/[provider]/callback                        229 B         104 kB
+├ ƒ /api/higgsfield/callback                                229 B         104 kB
+├ ƒ /api/higgsfield/connect                                 229 B         104 kB
+├ ƒ /api/higgsfield/disconnect                              229 B         104 kB
+├ ƒ /api/internal/chatgpt-artwork                           229 B         104 kB
+├ ƒ /api/library/folders                                    229 B         104 kB
+├ ƒ /api/outcomes                                           229 B         104 kB
+├ ƒ /api/outcomes/refresh-ads                               229 B         104 kB
+├ ƒ /api/products                                           229 B         104 kB
+├ ƒ /api/seo                                                229 B         104 kB
+├ ƒ /api/studio/artwork/[source]/[id]/chatgpt-generation    229 B         104 kB
+├ ƒ /api/studio/artwork/[source]/[id]/generation            229 B         104 kB
+├ ƒ /api/studio/artwork/[source]/[id]/import                229 B         104 kB
+├ ƒ /api/studio/artwork/[source]/[id]/pack                  229 B         104 kB
+├ ƒ /api/studio/artwork/[source]/[id]/packet                229 B         104 kB
+├ ƒ /api/sync                                               229 B         104 kB
+├ ƒ /api/sync/status                                        229 B         104 kB
+├ ƒ /api/webhooks/instagram                                 229 B         104 kB
+├ ƒ /approvals                                              949 B         111 kB
+├ ƒ /auth/callback                                          229 B         104 kB
+├ ƒ /automations                                          18.6 kB         168 kB
+├ ƒ /dashboard                                            3.08 kB         110 kB
+├ ƒ /login                                                  229 B         104 kB
+├ ƒ /office                                               11.7 kB         188 kB
+├ ƒ /outcomes                                               21 kB         236 kB
+├ ƒ /seo                                                    208 B         107 kB
+├ ƒ /studio                                               4.35 kB         117 kB
+└ ƒ /usage                                                1.02 kB         144 kB
++ First Load JS shared by all                              103 kB
+  ├ chunks/1255-dc3ddf72a1dc71a7.js                       46.6 kB
+  ├ chunks/4bd1b696-f785427dddbba9fb.js                   54.2 kB
+  └ other shared chunks (total)                           2.63 kB
+
+
+ƒ Middleware                                              94.4 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

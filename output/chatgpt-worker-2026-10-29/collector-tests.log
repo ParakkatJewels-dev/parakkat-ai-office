@@ -1,0 +1,34 @@
+✔ Codex receives an allowlist environment and subscription-only flags (2.161709ms)
+✔ the native tool prompt includes the full brief and ordered absolute references without requiring a shell (1.92225ms)
+✔ only a top-level trusted thread.started JSON event sets the native session (0.176042ms)
+✔ native collection selects only the exact thread and accepts an existing output only with the same hash (23.402125ms)
+✔ native collection rejects missing receipts, multiple images and symlink files or directories (4.951875ms)
+✔ a real CLI JSON stream collects native output without any model file-copy command (106.743875ms)
+✔ stderr or model output paths cannot authorize collecting an earlier native image (112.541042ms)
+✔ failure to persist the trusted thread receipt stops and drains the child without collection (88.558208ms)
+✔ restart never imports a model-supplied output with no native receipt (64.41025ms)
+✔ reference bundles reject path traversal, altered bytes, duplicate names and stale request identity (0.620542ms)
+✔ PNG verification rejects truncated or corrupted output and checks dimensions (0.478458ms)
+✔ one generation is durably saved and duplicate delivery cannot regenerate it (92.706084ms)
+✔ a lost completion response retries saved output and never invokes Codex again (110.903542ms)
+✔ a lost dispatch response becomes uncertain before any generator can be repeated (65.327125ms)
+✔ generation timeout remains uncertain and no retry occurs after process restart (106.687375ms)
+✔ a missing ChatGPT login blocks before dispatch without calling any generator (42.732625ms)
+✔ explicit preflight retry reuses frozen inputs with the new server lease holder (104.49575ms)
+✔ server reclaim after an unacknowledged dispatch permits a first generation with a fresh lease (102.234958ms)
+✔ restart can import a complete output left after dispatch without another generation (82.037042ms)
+✔ saved inputs and output hashes cannot change during retries (57.4515ms)
+✔ an obsolete request rejects import without regenerating or retaining a retry loop (64.397375ms)
+✔ an empty queue makes no generation request (1.1645ms)
+✔ low disk headroom stops new claims without deleting other project data (1.437333ms)
+✔ subprocess timeout terminates the process and is reported as uncertain (36.223791ms)
+✔ output symlinks are never read as generated images (1.883333ms)
+✔ the API client does not leak provider bodies and refuses credential-bearing URLs (33.466084ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1599.624875

@@ -1,0 +1,18 @@
+# Optional routing for an existing Traefik Docker provider. Adds only AI Office routers.
+# Combine with compose.dokploy.yml; do not restart or replace the shared proxy.
+services:
+  parakkat-ai-office:
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${DOKPLOY_NETWORK:-dokploy-network}
+      - traefik.http.routers.parakkat-ai-office-http.rule=Host(`${AI_OFFICE_DOMAIN:?Set the new AI Office domain}`)
+      - traefik.http.routers.parakkat-ai-office-http.entrypoints=web
+      - traefik.http.routers.parakkat-ai-office-http.middlewares=parakkat-ai-office-https
+      - traefik.http.middlewares.parakkat-ai-office-https.redirectscheme.scheme=https
+      - traefik.http.routers.parakkat-ai-office-https.rule=Host(`${AI_OFFICE_DOMAIN:?Set the new AI Office domain}`)
+      - traefik.http.routers.parakkat-ai-office-https.entrypoints=websecure
+      - traefik.http.routers.parakkat-ai-office-https.tls=true
+      - traefik.http.routers.parakkat-ai-office-https.tls.certresolver=letsencrypt
+      - traefik.http.services.parakkat-ai-office.loadbalancer.server.port=3000
+      - traefik.http.routers.parakkat-ai-office-http.service=parakkat-ai-office
+      - traefik.http.routers.parakkat-ai-office-https.service=parakkat-ai-office

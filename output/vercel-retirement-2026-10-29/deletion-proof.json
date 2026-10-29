@@ -1,0 +1,11 @@
+{
+  "project": "parakkat-ai-office",
+  "projectId": "prj_kn6NZnww92DNxApOqYwDoLyL57gm",
+  "teamId": "team_S8OrkT9Yk97mKBe70rcNID0f",
+  "deleted": true,
+  "confirmedBy": "Vercel CLI success, scoped project GET404, scoped name search empty",
+  "oldProductionAliasHTTP": 404,
+  "oldProductionAliasError": "DEPLOYMENT_NOT_FOUND",
+  "historicalProductionURLHTTP": 503,
+  "verifiedAt": "2026-10-29T11:31:05.252Z"
+}

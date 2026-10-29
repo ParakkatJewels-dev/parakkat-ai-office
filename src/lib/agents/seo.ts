@@ -9,6 +9,9 @@ import { persona } from './people';
 import { fileReport } from './review';
 import { errText } from '@/lib/errors';
 import { withUsage } from '@/lib/usage';
+import { checkPause } from '@/lib/pause';
+import { seoFailureSummary, trackSeoJob } from './seo-status.mjs';
+import { withAgentWork } from './agent-work';
 
 const BASE_SEEDS = ['gold necklace', 'temple jewellery', 'bridal jewellery', 'diamond ring', 'gold bangles', 'kerala jewellery'];
 const msg = errText;
@@ -28,27 +31,45 @@ async function seeds(db: SupabaseClient) {
  * product title and description fixes. Each report goes through the SEO Lead before the E-com Manager sees it.
  */
 export async function runSeo(db: SupabaseClient) {
-  return withUsage({ feature: 'seo' }, () => seoCheck(db));
+  return withUsage({ feature: 'seo' }, () => trackSeoJob({
+    run: started => seoCheck(db, started),
+    readPrevious: async () => {
+      const { data, error } = await db.from('autopilot_jobs').select('last_run_at,last_result').eq('name', 'seo').maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    writeStarted: async job => {
+      const { error } = await db.from('autopilot_jobs').upsert(job);
+      if (error) throw error;
+    },
+    writeFinished: async (ownedStart, job) => {
+      const { error } = await db.from('autopilot_jobs').update(job).eq('name', 'seo').eq('last_run_at', ownedStart);
+      if (error) throw error;
+    },
+  }));
 }
-async function seoCheck(db: SupabaseClient) {
+async function seoCheck(db: SupabaseClient, started: (at: string) => Promise<void>) {
+  await checkPause();
   // one check at a time: a second press while one runs would race it on the same keywords
-  const { count: busy } = await db.from('agent_runs').select('id', { count: 'exact', head: true }).eq('kind', 'seo').eq('status', 'running').gte('started_at', new Date(Date.now() - 10 * 6e4).toISOString());
+  const { count: busy, error: busyError } = await db.from('agent_runs').select('id', { count: 'exact', head: true }).eq('kind', 'seo').eq('status', 'running').gte('started_at', new Date(Date.now() - 10 * 6e4).toISOString());
+  if (busyError) throw busyError;
   if (busy) throw new Error('An SEO check is already running. It finishes in a few minutes.');
   const { data: run, error } = await db.from('agent_runs').insert({ kind: 'seo', occasion: 'Weekly SEO check', stage: 'seo' }).select().single();
   if (error) throw error;
   return withUsage({ run_id: run.id }, async () => {
+  try {
+  await started(run.started_at);
   await loadMemory(db);
   const terms = await seeds(db), now = new Date().toISOString(), rows = new Map<string, Record<string, unknown>>();
   const row = (k: string) => { const key = k.toLowerCase(); if (!rows.has(key)) rows.set(key, { keyword: key, source: [] as string[], rising: false, updated_at: now }); return rows.get(key)!; };
   const problems: string[] = [];
-  try {
     await emit(db, run.id, 'say', 'seoLead', `Weekly SEO check on ${terms.length} search terms. Trends and Keyword Planner, you are up.`);
 
     // Google Trends: interest over 3 months and rising related searches
     let trendLines: string[] = [];
     try {
       await emit(db, run.id, 'think', 'trendsAnalyst', `Reading Google Trends for ${terms.slice(0, 5).join(', ')}`);
-      const t = await googleTrends(terms.slice(0, 5));
+      const t = await withAgentWork({agentId:'trendsAnalyst',kind:'seo_trends',timeoutMs:120_000},()=>googleTrends(terms.slice(0, 5)));
       for (const [k, pts] of Object.entries(t.series)) {
         const r = row(k), c = change(pts);
         Object.assign(r, { trend_interest: pts.at(-1)?.value ?? null, trend_change: c, trend_series: pts }); (r.source as string[]).push('google_trends');
@@ -60,6 +81,7 @@ async function seoCheck(db: SupabaseClient) {
       }
       await db.from('connections').upsert({ provider: 'google_trends', status: 'connected', account_ref: process.env.SERPAPI_KEY ? 'via SerpApi' : 'public endpoints', last_synced_at: now, last_error: null });
     } catch (e) {
+      if (e instanceof Error && e.name === 'Paused') throw e;
       problems.push(`Google Trends: ${msg(e)}`); trendLines = [];
       await db.from('connections').upsert({ provider: 'google_trends', status: 'error', last_error: msg(e).slice(0, 500) });
       await emit(db, run.id, 'feedback', 'trendsAnalyst', `Could not read Google Trends: ${msg(e).slice(0, 140)}`, 'seoLead');
@@ -71,10 +93,11 @@ async function seoCheck(db: SupabaseClient) {
     if (ads) {
       try {
         await emit(db, run.id, 'think', 'keywordResearcher', 'Pulling search volumes from Keyword Planner');
-        ideas = (await keywordIdeas(terms)).filter(i => i.avg_monthly_searches).sort((a, b) => (b.avg_monthly_searches || 0) - (a.avg_monthly_searches || 0)).slice(0, 150);
+        ideas = (await withAgentWork({agentId:'keywordResearcher',kind:'seo_keywords',timeoutMs:120_000},()=>keywordIdeas(terms))).filter(i => i.avg_monthly_searches).sort((a, b) => (b.avg_monthly_searches || 0) - (a.avg_monthly_searches || 0)).slice(0, 150);
         for (const i of ideas) { const r = row(i.keyword); const { keyword: _k, ...rest } = i; Object.assign(r, rest); (r.source as string[]).push('keyword_planner'); }
         await db.from('connections').upsert({ provider: 'keyword_planner', status: 'connected', account_ref: ads.customer, last_synced_at: now, last_error: null });
       } catch (e) {
+        if (e instanceof Error && e.name === 'Paused') throw e;
         // Explorer access (the default for a new Cloud project) cannot use Keyword Planner; that is a setting to change, not a fault
         const access = /NOT_APPROVED|PERMISSION_DENIED|access level|Basic access|USER_PERMISSION|developer token/i.test(msg(e));
         problems.push(access ? 'Keyword Planner: needs Basic access on the Google Cloud project; using Google Trends only' : `Keyword Planner: ${msg(e)}`);
@@ -89,8 +112,8 @@ async function seoCheck(db: SupabaseClient) {
     const { error: upErr } = await db.from('seo_keywords').upsert([...rows.values()].map(r => ({ ...r, source: [...new Set(r.source as string[])] })), { defaultToNull: false });
     if (upErr) throw upErr;
 
-    const ask = (who: string, data: string, focus: string) => chatJSON<{ title: string; body: string }>('worker',
-      persona(who, `Write a short SEO report for parakkatjewels.com. Focus: ${focus}. Use only the numbers given. Shape: {"title": "one-line finding", "body": "4 to 6 bullet lines"}`), data);
+    const ask = async (who: string, data: string, focus: string) => chatJSON<{ title: string; body: string }>('worker',
+      await persona(db, who, `Write a short SEO report for parakkatjewels.com. Focus: ${focus}. Use only the numbers given. Shape: {"title": "one-line finding", "body": "4 to 6 bullet lines"}`), data,{useCase:'reviewed_draft'});
     const kwLines = ideas.slice(0, 40).map(i => `${i.keyword}: ${i.avg_monthly_searches?.toLocaleString('en-IN')} searches a month, competition ${i.competition || '?'}, top-of-page bid ₹${Math.round(i.bid_low || 0)} to ₹${Math.round(i.bid_high || 0)}`).join('\n');
 
     const jobs: Promise<unknown>[] = [];
@@ -106,16 +129,19 @@ async function seoCheck(db: SupabaseClient) {
     if (top.length) {
       await emit(db, run.id, 'think', 'seoWriter', 'Matching product titles to what people search');
       const ctx = `Top searches:\n${kwLines || trendLines.join('\n')}\n\nBest-selling products:\n${top.map(p => `${p.id} | ${p.title} | ${p.product_type || ''}`).join('\n')}`;
-      const w = await chatJSON<{ title: string; body: string }>('worker', persona('seoWriter', `Suggest better Shopify product titles and meta descriptions using the search terms above, keeping them truthful to the product.
+      const w = await chatJSON<{ title: string; body: string }>('worker', await persona(db, 'seoWriter', `Suggest better Shopify product titles and meta descriptions using the search terms above, keeping them truthful to the product.
 Then suggest 3 blog or collection-page topics. Body format: one line per product "Old title → New title | meta description (max 155 characters)", then "Topics:" with 3 lines.
-Shape: {"title": "one-line summary", "body": "..."}`), ctx);
+Shape: {"title": "one-line summary", "body": "..."}`), ctx,{useCase:'reviewed_draft'});
       await fileReport(db, run.id, 'seoWriter', w, ctx);
     }
     await emit(db, run.id, 'walk', 'seoLead', `SEO check done. ${rows.size} search terms saved${problems.length ? `; ${problems.length} source(s) failed` : ''}.`, 'strategist');
-    await db.from('agent_runs').update({ status: 'done', stage: 'done', finished_at: new Date().toISOString(), state: { keywords: rows.size, problems } }).eq('id', run.id);
+    const { error: finishError } = await db.from('agent_runs').update({ status: 'done', stage: 'done', finished_at: new Date().toISOString(), state: { keywords: rows.size, problems } }).eq('id', run.id);
+    if (finishError) throw finishError;
     return { keywords: rows.size, problems };
   } catch (e) {
-    await db.from('agent_runs').update({ status: 'failed', error: msg(e).slice(0, 500), finished_at: new Date().toISOString() }).eq('id', run.id);
+    const paused = e instanceof Error && e.name === 'Paused';
+    await db.from('agent_runs').update({ status: paused ? 'waiting' : 'failed', ...(paused ? { stage: 'paused' } : {}),
+      error: seoFailureSummary(e), finished_at: new Date().toISOString() }).eq('id', run.id);
     throw e;
   }
   });

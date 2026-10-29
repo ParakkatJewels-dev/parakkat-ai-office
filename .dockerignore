@@ -1,0 +1,17 @@
+.git
+.next
+node_modules
+.vercel
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+**/credentials.json
+**/*chatgpt-transfer*
+**/auth.json
+**/.chatgpt
+**/.config
+**/*.pem
+**/*.key
+.DS_Store
+chatgpt-credentials*.json

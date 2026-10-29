@@ -1,5 +1,7 @@
 // Line icons drawn on a 24px grid, stroked in the current text colour.
 const PATHS = {
+  menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
+  diamond: <><path d="m3 8 4-5h10l4 5-9 13zM3 8h18M7 3l5 18 5-18M7 3l5 5 5-5" /></>,
   map: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
   chart: <><path d="M3 3v18h18" /><path d="M7 15v2M11 11v6M15 7v10M19 12v5" /></>,
   check: <><rect x="3" y="3" width="18" height="18" rx="3" /><path d="m8 12 3 3 5-6" /></>,

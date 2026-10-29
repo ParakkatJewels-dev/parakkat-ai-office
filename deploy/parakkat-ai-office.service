@@ -1,0 +1,27 @@
+[Unit]
+Description=Parakkat AI Office
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=parakkat
+Group=parakkat
+WorkingDirectory=/srv/parakkat-ai-office
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --env-file=/etc/parakkat-ai-office.env /srv/parakkat-ai-office/node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3210
+Restart=on-failure
+RestartSec=5
+CPUQuota=100%
+MemoryMax=1536M
+TasksMax=192
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/parakkat-ai-office /srv/parakkat-ai-office/.next
+
+[Install]
+WantedBy=multi-user.target

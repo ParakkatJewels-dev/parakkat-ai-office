@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { requireUser } from '@/lib/auth/session';
 import { APP_KEYS, appReady, authorizeUrl, redirectUri, STATE_COOKIE } from '@/lib/connectors/connect';
 import { normalizeShop } from '@/lib/connectors/oauth-core.mjs';
-import type { Platform } from '@/lib/connectors/vault';
+import { loadAccess, type Platform } from '@/lib/connectors/vault';
 
 const PLATFORMS: Platform[] = ['meta', 'google', 'shopify'];
 const back = (req: NextRequest, key: 'msg' | 'error', text: string) => NextResponse.redirect(new URL(`/admin?tab=connections&${key}=${encodeURIComponent(text)}`, req.url));
@@ -18,11 +18,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   if (!appReady(p)) return back(req, 'error', `Add ${APP_KEYS[p].filter(k => !process.env[k]).join(', ')} in Vercel first. They identify our app to ${p === 'meta' ? 'Meta' : p === 'google' ? 'Google' : 'Shopify'}.`);
   let shop = '';
   if (p === 'shopify') {
-    shop = normalizeShop(req.nextUrl.searchParams.get('shop') || process.env.SHOPIFY_STORE_DOMAIN) || '';
+    const saved=await loadAccess('shopify');
+    shop = normalizeShop(req.nextUrl.searchParams.get('shop') || saved?.settings.shop || process.env.SHOPIFY_STORE_DOMAIN) || '';
     if (!shop) return back(req, 'error', 'Enter the store as name.myshopify.com.');
   }
   const state = randomBytes(24).toString('hex');
-  const res = NextResponse.redirect(authorizeUrl(p, redirectUri(req.nextUrl.origin, p), state, shop));
+  const requested=req.nextUrl.searchParams.get('capability');
+  const capability=p==='meta'&&requested==='instagram'?'instagram':p==='shopify'&&requested==='catalogue'?'catalogue':undefined;
+  const res = NextResponse.redirect(authorizeUrl(p, redirectUri(req.nextUrl.origin, p), state, shop,capability));
   // ties the platform's answer to this browser and this request
   res.cookies.set(STATE_COOKIE, `${p}.${state}.${shop}`, { httpOnly: true, secure: true, sameSite: 'lax', path: '/api/connect', maxAge: 600 });
   return res;

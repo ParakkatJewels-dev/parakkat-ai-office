@@ -1,0 +1,5 @@
+Generated with the built-in image_gen tool; transparent_background: true.
+
+Use case: photorealistic-natural.
+Asset type: transparent foliage-cluster texture for a realistic interactive 3D architectural campus in Kerala.
+Create one dense, organic tropical broadleaf branch cluster: many small glossy leaves in rich deep forest greens, mixed mature and fresh foliage, fine peripheral twigs and individual leaves, layered natural depth and small transparent holes between leaves. Irregular roughly circular cluster filling most of a square canvas, fully visible with a small clear margin. Photographic botanical detail, realistic leaf shapes and vein texture, neutral diffuse daylight with soft highlights and no dramatic directional shadow. Genuine transparent background and transparent irregular silhouette. This is a close view of the leafy crown cluster, not a whole tree. No trunk, no pot, no ground, no scenery, no text, no interface, no border, no watermark, no checkerboard painted into the image.

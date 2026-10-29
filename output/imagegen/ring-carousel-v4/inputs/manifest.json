@@ -1,0 +1,166 @@
+{
+  "prepared_at": "2026-10-28T12:41:16.413Z",
+  "carousel_id": "d01daca7-6636-4ed6-b3d6-ec5d4bf5515c",
+  "request_id": "b748737c-8e80-40fe-9e0f-08a9ecbddbba",
+  "source": "design",
+  "actor_id": "3291f1f3-b2df-40cd-9ce4-f12dd1d9cb43",
+  "intended_version": 4,
+  "mutations": 0,
+  "generation_calls": 0,
+  "cards": [
+    {
+      "index": 1,
+      "id": "5a5a452d-b228-4e25-9881-5fb2381103f7",
+      "request_id": "b748737c-8e80-40fe-9e0f-08a9ecbddbba",
+      "headline": "Navaratna Ornate Broad Ring Gold Layered",
+      "format": "carousel_card",
+      "current_version": 3,
+      "intended_version": 4,
+      "revision_note": "Try a new direction while keeping each product faithful to its official Shopify photo.",
+      "previous_image_path": "designs/5a5a452d-b228-4e25-9881-5fb2381103f7-015bb0bb-6231-4931-af0f-8ad5d77672b3-v3.png",
+      "ref_ids": [
+        "e89a6866-9c76-4ffd-bdf8-40c9fefb962a"
+      ],
+      "product": {
+        "id": 8940076958015,
+        "title": "Navaratna Ornate Broad Ring Gold Layered",
+        "image_url": "https://cdn.shopify.com/s/files/1/0774/8370/4639/files/neuroviz-ai_2026-08-15_17-21.webp?v=1786794729"
+      },
+      "files": {
+        "brief": "card-1-brief.txt",
+        "product": "card-1-product-1.png",
+        "previous": "card-1-previous-artwork.png",
+        "style": "style-1.png"
+      },
+      "sha256": {
+        "product": "feff3d8532ed084d9e5c5fdbc2b0fd960977f44b7b89f7e259eacde844a69b71",
+        "previous": "461bdbebebd0503fade51059d45e574fef82a6e18a6d7a151a803fc58037359e"
+      }
+    },
+    {
+      "index": 2,
+      "id": "891a5e0d-7a71-4c9a-bcd0-a6ae2d6076d5",
+      "request_id": "b748737c-8e80-40fe-9e0f-08a9ecbddbba",
+      "headline": "CZ Grid Rectangle Face Stone Gents Ring Gold Layered",
+      "format": "carousel_card",
+      "current_version": 3,
+      "intended_version": 4,
+      "revision_note": "Try a new direction while keeping each product faithful to its official Shopify photo.",
+      "previous_image_path": "designs/891a5e0d-7a71-4c9a-bcd0-a6ae2d6076d5-d5e7d2d3-2724-493b-90ad-d1d37ae3ac9a-v3.png",
+      "ref_ids": [
+        "e89a6866-9c76-4ffd-bdf8-40c9fefb962a"
+      ],
+      "product": {
+        "id": 10007145677119,
+        "title": "CZ Grid Rectangle Face Stone Gents Ring Gold Layered",
+        "image_url": "https://cdn.shopify.com/s/files/1/0774/8370/4639/files/neuroviz-ai_2026-08-17_13-39.webp?v=1786955916"
+      },
+      "files": {
+        "brief": "card-2-brief.txt",
+        "product": "card-2-product-1.png",
+        "previous": "card-2-previous-artwork.png",
+        "style": "style-1.png"
+      },
+      "sha256": {
+        "product": "4230aa8fe7fe5c1dcb399ad5ef2b236984a8b7540c9410cbec8f2b444661d6c9",
+        "previous": "ee2501ea2658925e509e5461b534eceb97105466c5eaaba5e713a5b85433e607"
+      }
+    },
+    {
+      "index": 3,
+      "id": "55a5f0cb-a6a4-448d-8db0-842a93b0190e",
+      "request_id": "b748737c-8e80-40fe-9e0f-08a9ecbddbba",
+      "headline": "Plain Broad Band Notch Gents Ring Gold Layered",
+      "format": "carousel_card",
+      "current_version": 3,
+      "intended_version": 4,
+      "revision_note": "Try a new direction while keeping each product faithful to its official Shopify photo.",
+      "previous_image_path": "designs/55a5f0cb-a6a4-448d-8db0-842a93b0190e-9eb7ea09-0f6c-4b77-8923-bda3dc48cb0f-v3.png",
+      "ref_ids": [
+        "e89a6866-9c76-4ffd-bdf8-40c9fefb962a"
+      ],
+      "product": {
+        "id": 9801521430847,
+        "title": "Plain Broad Band Notch Gents Ring Gold Layered",
+        "image_url": "https://cdn.shopify.com/s/files/1/0774/8370/4639/files/neuroviz-ai_2026-08-18_10-14.webp?v=1787028298"
+      },
+      "files": {
+        "brief": "card-3-brief.txt",
+        "product": "card-3-product-1.png",
+        "previous": "card-3-previous-artwork.png",
+        "style": "style-1.png"
+      },
+      "sha256": {
+        "product": "e1ed843577b3018124346b59c591cc39796b59718abe257579e85a733e5187bd",
+        "previous": "a2bde2ad36a40d373524aea68c436dc2a915f6a9c8b3cf0868bbf31169fc196f"
+      }
+    },
+    {
+      "index": 4,
+      "id": "81dd0795-a162-4f07-9e41-14f5e9488fee",
+      "request_id": "b748737c-8e80-40fe-9e0f-08a9ecbddbba",
+      "headline": "Solitaire Fine Plain Band Stone Gents Ring Gold Layered",
+      "format": "carousel_card",
+      "current_version": 3,
+      "intended_version": 4,
+      "revision_note": "Try a new direction while keeping each product faithful to its official Shopify photo.",
+      "previous_image_path": "designs/81dd0795-a162-4f07-9e41-14f5e9488fee-6f5e6ce7-9b0d-4017-9503-898703af1e8a-v3.png",
+      "ref_ids": [
+        "e89a6866-9c76-4ffd-bdf8-40c9fefb962a"
+      ],
+      "product": {
+        "id": 9801524183359,
+        "title": "Solitaire Fine Plain Band Stone Gents Ring Gold Layered",
+        "image_url": "https://cdn.shopify.com/s/files/1/0774/8370/4639/files/neuroviz-ai_2026-08-18_10-11.webp?v=1787028112"
+      },
+      "files": {
+        "brief": "card-4-brief.txt",
+        "product": "card-4-product-1.png",
+        "previous": "card-4-previous-artwork.png",
+        "style": "style-1.png"
+      },
+      "sha256": {
+        "product": "acf6689fb7d235028fcebaab3c0662ce487d1256f0261a2d1d59f3a011a76209",
+        "previous": "afa46eee20cb6c19c047929870faa316c1006fd6c548fecaac5216a5a5f4212d"
+      }
+    },
+    {
+      "index": 5,
+      "id": "27bc4373-be89-4ba3-8a89-e887ba1eef00",
+      "request_id": "b748737c-8e80-40fe-9e0f-08a9ecbddbba",
+      "headline": "CZ Twist Loop Fine Stone Ring Gold Layered",
+      "format": "carousel_card",
+      "current_version": 3,
+      "intended_version": 4,
+      "revision_note": "Try a new direction while keeping each product faithful to its official Shopify photo.",
+      "previous_image_path": "designs/27bc4373-be89-4ba3-8a89-e887ba1eef00-141ba4b3-d64c-4e96-8762-01f5aebb726d-v3.png",
+      "ref_ids": [
+        "e89a6866-9c76-4ffd-bdf8-40c9fefb962a"
+      ],
+      "product": {
+        "id": 10494696194367,
+        "title": "CZ Twist Loop Fine Stone Ring Gold Layered",
+        "image_url": "https://cdn.shopify.com/s/files/1/0774/8370/4639/files/neuroviz-ai_2026-07-04_12-26.webp?v=1783397164"
+      },
+      "files": {
+        "brief": "card-5-brief.txt",
+        "product": "card-5-product-1.png",
+        "previous": "card-5-previous-artwork.png",
+        "style": "style-1.png"
+      },
+      "sha256": {
+        "product": "ec34f93cd3e6c6c2b2921efc0cfc00ff896ab9fc5ab6ea44d80172f406c49b8a",
+        "previous": "48e15ce5ec3e163541004ec6feba4be740ee655146554af011f1c1c131d524da"
+      }
+    }
+  ],
+  "style_references": [
+    {
+      "id": "e89a6866-9c76-4ffd-bdf8-40c9fefb962a",
+      "name": "hf_20261005_112345_ded7cfbd-f5ba-4cc4-9fcd-047aaa59a36d.png",
+      "modified_at": "2026-10-05T11:32:14.608+00:00",
+      "file": "style-1.png",
+      "sha256": "e0f8d1ad14531d8daae9e5990139d45e3c4f28998487050214aa217581bb00d9"
+    }
+  ]
+}

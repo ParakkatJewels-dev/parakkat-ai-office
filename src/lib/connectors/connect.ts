@@ -26,12 +26,14 @@ const META_SCOPES = ['ads_read', 'ads_management', 'business_management', 'pages
 const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/adwords', 'https://www.googleapis.com/auth/analytics.readonly', 'https://www.googleapis.com/auth/drive.readonly'];
 const SHOPIFY_SCOPES = 'read_products,read_orders,read_inventory';
 
-export function authorizeUrl(p: Platform, redirectUri: string, state: string, shop?: string) {
+export function authorizeUrl(p: Platform, redirectUri: string, state: string, shop?: string, capability?: 'instagram' | 'catalogue') {
   if (p === 'meta') {
     const u = new URL(`https://www.facebook.com/${opt('META_API_VERSION', 'v21.0')}/dialog/oauth`);
+    const config=capability==='instagram'?(process.env.META_INBOX_LOGIN_CONFIG_ID||process.env.META_LOGIN_CONFIG_ID):process.env.META_LOGIN_CONFIG_ID;
+    const scopes=capability==='instagram'?[...META_SCOPES,'instagram_manage_messages','pages_manage_metadata']:META_SCOPES;
     u.search = new URLSearchParams({ client_id: env('META_APP_ID'), redirect_uri: redirectUri, state, response_type: 'code',
       // Facebook Login for Business uses a configuration made in the Meta app instead of a list of permissions
-      ...(process.env.META_LOGIN_CONFIG_ID ? { config_id: process.env.META_LOGIN_CONFIG_ID } : { scope: META_SCOPES.join(',') }) }).toString();
+      ...(config ? { config_id: config } : { scope: scopes.join(',') }),...(capability==='instagram'?{auth_type:'rerequest'}:{}) }).toString();
     return u.toString();
   }
   if (p === 'google') {
@@ -42,7 +44,7 @@ export function authorizeUrl(p: Platform, redirectUri: string, state: string, sh
     return u.toString();
   }
   const u = new URL(`https://${shop}/admin/oauth/authorize`);
-  u.search = new URLSearchParams({ client_id: env('SHOPIFY_CLIENT_ID'), scope: SHOPIFY_SCOPES, redirect_uri: redirectUri, state }).toString();
+  u.search = new URLSearchParams({ client_id: env('SHOPIFY_CLIENT_ID'), scope: capability==='catalogue'?`${SHOPIFY_SCOPES},write_products`:SHOPIFY_SCOPES, redirect_uri: redirectUri, state }).toString();
   return u.toString();
 }
 

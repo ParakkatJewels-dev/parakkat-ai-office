@@ -1,0 +1,49 @@
+# Independent pilot project. No existing AI Office Compose files are included.
+name: parakkat-chatgpt-images
+
+services:
+  worker:
+    image: parakkat-chatgpt-images:codex-0.165.0-pilot
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: [pilot]
+    command: ["--help"]
+    user: "1000:1000"
+    working_dir: /work
+    environment:
+      CODEX_HOME: /var/lib/parakkat-chatgpt-images/codex
+      LANG: C.UTF-8
+    volumes:
+      - codex-home:/var/lib/parakkat-chatgpt-images/codex
+      - work:/work
+    networks: [pilot]
+    restart: "no"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=134217728,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.5
+    mem_limit: 1g
+    memswap_limit: 1g
+    pids_limit: 128
+    stop_grace_period: 15s
+    logging:
+      driver: local
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+# New project-owned storage only; never mount the app's ChatGPT/provider volumes.
+volumes:
+  codex-home:
+  work:
+
+# Outbound access is required for ChatGPT login and generation. This network is
+# separate from Dokploy, Traefik and AI Office; it is not an egress firewall.
+networks:
+  pilot:
+    driver: bridge

@@ -1,0 +1,10 @@
+export const LIBRARY_LIMITS: Readonly<{pages:number;discoveryMs:number;workMs:number;leaseSeconds:number;study:number;concurrency:number;imageMs:number;scheduleMs:number}>;
+export function parseDrivePage(value: unknown): {files: import('../connectors/drive').DriveFile[];next:string|null};
+export function changedDesigns<T extends {drive_id:string;modified_at:string|null}>(rows:T[],known:{drive_id:string;modified_at:string|null}[]):{fresh:T[];changed:T[]};
+export function sameLibraryRevision(current:{status:string;drive_id:string;modified_at:string|null}|null,claim:{driveId:string;modifiedAt:string|null}):boolean;
+export function invalidDrivePageToken(error:unknown):boolean;
+export function libraryRetryAt(attempts:number,now?:number):string;
+export function libraryStudyBlock(error:unknown):{code:string;reason:string;at:string}|null;
+export function discoverLibrary<T extends {id:string}>(options:{nextFolder:(excluded:Set<string>)=>Promise<T|null>;list:(folder:T)=>Promise<{files:import('../connectors/drive').DriveFile[];next:string|null}>;savePage:(folder:T,page:{files:import('../connectors/drive').DriveFile[];next:string|null})=>Promise<{found:number}>;failFolder:(folder:T,error:unknown,reset:boolean)=>Promise<void>;check:()=>Promise<void>;shouldStop?:()=>boolean;now?:()=>number;maxPages?:number;maxMs?:number}):Promise<{pages:number;discovered:number;foldersRead:number;failures:number}>;
+export function libraryDescription(value:unknown):{keep:boolean;kind:string;occasion:string;style:string;palette:string;layout:string;typography:string;tags:string[];quality:number;fingerprint:{visualBrief:string;composition:string;palette:string;lighting:string;materials:string;typography:string;productionNotes:string;avoid:string}};
+export function libraryAbortable<T>(promise:PromiseLike<T>,signal:AbortSignal):Promise<T>;

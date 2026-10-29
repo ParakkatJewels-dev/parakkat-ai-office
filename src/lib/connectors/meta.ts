@@ -4,6 +4,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess } from './vault';
 import { chosen, metaId } from './accounts.mjs';
 import { errText } from '@/lib/errors';
+import { adReportingWindow, finiteMetric, metaBudget, metaPurchase } from './ad-monitoring-core.mjs';
+import { deselectAdAccounts, storeAdSnapshot, recordAdReadFailure } from './ad-monitoring-store';
 
 export const G = () => `https://graph.facebook.com/${opt('META_API_VERSION', 'v21.0')}`;
 
@@ -25,9 +27,9 @@ export async function metaConfig(): Promise<MetaConfig | null> {
 async function cfg() { const c = await metaConfig(); if (!c) throw new Error('Meta is not connected. Connect it on the Admin page.'); return c; }
 const need = (v: string | undefined, what: string) => { if (!v) throw new Error(`Choose the Meta ${what} on the Admin page.`); return v; };
 
-async function get(path: string, params: Record<string, string> = {}) {
+async function get(path: string, params: Record<string, string> = {},signal=AbortSignal.timeout(45000)) {
   const u = new URL(`${G()}/${path}`); Object.entries({ ...params, access_token: (await cfg()).token }).forEach(([k, v]) => u.searchParams.set(k, v));
-  const res = await fetch(u); const data = await res.json();
+  const res = await fetch(u,{signal,redirect:'error'}); const data = await res.json();
   if (!res.ok || data.error) throw new Error(`Meta ${res.status}: ${data.error?.message || JSON.stringify(data).slice(0, 200)}`);
   return data;
 }
@@ -38,31 +40,49 @@ async function post(path: string, body: Record<string, unknown>) {
   if (!res.ok || data.error) throw new Error(`Meta ${res.status}: ${data.error?.error_user_msg || data.error?.message || JSON.stringify(data).slice(0, 200)}`);
   return data;
 }
-async function all(path: string, params: Record<string, string>) {
-  const out: any[] = []; let page = await get(path, params);
-  for (;;) { out.push(...(page.data || [])); if (!page.paging?.next) break; const r = await fetch(page.paging.next); page = await r.json(); }
+async function all(path: string, params: Record<string, string>,signal=AbortSignal.timeout(90000)) {
+  const out: any[] = []; let page = await get(path, params,signal);const visited=new Set<string>();
+  for (;;) {
+    if(page.error||!Array.isArray(page.data))throw new Error('Meta returned incomplete paginated data.');
+    out.push(...page.data);
+    if(!page.paging?.next)break;
+    const next=new URL(page.paging.next);
+    if(next.origin!=='https://graph.facebook.com'||visited.has(next.href)||visited.size>=100)throw new Error('Meta pagination is incomplete.');
+    visited.add(next.href);const r=await fetch(next,{signal,redirect:'error'});page=await r.json();
+    if(!r.ok||page.error)throw new Error('Meta could not read the next data page.');
+  }
   return out;
 }
-const act = (list: any[] | undefined, type: string) => Number(list?.find(a => a.action_type === type)?.value ?? 0);
 
 /** Daily results per ad for the last 30 days, for every chosen ad account. One account failing does not stop the others. */
-export async function syncAdInsights(db: SupabaseClient) {
+export async function syncAdInsights(db: SupabaseClient,deadline=Date.now()+120000) {
   const c = await cfg();
+  await deselectAdAccounts(db,'meta',c.accounts.map(metaId));
   if (!c.accounts.length) need(undefined, 'ad account');
   let count = 0; const failed: string[] = [];
   for (const account of c.accounts) {
     try {
+      const signal=AbortSignal.timeout(Math.max(1,deadline-Date.now()));
+      const accountData=await get(account,{fields:'id,currency,timezone_name'},signal);
+      if(!accountData.currency||!accountData.timezone_name)throw new Error('Meta account reporting settings are incomplete.');
+      const window=adReportingWindow(accountData.timezone_name),at=new Date().toISOString();
+      const inventory=await all(`${account}/campaigns`,{fields:'id,name,status,effective_status,objective,daily_budget,lifetime_budget,updated_time',limit:'100'},signal);
       const rows = (await all(`${account}/insights`, {
-        level: 'ad', time_increment: '1', date_preset: 'last_30d', limit: '500',
+        level: 'ad', time_increment: '1', time_range:JSON.stringify({since:window.from,until:window.to}), limit: '500',
         fields: 'ad_id,ad_name,campaign_id,campaign_name,spend,impressions,clicks,actions,action_values',
-      })).map(r => ({
+      },signal)).map(r => ({
         day: r.date_start, platform: 'meta', account_id: metaId(account), ad_id: r.ad_id, ad_name: r.ad_name, campaign_id: r.campaign_id, campaign_name: r.campaign_name,
         spend: Number(r.spend), impressions: Number(r.impressions), clicks: Number(r.clicks),
-        purchases: act(r.actions, 'purchase'), revenue: act(r.action_values, 'purchase'),
+        purchases: metaPurchase(r.actions), revenue: metaPurchase(r.action_values),
+        conversion_definition:metaPurchase(r.actions)!==null?'purchase':'unknown',currency:accountData.currency,account_timezone:accountData.timezone_name,data_updated_at:at,
       }));
-      if (rows.length) { const { error } = await db.from('ad_insights_daily').upsert(rows); if (error) throw error; }
+      const campaigns=inventory.map(r=>({campaign_id:String(r.id),name:r.name||String(r.id),configured_status:r.status||null,effective_status:r.effective_status||null,objective:r.objective||null,
+        daily_budget:metaBudget(r.daily_budget,accountData.currency),currency:accountData.currency,account_timezone:accountData.timezone_name,budget_scope:finiteMetric(r.daily_budget)!==null?'campaign':'unknown',
+        provider_updated_at:r.updated_time||null,last_seen_at:at,selected:true,details:{daily_budget_minor_units:r.daily_budget??null,lifetime_budget_minor_units:r.lifetime_budget??null,metrics_supported:true,limitations:['Ad-set budgets and purchase-event coverage are not independently verified.']}}));
+      await storeAdSnapshot(db,'meta',metaId(account),campaigns,rows,{selected:true,status:'complete',inventory_complete:true,metrics_complete:true,complete:true,last_attempt_at:at,last_success_at:at,observed_count:campaigns.length,
+        window_from:window.from,window_to:window.to,conversion_definition:'purchase',coverage:{inventory:true,metrics:true,window_from:window.from,window_to:window.to,purchase_tracking_verified:false,attribution:'Meta account reporting attribution; not deduplicated store orders',funnel:false}});
       count += rows.length;
-    } catch (e) { failed.push(`${metaId(account)} (${errText(e)})`); }
+    } catch { await recordAdReadFailure(db,'meta',metaId(account));failed.push(`${metaId(account)} (account data could not be fully read)`); }
   }
   if (failed.length === c.accounts.length) throw new Error(`Meta: ${failed.join('; ')}`);
   return { count, accounts: c.accounts.length, failed };

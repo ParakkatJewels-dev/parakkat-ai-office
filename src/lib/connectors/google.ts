@@ -4,6 +4,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess } from './vault';
 import { chosen, googleId, googleTargets } from './accounts.mjs';
 import { errText } from '@/lib/errors';
+import { adReportingWindow, googleAdMetrics, googlePerformanceMaxMetrics, googlePurchaseMap } from './ad-monitoring-core.mjs';
+import { deselectAdAccounts, storeAdSnapshot, recordAdReadFailure } from './ad-monitoring-store';
 
 type Target = { id: string; login?: string };
 /** customers are the Ads accounts to sync; customer is the first, which Keyword Planner uses. */
@@ -50,27 +52,49 @@ const adsUrl = (customer: string | undefined, path: string) => `https://googlead
  * Daily results per ad for the last 30 days (Google Ads API, GAQL), for every chosen account.
  * One account failing does not stop the others; the ones that failed come back by id.
  */
-export async function syncGoogleAds(db: SupabaseClient) {
+export async function syncGoogleAds(db: SupabaseClient,deadline=Date.now()+120000) {
   const c = await cfg(), token = await accessToken(c.refresh);
+  await deselectAdAccounts(db,'google',c.customers.map(t=>t.id.replace(/-/g,'')));
   if (!c.customers.length) need(undefined, 'Ads account');
   let count = 0; const failed: string[] = [];
   for (const t of c.customers) {
+    const accountId=t.id.replace(/-/g,'');
     try {
-      const res = await fetch(adsUrl(t.id, '/googleAds:searchStream'), {
-        method: 'POST',
-        headers: await adsHeaders(t.login, token),
-        body: JSON.stringify({ query: `SELECT segments.date, campaign.id, campaign.name, ad_group_ad.ad.id, ad_group_ad.ad.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value
-          FROM ad_group_ad WHERE segments.date DURING LAST_30_DAYS` }),
-      });
-      const chunks = await res.json(); if (!res.ok) throw new Error(`${res.status}: ${JSON.stringify((chunks as any)?.error?.message || chunks).slice(0, 200)}`);
-      const rows = (chunks as any[]).flatMap(ch => ch.results || []).map((r: any) => ({
-        day: r.segments.date, platform: 'google', account_id: t.id, campaign_id: r.campaign.id, campaign_name: r.campaign.name, ad_id: String(r.adGroupAd.ad.id), ad_name: r.adGroupAd.ad.name || null,
-        spend: Number(r.metrics.costMicros || 0) / 1e6, impressions: Number(r.metrics.impressions || 0), clicks: Number(r.metrics.clicks || 0),
-        purchases: Number(r.metrics.conversions || 0), revenue: Number(r.metrics.conversionsValue || 0),
-      }));
-      if (rows.length) { const { error } = await db.from('ad_insights_daily').upsert(rows); if (error) throw error; }
-      count += rows.length;
-    } catch (e) { failed.push(`${googleId(t.id)} (${errText(e)})`); }
+      const signal=AbortSignal.timeout(Math.max(1,deadline-Date.now()));
+      const query=async(query:string)=>{
+        const res=await fetch(adsUrl(t.id,'/googleAds:searchStream'),{method:'POST',headers:await adsHeaders(t.login,token),signal,body:JSON.stringify({query})});
+        const chunks=await res.json();
+        if(!res.ok||!Array.isArray(chunks)||chunks.some(ch=>ch.error))throw new Error('Google Ads returned incomplete account data.');
+        return chunks.flatMap(ch=>ch.results||[]);
+      };
+      const account=(await query('SELECT customer.id, customer.currency_code, customer.time_zone FROM customer LIMIT 1'))[0]?.customer;
+      if(!account?.currencyCode||!account?.timeZone)throw new Error('Google account reporting settings are incomplete.');
+      const window=adReportingWindow(account.timeZone),at=new Date().toISOString();
+      const inventory=await query('SELECT campaign.id, campaign.name, campaign.status, campaign.primary_status, campaign.advertising_channel_type, campaign_budget.amount_micros, campaign_budget.explicitly_shared FROM campaign');
+      const range=`segments.date BETWEEN '${window.from}' AND '${window.to}'`;
+      const base=await query(`SELECT segments.date, campaign.id, campaign.name, ad_group_ad.ad.id, ad_group_ad.ad.name, metrics.cost_micros, metrics.impressions, metrics.clicks FROM ad_group_ad WHERE ${range}`);
+      const pmax=await query(`SELECT segments.date, campaign.id, campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks FROM campaign WHERE campaign.advertising_channel_type = 'PERFORMANCE_MAX' AND ${range}`);
+      const pmaxIds=new Set(inventory.filter((r:any)=>r.campaign?.advertisingChannelType==='PERFORMANCE_MAX').map((r:any)=>String(r.campaign.id)));
+      // Never count leads, page views or other configured goals as purchases.
+      // Conversion categories come from the account's explicit conversion-action inventory.
+      let actions:any[]=[],conversions:any[]=[],conversionRead=false;
+      try {
+        actions=await query('SELECT conversion_action.resource_name, conversion_action.category, conversion_action.status, conversion_action.primary_for_goal FROM conversion_action');
+        conversions=await query(`SELECT segments.date, campaign.id, ad_group_ad.ad.id, segments.conversion_action, metrics.conversions, metrics.conversions_value FROM ad_group_ad WHERE ${range}`);
+        conversionRead=true;
+      } catch { /* Spend/click reporting can remain useful; purchase outcomes stay unknown. */ }
+      const purchaseReady=conversionRead&&googlePurchaseMap(actions,conversions).valid;
+      const reportingAccount={id:accountId,currency:account.currencyCode,timezone:account.timeZone};
+      const rows=[...googleAdMetrics(base.filter((r:any)=>!pmaxIds.has(String(r.campaign?.id))),purchaseReady?actions:[],purchaseReady?conversions:[],reportingAccount,window,at),...googlePerformanceMaxMetrics(pmax,reportingAccount,window,at)];
+      const campaigns=inventory.map((r:any)=>({campaign_id:String(r.campaign.id),name:r.campaign.name||String(r.campaign.id),configured_status:r.campaign.status||null,effective_status:r.campaign.primaryStatus||null,
+        objective:r.campaign.advertisingChannelType||null,daily_budget:r.campaignBudget?.amountMicros!=null?Number(r.campaignBudget.amountMicros)/1e6:null,budget_scope:r.campaignBudget?.explicitlyShared?'shared':'campaign',
+        currency:account.currencyCode,account_timezone:account.timeZone,last_seen_at:at,selected:true,
+        details:{metrics_supported:true,limitations:r.campaign.advertisingChannelType==='PERFORMANCE_MAX'?['Performance Max delivery uses campaign-level reporting; purchases are not independently verified.']:[],purchase_conversion_actions_verified:purchaseReady&&r.campaign.advertisingChannelType!=='PERFORMANCE_MAX'}}));
+      await storeAdSnapshot(db,'google',accountId,campaigns,rows,{selected:true,status:conversionRead?'complete':'partial',inventory_complete:true,metrics_complete:true,complete:conversionRead,last_attempt_at:at,last_success_at:at,observed_count:campaigns.length,
+        window_from:window.from,window_to:window.to,conversion_definition:purchaseReady?'purchase':'unknown',safe_message:purchaseReady?null:'Purchase conversion definitions are unavailable or no purchase action is configured. Purchase metrics remain unknown.',
+        coverage:{inventory:true,metrics:true,window_from:window.from,window_to:window.to,purchase_definition_verified:purchaseReady,purchase_tracking_verified:false,attribution:'Configured primary PURCHASE conversion actions under Google Ads reporting attribution; event delivery and deduplicated store orders are not verified',metrics_scope:'ad_group_ad for standard campaigns; campaign-level delivery for Performance Max',funnel:false}});
+      count+=rows.length;
+    } catch { await recordAdReadFailure(db,'google',accountId);failed.push(`${googleId(t.id)} (account data could not be fully read)`); }
   }
   if (failed.length === c.customers.length) throw new Error(`Google Ads: ${failed.join('; ')}`);
   return { count, accounts: c.customers.length, failed };

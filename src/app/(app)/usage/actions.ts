@@ -10,8 +10,8 @@ const num = (v: FormDataEntryValue | null, what: string, { min = 0, max = 1e9 } 
   const s = String(v ?? '').trim(); if (!s) return null;
   const n = Number(s.replace(/[,₹$\s]/g, '')); if (!Number.isFinite(n) || n < min || n > max) throw new Error(`${what} should be a number from ${min} to ${max}.`); return n;
 };
-const done = (msg: string) => { revalidatePath('/usage'); redirect(`/usage?msg=${encodeURIComponent(msg)}`); };
-const fail = (e: unknown) => redirect(`/usage?error=${encodeURIComponent(errText(e))}`);
+const done = (msg: string) => { revalidatePath('/usage'); redirect(`/usage?tab=billing&msg=${encodeURIComponent(msg)}`); };
+const fail = (e: unknown) => redirect(`/usage?tab=billing&error=${encodeURIComponent(errText(e))}`);
 
 /** Exchange rate, monthly budget and when to warn. */
 export async function saveBilling(form: FormData) {

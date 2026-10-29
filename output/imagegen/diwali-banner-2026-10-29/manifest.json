@@ -1,0 +1,18 @@
+{
+  "designId": "902577cc-ca8b-4cee-b7ea-d7f0ade32ff6",
+  "requestId": "31eda325-56fe-4d52-a431-8267604a52de",
+  "provider": "chatgpt",
+  "method": "built-in image_gen followed by guarded Studio import",
+  "path": "output/imagegen/diwali-banner-2026-10-29/banner-v1.png",
+  "width": 1672,
+  "height": 941,
+  "format": "png",
+  "bytes": 2180998,
+  "sha256": "2bb54217ff00495bbe95410cbe708571d32107dcc41d99f2532334e8414d92c0",
+  "humanReviewRequired": true,
+  "imported": true,
+  "version": 1,
+  "verifiedVia": "Signed-in Studio UI: ChatGPT artwork imported v1; gallery shows Human review required and no credit error on Diwali card",
+  "importedAtDisplay": "29 October 2026, 03:15 PM IST",
+  "storagePath": "chatgpt-imports/design/902577cc-ca8b-4cee-b7ea-d7f0ade32ff6/31eda325-56fe-4d52-a431-8267604a52de/361f38d8-9730-44af-8d17-55f495e3f7dd.png"
+}
