@@ -17,7 +17,7 @@ const compiled=ts.transpileModule(readFileSync(new URL('../src/lib/agents/conver
 function harness(options={}) {
   const agent={id:'sales',name:'Sales',role_desc:'Sales analyst',department_id:'insights',is_lead:false,enabled:true};
   const state={calls:0,callOptions:[],inputs:[],systems:[],fullEvidenceReads:0,historyReads:0,workStarts:0,liveReads:[],events:[],usage:[],reads:[],runtimeReads:0,
-    agents:options.agents||[agent],profiles:options.profiles||[{id:'user',role:'insights_head'}],departments:options.departments||[{id:'insights',human_head_role:'insights_head'}],product_stock:options.productStock||[],designOrders:[],designRevisions:[],carouselOrders:[],carouselRevisions:[],generations:[],designs:options.designs||[],
+    agents:options.agents||[agent],profiles:options.profiles||[{id:'user',role:'insights_head'}],departments:options.departments||[{id:'insights',human_head_role:'insights_head'}],product_stock:options.productStock||[],designOrders:[],designRevisions:[],carouselOrders:[],carouselRevisions:[],generations:[],chatgptBatches:[],designs:options.designs||[],
     agent_tasks:[{id:'task',thread_id:'thread',requested_by:'user',agent_id:options.hostId||'sales',prompt:options.prompt||'What are you working on?',status:'queued',meeting_requested:!!options.meeting}],
     agent_threads:[{id:'thread',owner_id:'user',status:'queued'}],agent_messages:structuredClone(options.history||[]),agent_meetings:[],
     agent_events:[{at:'2026-10-26T10:00:00Z',from_agent:'sales',text:'Previous analysis'}],reports:[{author_agent:'sales',title:'Visible report',status:'with_head',updated_at:'2026-10-26T10:00:00Z'}],
@@ -44,8 +44,13 @@ function harness(options={}) {
   const modules={
     'server-only':{},'./conversation-core.mjs':{...core,conversationFailure:error=>{state.rawError=String(error?.stack||error);return core.conversationFailure(error);}},'./conversation-context.mjs':context,'./conversation-deterministic.mjs':direct,
     './conversation-routing.mjs':routing,'./conversation-reuse.mjs':reuse,'./conversation-artwork.mjs':artwork,'@/lib/artwork-mode.mjs':{isChatGPTHandoff:()=>options.handoff!==false},'./carousel-core.mjs':carousel,'./carousel-url.mjs':carouselUrl,
-    './design':{queueDesign:async(_db,order)=>{state.designOrders.push(order);return '11111111-1111-4111-8111-111111111111';},queueRedesign:async(_db,source,id,note)=>state.designRevisions.push({source,id,note})},
+    './odoo-day.mjs':{readOdooDay:async()=>({available:true,summary:{leader:{sku:'PSR0-15-031',units:10,branches:[{branch:'PPWH',units:10}]}},data:[]})},
+    '@/lib/connectors/odoo-scope':{excludedOdooBranches:async()=>[]},
+    './design':{queueDesign:async(_db,order)=>{state.designOrders.push(order);return state.designOrders.length===1?'11111111-1111-4111-8111-111111111111':`11111111-1111-4111-8111-${String(state.designOrders.length).padStart(12,'0')}`;},queueRedesign:async(_db,source,id,note)=>state.designRevisions.push({source,id,note})},
+    './library':{pickRefs:async()=>[{id:'33333333-3333-4333-8333-333333333333'}]},
+    './creative-research':{researchArtwork:async()=>({observedAt:'2026-11-02T00:00:00Z',direction:{layout:'clean grid',palette:'warm ivory',typography:'editorial serif',imagery:'soft light',customerHook:'giftable'},sources:[{title:'Pinterest visual',url:'https://www.pinterest.com/pin/123/'}]}),creativeResearchBrief:research=>research?'Current visual research: clean grid, warm ivory.':''},
     '@/lib/artwork/generation':{startAutomaticArtwork:async args=>{state.generations.push(args);return options.generation||{started:true,job:{id:'job',state:'queued'}};}},
+    '@/lib/artwork/request-chatgpt':{queueChatGPTArtworkBatch:async(...args)=>{state.chatgptBatches.push(args);return `ChatGPT image generation queued for ${args[1].length} images.`;}},
     '@/lib/artwork/provider-routing.mjs':providerRouting,
     './carousel':{
       queueCarouselRedesign:async(_admin,_reader,options)=>{state.carouselRevisions.push(options);return {cards:state.designs.filter(row=>row.carousel_id===options.carouselId)};},
@@ -60,7 +65,7 @@ function harness(options={}) {
       state.runtimeReads++;
       return {agent:structuredClone(state.agents[0]),instructions:options.instructions|| (options.changeInstructions&&state.runtimeReads>1?'Reply in Malayalam.':''),context:{brand:{voice:'Warm'},lessons:[]}};
     }},
-    './conversation-sales.mjs':{conversationSalesWindows:()=>({sevenDays:{from:'2026-10-21',to:'2026-10-27'},thirtyDays:{from:'2026-09-28',to:'2026-10-27'},completeThirtyDays:{from:'2026-09-27',to:'2026-10-26'},observedAt:'2026-10-27T10:00:00Z'}),requestedSalesCategory:()=>null,conversationProductCatalog:async()=>{state.fullEvidenceReads++;return {};},conversationProductSales:async()=>{state.fullEvidenceReads++;return options.posterSales||{};}},
+    './conversation-sales.mjs':{conversationSalesWindows:()=>({sevenDays:{from:'2026-10-21',to:'2026-10-27'},thirtyDays:{from:'2026-09-28',to:'2026-10-27'},completeThirtyDays:{from:'2026-09-27',to:'2026-10-26'},observedAt:'2026-10-27T10:00:00Z'}),requestedSalesCategory:()=>options.category||null,conversationProductCatalog:async()=>{state.fullEvidenceReads++;return {};},conversationProductSales:async()=>{state.fullEvidenceReads++;return options.posterSales||{};},conversationCategorySales:async()=>options.posterSales||{}},
   };
   const exports={};new Function('exports','require',compiled)(exports,id=>modules[id]||{});
   return {state,work,run:()=>exports.runConversationTask(admin,reader,'task')};
@@ -142,6 +147,61 @@ test('a Creative head assigns a top-selling ad poster to Sales and Design across
   assert.deepEqual(h.state.generations,[{source:'design',id:'11111111-1111-4111-8111-111111111111',userId:'user',role:'creative_head',projectScope:'thread:thread'}]);
   assert.equal(h.state.agent_messages.at(-1).metadata.outcome,'design_requested');
   assert.ok(h.state.reads.filter(row=>row.table==='product_stock').every(row=>!row.admin));
+});
+
+test('an office-map request for three posters queues three distinct ChatGPT image jobs',async()=>{
+  const agents=[
+    {id:'creativeDirector',name:'Creative Director',role_desc:'Creative head',department_id:'creative',is_lead:true,enabled:true},
+    {id:'sales',name:'Sales Analyst',role_desc:'Shopify sales',department_id:'insights',is_lead:false,enabled:true},
+    {id:'designer',name:'Banner Designer',role_desc:'Ad images',department_id:'creative',is_lead:false,enabled:true},
+  ];
+  const photo='https://cdn.shopify.com/s/files/1/1234/files/chain.webp';
+  const base={agents,hostId:'creativeDirector',category:'Chain',profiles:[{id:'user',role:'creative_head'}],
+    departments:[{id:'creative',human_head_role:'creative_head'},{id:'insights',human_head_role:'ecom_manager'}],
+    posterSales:{available:true,data:[{product_id:'1',units:24},{product_id:'2',units:21},{product_id:'3',units:18}]},
+    productStock:[1,2,3].map(id=>({id:String(id),title:`Chain ${id}`,status:'ACTIVE',stock:4,stock_source:'odoo',image_url:photo}))};
+  const previous=process.env.CHATGPT_IMAGE_WORKER_ENABLED;
+  process.env.CHATGPT_IMAGE_WORKER_ENABLED='true';
+  try {
+    for(const [prompt,expectedIds,hostId] of [
+      ['Find the top selling chain in Shopify and create 3 posters',[1,1,1],'creativeDirector'],
+      ['Select 3 top selling men chain and create 3 poster for carsoul ads',[1,2,3],'creativeDirector'],
+      ['Find the top selling chain in Shopify and create 3 posters',[1,1,1],'designer'],
+    ]) {
+      const h=harness({...base,prompt,hostId});await h.run();
+      assert.equal(h.state.agent_tasks[0].status,'completed',h.state.rawError);
+      assert.equal(h.state.calls,0);
+      assert.deepEqual(h.state.designOrders.map(order=>order.productIds),expectedIds.map(id=>[id]));
+      assert.equal(new Set(h.state.designOrders.map(order=>order.brief)).size,3);
+      if(/carsoul/.test(prompt)) {
+        assert.ok(h.state.designOrders.every(order=>order.brief.includes('Shared carousel art direction')));
+        assert.ok(h.state.designOrders.every(order=>order.refIds?.[0]===h.state.designOrders[0].refIds?.[0]));
+        assert.ok(h.state.designOrders.every(order=>order.carouselSource?.series_id==='task'));
+        assert.ok(h.state.designOrders.every(order=>!order.brief.includes('distinct composition')));
+      }
+      assert.equal(h.state.chatgptBatches.length,1);
+      assert.deepEqual(h.state.chatgptBatches[0][1].map(item=>item.id),h.state.agent_messages.at(-1).metadata.design_ids);
+      assert.equal(h.state.chatgptBatches[0][1].length,3);
+      assert.match(h.state.agent_messages.at(-1).content,/ChatGPT image generation queued for 3 images/);
+      assert.equal(h.state.generations.length,0);
+    }
+  } finally {if(previous===undefined)delete process.env.CHATGPT_IMAGE_WORKER_ENABLED;else process.env.CHATGPT_IMAGE_WORKER_ENABLED=previous;}
+});
+
+test('a direct Shopify product poster is generated through the designer and missing products are reported',async()=>{
+  const agents=[{id:'creativeDirector',name:'Creative Director',role_desc:'Creative head',department_id:'creative',is_lead:true,enabled:true},
+    {id:'designer',name:'Banner Designer',role_desc:'Ad images',department_id:'creative',is_lead:false,enabled:true}];
+  const common={agents,hostId:'creativeDirector',profiles:[{id:'user',role:'creative_head'}],departments:[{id:'creative',human_head_role:'creative_head'}]};
+  const old=process.env.CHATGPT_IMAGE_WORKER_ENABLED;process.env.CHATGPT_IMAGE_WORKER_ENABLED='true';
+  try {
+    const h=harness({...common,prompt:'Create a poster for Shopify product ID 2',productStock:[{id:2,title:'Gold Chain',status:'ACTIVE',stock:3,image_url:'https://cdn.shopify.com/s/files/1/1234/files/chain.webp'}]});
+    await h.run();assert.equal(h.state.agent_tasks[0].status,'completed',h.state.rawError);
+    assert.deepEqual(h.state.designOrders.map(order=>order.productIds),[[2]]);
+    assert.equal(h.state.chatgptBatches[0][1].length,1);
+    const missing=harness({...common,prompt:'Create a poster for my chain'});
+    await missing.run();assert.equal(missing.state.agent_tasks[0].status,'completed',missing.state.rawError);
+    assert.equal(missing.state.designOrders.length,0);assert.match(missing.state.agent_messages.at(-1).content,/Shopify product link or product ID/);
+  } finally {if(old===undefined)delete process.env.CHATGPT_IMAGE_WORKER_ENABLED;else process.env.CHATGPT_IMAGE_WORKER_ENABLED=old;}
 });
 
 test('a head can request a cross-department specialist contribution while all business reads keep the requester client',async()=>{

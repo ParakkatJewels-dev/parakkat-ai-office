@@ -7,6 +7,7 @@ import { FORMATS, type Source } from '@/lib/agents/design';
 import { rankDesignReferences, referenceFingerprint } from '@/lib/agents/library-core.mjs';
 import { fetchShopifyPhoto, shopifyPhotoUrl } from '@/lib/agents/carousel-card.mjs';
 import { designImageById } from '@/lib/connectors/drive';
+import { shopifyArtworkPrice } from '@/lib/connectors/shopify';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
 import { boundedFormData, validId, validOrigin, validateArtwork, zipFiles } from './import-core.mjs';
 
@@ -52,7 +53,8 @@ async function packetFor(access:Access):Promise<any> {
   const candidates=(result.data||[]).filter(r=>r.drive_id&&r.modified_at);
   const priorIds=(Array.isArray(row.ref_ids)?row.ref_ids:[]).slice(0,3);
   let explicit:any[]=[];
-  if(row.carousel_id) {
+  const series=row.carousel_source?.series_id && Number(row.carousel_source?.total)>1 ? row.carousel_source : null;
+  if(row.carousel_id || (series && priorIds.length)) {
     if(!priorIds.length)throw new ArtworkError('The carousel needs its selected style reference. Prepare the set again.',409);
     const chosen=await admin.from('design_refs').select(columns).in('id',priorIds).eq('status','ready').eq('hidden',false);
     explicit=priorIds.map((refId:string)=>chosen.data?.find(r=>r.id===refId));
@@ -61,7 +63,10 @@ async function packetFor(access:Access):Promise<any> {
   const format = row.format || (row.kind==='story'?'story':'post');
   const f=FORMATS[format as keyof typeof FORMATS] || FORMATS.post;
   const direction=[row.brief||row.body,row.headline,row.redo_note].filter(Boolean).join('\n');
-  const refs=row.carousel_id ? explicit : rankDesignReferences(candidates,[direction],{productTitles:products.map(p=>p.title),direction:row.redo_note||direction,format,previousIds:priorIds,limit:3});
+  const refs=explicit.length ? explicit : rankDesignReferences(candidates,[direction],{productTitles:products.map(p=>p.title),direction:row.redo_note||direction,format,previousIds:priorIds,limit:series?1:3});
+  const prices=await Promise.all(products.map(async p=>{try{return await shopifyArtworkPrice(Number(p.id));}catch{return null;}}));
+  const money=(amount:number,currency:string)=>new Intl.NumberFormat(currency==='INR'?'en-IN':'en',{style:'currency',currency,maximumFractionDigits:amount%1?2:0}).format(amount);
+  const priceCopy=prices.map((price,i)=>price?`${products[i].title}: ${price.min===price.max?money(price.min,price.currency):`from ${money(price.min,price.currency)}`} (live Shopify base-store price checked ${price.checkedAt}; verify market-specific pricing before publication)`:'').filter(Boolean);
   const assets = [
     ...products.map((p,i)=>({name:`product-${i+1}.png`,kind:'product',url:p.image_url!,title:p.title})),
     ...refs.map((r:any,i:number)=>({name:`style-${i+1}.png`,kind:'style',title:r.name})),
@@ -71,14 +76,15 @@ async function packetFor(access:Access):Promise<any> {
   const prompt=[
     `Create a finished ${f.label.toLowerCase()} for PARAKKAT JEWELS. Produce the image, not a text description.`,
     `Canvas: ${f.ratio} aspect ratio; target ${f.size}. Language: ${row.language==='ml'?'Malayalam':'English'}.`,
-    row.carousel_id?`This is card ${row.carousel_index} of a five-card carousel. Keep all cards consistent in typography, colour, lighting and spacing. Generate this card as a separate finished image, not a collage of all cards.`:'',
+    row.carousel_id?`This is card ${row.carousel_index} of a five-card carousel. Keep the exact same layout grid, product placement and scale, headline zone, brand position, typography, palette, lighting, background and CTA placement on every card. Change only the product and its approved details. Generate this card as a separate finished image, not a collage of all cards.`:series?`This is card ${series.index} of a ${series.total}-card carousel ad. Shared format for the entire series: ${series.direction||'Keep one identical layout, type hierarchy, background, product position and CTA position.'} Only product and approved details change. Generate one finished card, not a collage.`:'',
     `Brief: ${row.brief||row.body||'Create premium jewellery artwork with a clear hero product and restrained, readable typography.'}`,
     `Approved headline: ${row.headline||'No headline supplied; do not invent promotional claims.'}`,
     products.length?`PRODUCT IDENTITY — the attached product files are the authoritative sources:\n${products.map((p,i)=>`product-${i+1}.png: ${p.title} (Shopify product ${p.id})`).join('\n')}\nPreserve the exact jewellery silhouette, stone count and colours, setting, motifs, metal tone and proportions. Do not substitute similar jewellery. Avoid cropping or obscuring its distinguishing features.`:'No product photo was selected. Do not invent a product claimed to be in the Parakkat catalogue.',
-    refs.length?`STYLE REFERENCES — attach these actual past designs:\n${refs.map((r:any,i:number)=>`style-${i+1}.png: ${r.name}. ${i===0?'Primary art direction.':'Supporting finish only; do not blend conflicting scenes.'} ${referenceFingerprint(r)}`).join('\n')}\nUse their typography, hierarchy, lighting and level of finish as guidance. Their jewellery, prices, claims and offer badges are not approved content for this image.`:'No matching saved style reference is available. Use restrained premium jewellery art direction.',
+    priceCopy.length?`OPTIONAL VERIFIED PRICE COPY — use only if it improves the customer-facing hierarchy; preserve the exact value and currency, including "from" for a price range:\n${priceCopy.join('\n')}`:'No current Shopify price was verified for this artwork; omit all prices.',
+    refs.length?`BRAND STYLE REFERENCES — attach these actual past designs:\n${refs.map((r:any,i:number)=>`style-${i+1}.png: ${r.name}. ${i===0?'Brand quality benchmark.':'Supporting finish only; do not blend conflicting scenes.'} ${referenceFingerprint(r)}`).join('\n')}\nUse their typography, hierarchy, lighting and level of finish as guidance. The manager brief and dated visual research determine this artwork's composition. Do not copy a past layout literally unless the manager explicitly requested it. For a carousel, hold the newly chosen layout fixed across all cards. Their jewellery, prices, claims and offer badges are not approved content for this image.`:'No matching saved style reference is available. Use restrained premium jewellery art direction.',
     row.image_path?'The attached previous-artwork.png is the previous version. Preserve its approved product identity, wording and brand treatment except for the requested changes below. Do not simply re-export it.':'',
     row.redo_note?`REQUESTED REVISION (takes priority over earlier art direction): ${row.redo_note}`:'',
-    'Brand: PARAKKAT JEWELS. Keep the brand name accurate and legible. Do not invent logo symbols, offers, prices, discounts, certifications or material claims. Use only explicitly approved copy. Produce a polished, cohesive jewellery photograph with clean spacing and controlled detail.',
+    'Brand: PARAKKAT JEWELS. Keep the brand name accurate and legible. Make the product appealing with clear hierarchy, a strong customer hook and a concise shopping CTA. You may use the exact verified Shopify price above, the product title, and an offer only when the manager explicitly supplied that offer in the brief. Do not infer promotions from inspiration pages or invent discounts, certifications, material claims or logo symbols. Produce a polished, cohesive jewellery photograph with clean spacing and controlled detail.',
     'Before returning the image, inspect product fidelity, typography, spelling, brand accuracy and the requested changes. Export the finished image as a still PNG, JPEG or WebP. A person will review it in AI Office before approval.',
     `AI Office artwork request: ${source}/${id} · ${row.artwork_request_id} · intended version ${version}.`,
   ].filter(Boolean).join('\n\n');

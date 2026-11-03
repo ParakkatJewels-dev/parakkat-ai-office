@@ -329,6 +329,7 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
         </aside>}
 
         <div className="dock float" role="toolbar" aria-label="Quick actions">
+          <Link href="/tasks"><Icon name="doc" size={22} /><span>Tasks & chat</span></Link>
           {admin ? <Link href="/admin?tab=operations#campaign"><Icon name="rocket" size={22} /><span>Start Campaign</span></Link> : <Link href="/dashboard"><Icon name="chart" size={22} /><span>Dashboard</span></Link>}
           <Link href="/approvals"><Icon name="check" size={22} /><span>Approvals</span></Link>
           {admin ? <Link href="/admin?tab=connections#sync"><Icon name="sync" size={22} /><span>Sync Data</span></Link> : <button type="button" onClick={cam(o => o.flyTo(null))}><Icon name="map" size={22} /><span>Whole Campus</span></button>}

@@ -79,6 +79,19 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
 }
 const num = (gid: string) => Number(gid.split('/').pop());
 
+/** Current base-store range for artwork copy. A missing read means omit price. */
+export async function shopifyArtworkPrice(productId: number) {
+  if (!Number.isSafeInteger(productId) || productId <= 0) return null;
+  const data = await gql<{product:null|{status:string;priceRangeV2:{minVariantPrice:{amount:string;currencyCode:string};maxVariantPrice:{amount:string;currencyCode:string}}}}>(
+    `query($id: ID!) { product(id: $id) { status priceRangeV2 { minVariantPrice { amount currencyCode } maxVariantPrice { amount currencyCode } } } }`,
+    {id:`gid://shopify/Product/${productId}`});
+  const range=data.product?.priceRangeV2;
+  if(data.product?.status!=='ACTIVE' || !range)return null;
+  const min=Number(range.minVariantPrice.amount),max=Number(range.maxVariantPrice.amount),currency=range.minVariantPrice.currencyCode;
+  if(!Number.isFinite(min)||min<=0||!Number.isFinite(max)||max<min||currency!==range.maxVariantPrice.currencyCode)return null;
+  return {min,max,currency,checkedAt:new Date().toISOString()};
+}
+
 type ProductPass = { after?: string | null; query?: string; started?: string; done_at?: string };
 
 /**

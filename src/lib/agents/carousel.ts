@@ -7,6 +7,7 @@ import { pickRefs, refParts } from './library';
 import { carouselStyleBackground } from '@/lib/llm/gemini';
 import { withUsage } from '@/lib/usage';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
+import { researchArtwork, creativeResearchBrief } from './creative-research';
 
 type Card = { id: string; carousel_index: number; artwork_origin?: string | null };
 const referenceDriveId = (value: unknown) => String(value || '').match(/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]+)/)?.[1] || null;
@@ -41,13 +42,15 @@ export async function queueSalesCarousel(admin: SupabaseClient, reader: Supabase
       .eq('status','ready').eq('hidden',false).limit(1)).data || []
     : await pickRefs(admin, [options.category], 1);
   if (!refs.length) throw new Error('No ready Design Library reference was found for this carousel.');
+  const research = await researchArtwork(options.category, `Five-card ${options.category} carousel from verified Shopify products.`, options.signal);
+  const direction = `Keep one identical card layout, product position and scale, headline zone, brand position, type system, palette, lighting, background and CTA position across all five cards. Change only the product and its verified details. ${creativeResearchBrief(research)}`;
   const handoff = isChatGPTHandoff();
   const set = await admin.from('carousel_sets').insert({ id: carouselId, requested_by: options.userId, category: options.category,
     window_from: window.from, window_to: window.to, ref_ids: refs.map(ref => ref.id), background_status: handoff ? 'unused' : 'queued' });
   if (set.error) throw set.error;
   const rows = products.map((product, index) => ({
     requested_by: options.userId, format: 'carousel_card',
-    brief: `Five-card ${options.category} carousel from recorded Shopify sales, ${window.from} to ${window.to} UTC. Card ${index + 1} of 5. Use the selected design for style and the official Shopify photo as the reference for the same product. ${handoff ? 'Generate the finished card in ChatGPT or Higgsfield and import the chosen image. A human must compare the exact product and design quality before approval.' : 'Generate the jewellery as part of a new scene, then check its identity against the official photo.'} Draft for human review; do not publish.`,
+    brief: `Five-card ${options.category} carousel from recorded Shopify sales, ${window.from} to ${window.to} UTC. Card ${index + 1} of 5. ${direction} Use the selected design for brand style and the official Shopify photo as the reference for this exact product. ${handoff ? 'Generate the finished card in ChatGPT or Higgsfield and import the chosen image. A human must compare the exact product and design quality before approval.' : 'Generate the jewellery as part of a new scene, then check its identity against the official photo.'} Draft for human review; do not publish.`,
     headline: product.title, language: 'en', product_ids: [Number(product.product_id)],
     status: handoff ? 'awaiting_import' : 'queued', queued_at: handoff ? null : observedAt, carousel_id: carouselId, carousel_index: index + 1,
     artwork_request_id: handoff ? randomUUID() : null, artwork_handoff: null, ref_ids: refs.map(ref => ref.id),
@@ -55,6 +58,7 @@ export async function queueSalesCarousel(admin: SupabaseClient, reader: Supabase
       category: options.category, from: window.from, to: window.to, observed_at: observedAt,
       product_id: product.product_id, title: product.title, units: product.units,
       stock: product.stock, stock_source: product.stock_source, image_url: product.image_url,
+      direction, research,
     },
   }));
   const inserted = await admin.from('designs').insert(rows).select('id,carousel_index');

@@ -16,6 +16,7 @@ import { recentConcepts, refLine, versionPath } from './library-core.mjs';
 import { fetchShopifyPhoto, imageReferencePart, renderCarouselCard, shopifyPhotoUrl } from './carousel-card.mjs';
 import { carouselBackgroundFor } from './carousel';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
+import { researchArtwork, creativeResearchBrief } from './creative-research';
 
 /** What the Design Studio can make, with the shape Gemini draws it in. */
 export const FORMATS = {
@@ -162,16 +163,18 @@ ${s.note ? `The head's requested change, which must also be checked: ${s.note}\n
 }
 
 /** A head orders a design; manual artwork generation waits for the chosen image to be imported. */
-export async function queueDesign(db: SupabaseClient, o: { format: Format; brief: string; headline: string; language: keyof typeof LANGS; productIds: number[]; userId: string }) {
+export async function queueDesign(db: SupabaseClient, o: { format: Format; brief: string; headline: string; language: keyof typeof LANGS; productIds: number[]; userId: string; refIds?: string[]; carouselSource?: Record<string,unknown> }) {
   if (!FORMATS[o.format]) throw new Error('Pick a format.');
   if (o.format === 'carousel_card') throw new Error('Use the five-card carousel order for this format.');
   if (!o.brief.trim()) throw new Error('Describe what the design is for.');
   const handoff = isChatGPTHandoff();
   if (!handoff && !await geminiConfigured()) throw new Error('Add a Gemini key in Settings → AI providers before generating images.');
   if (!o.productIds.length) throw new Error('Pick at least one product that has a photo in Shopify.');
-  const { data, error } = await db.from('designs').insert({ requested_by: o.userId, format: o.format, brief: o.brief, headline: o.headline || null, language: o.language,
+  const research = o.carouselSource === undefined ? await researchArtwork('jewellery artwork', o.brief) : null;
+  const brief = research ? `${o.brief}\n\n${creativeResearchBrief(research)}` : o.brief;
+  const { data, error } = await db.from('designs').insert({ requested_by: o.userId, format: o.format, brief, headline: o.headline || null, language: o.language,
     product_ids: o.productIds.slice(0, 3), status: handoff ? 'awaiting_import' : 'queued', queued_at: handoff ? null : new Date().toISOString(),
-    artwork_request_id: handoff ? randomUUID() : null, artwork_handoff: null }).select('id').single();
+    artwork_request_id: handoff ? randomUUID() : null, artwork_handoff: null, ref_ids: o.refIds || [], carousel_source: o.carouselSource || (research ? {research} : null) }).select('id').single();
   if (error) throw error;
   return data.id as string;
 }

@@ -6,6 +6,7 @@ import { PageHead, Tile, Stepper, Pager, pageOf, inr, when } from '@/components/
 import { googleId, metaId } from '@/lib/connectors/accounts.mjs';
 import { Filters } from './Filters';
 import styles from './Dashboard.module.css';
+import { scopedOdooBranchSales } from '@/lib/connectors/odoo-scope';
 
 const PLATFORM: Record<string, { label: string; color: string }> = { meta: { label: 'Meta', color: '#3d6fb0' }, google: { label: 'Google', color: '#1fc7a4' } };
 
@@ -40,7 +41,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     db.from('competitor_moves').select('id, kind, summary, seen_at, competitors(name)').gte('seen_at', P.from).lte('seen_at', end).order('seen_at', { ascending: false }).limit(6),
     db.from('agent_runs').select('id, occasion, stage, status, started_at, state').eq('kind', 'campaign').gte('started_at', P.from).lte('started_at', end).order('started_at', { ascending: false }).limit(5),
     db.rpc('ad_accounts'),
-    db.rpc('branch_sales', { p_since: P.from, p_till: P.to }),
+    scopedOdooBranchSales(db, P.from, P.to).then(data => ({ data, error: null })).catch(error => ({ data: null, error })),
     db.from('reports').select('id', { count: 'exact', head: true }).eq('status', 'with_head'),
     db.from('approvals').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
     db.from('autopilot_jobs').select('last_run_at, last_result').eq('name', 'sync').maybeSingle(),

@@ -7,7 +7,7 @@ export function rankHeadEvidence(sources, request) {
   const terms=words(request);
   return Object.fromEntries(Object.entries(sources||{}).map(([key,value])=>{
     if(!value||typeof value!=='object'||!Array.isArray(value.data))return [key,value];
-    if(key==='categorySales30d')return [key,value]; // This source is already category-ranked before its row limit.
+    if(key==='categorySales30d'||key==='odooDay')return [key,value]; // These sources are already ranked before their row limits.
     const score=row=>[...words([row?.product_id,row?.id,row?.sku,row?.title,row?.product,row?.name,row?.keyword].filter(v=>v!=null).join(' '))].reduce((sum,term)=>sum+(terms.has(term)?1:0),0);
     const ranked=value.data.map((row,index)=>({row,index,score:score(row)})).sort((a,b)=>b.score-a.score||a.index-b.index);
     return [key,{...value,data:ranked.map(item=>item.row),sample:{...value.sample,sourceOrder:value.sample?.sourceOrder||value.sample?.order,order:'Task reference relevance, then original source order'},selection:'Rows ranked by task references, then original source order. Unmatched or omitted records are unknown.'}];

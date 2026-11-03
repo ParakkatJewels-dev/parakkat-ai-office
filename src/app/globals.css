@@ -1,22 +1,22 @@
 /* Parakkat AI Office — calm, focused workspace. Both themes share spacing and hierarchy. */
 :root,[data-theme="light"]{
-  --bg:#f3f6f3; --chrome:#ffffff; --sidebar:#fafbf9; --panel:#ffffff; --panel-2:#f5f7f4; --panel-3:#ebf0eb; --line:#e7ece7; --line-2:#d6dfd7;
-  --ink:#18251e; --muted:#5f6f64; --dim:#65746b; --accent:#196b47; --accent-2:#115536; --accent-soft:#e5f1e8; --accent-ink:#ffffff;
-  --champ:#ae8950; --glass:rgba(255,255,255,.92); --glass-ink:#18251e; --track:#e7eee8; --sky:#d4e3ea;
-  --good:#257646; --warn:#9a600c; --bad:#bd4440; --info:#356caa; --avatar-bg:#e9d8cf; --avatar-ink:#684b40;
-  --shadow:0 16px 48px rgba(23,45,31,.12); --r:18px;
-  --card:var(--panel); --card-2:var(--panel-2); --champ-soft:var(--accent-soft); --champ-text:var(--accent); --btn:#196b47; --btn-ink:#ffffff;
-  --grad:linear-gradient(135deg,#f3f8f1,#e8f2e9);
-  --f-display:"Manrope","Helvetica Neue",Arial,sans-serif; --f-body:"Inter",system-ui,sans-serif; --f-data:ui-monospace,Menlo,monospace; --f-brand:"Cinzel","Times New Roman",serif;
+  --bg:#f7f8f8; --chrome:#ffffff; --sidebar:#ffffff; --panel:#ffffff; --panel-2:#f7f8f8; --panel-3:#eef1f2; --line:#e5e9eb; --line-2:#cdd5d9;
+  --ink:#111719; --muted:#526067; --dim:#66747b; --accent:#117452; --accent-2:#0b6245; --accent-soft:#e7f4ed; --accent-ink:#ffffff; --link:#185db2; --link-soft:#eaf2ff;
+  --champ:#b19971; --glass:rgba(255,255,255,.95); --glass-ink:#111719; --track:#e5e9eb; --sky:#eaf2ff;
+  --good:#117452; --warn:#986108; --bad:#b23c42; --info:#185db2; --avatar-bg:#eaf2ff; --avatar-ink:#185db2;
+  --shadow:0 14px 38px rgba(15,24,28,.1); --r:12px;
+  --card:var(--panel); --card-2:var(--panel-2); --champ-soft:var(--accent-soft); --champ-text:var(--accent); --btn:#117452; --btn-ink:#ffffff;
+  --grad:linear-gradient(135deg,#ffffff,#f4f8fa);
+  --f-display:"Inter",system-ui,sans-serif; --f-body:"Inter",system-ui,sans-serif; --f-data:ui-monospace,Menlo,monospace; --f-brand:"Cinzel","Times New Roman",serif;
   color-scheme:light;
 }
 [data-theme="dark"]{
-  --bg:#090909; --chrome:#101010; --sidebar:#101010; --panel:#141414; --panel-2:#1b1b1b; --panel-3:#242424; --line:#2b2b2b; --line-2:#414141;
-  --ink:#fafafa; --muted:#b5b5b5; --dim:#a0a0a0; --accent:#81d7a1; --accent-2:#5fbf86; --accent-soft:#16251b; --accent-ink:#0a0a0a;
-  --champ:#d8c3a5; --glass:rgba(18,18,18,.94); --glass-ink:#fafafa; --track:#303030; --sky:#090909;
-  --good:#85d49c; --warn:#edc173; --bad:#f49a91; --info:#92baf2; --avatar-bg:#303030; --avatar-ink:#fafafa;
-  --shadow:0 16px 48px rgba(0,0,0,.4); --btn:#81d7a1; --btn-ink:#0a0a0a;
-  --grad:linear-gradient(135deg,#1b1b1b,#111111); color-scheme:dark;
+  --bg:#0b0d0e; --chrome:#111415; --sidebar:#111415; --panel:#171b1d; --panel-2:#1d2224; --panel-3:#252b2e; --line:#30383c; --line-2:#4a575e;
+  --ink:#f4f7f7; --muted:#b4c0c4; --dim:#9aaab0; --accent:#61d5a1; --accent-2:#43bd87; --accent-soft:#153226; --accent-ink:#07140d; --link:#91bcff; --link-soft:#182d48;
+  --champ:#d8c3a5; --glass:rgba(19,23,25,.95); --glass-ink:#f4f7f7; --track:#30383c; --sky:#0b0d0e;
+  --good:#61d5a1; --warn:#f0c477; --bad:#f19399; --info:#91bcff; --avatar-bg:#233b59; --avatar-ink:#d8e9ff;
+  --shadow:0 18px 48px rgba(0,0,0,.42); --btn:#61d5a1; --btn-ink:#07140d;
+  --grad:linear-gradient(135deg,#1d2224,#171b1d); color-scheme:dark;
 }
 *{box-sizing:border-box}
 html,body{background:var(--bg);color:var(--ink);margin:0}

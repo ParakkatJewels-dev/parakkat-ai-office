@@ -12,6 +12,8 @@ import { publishApproved } from '@/lib/agents/publish';
 import { loadAccess, saveAccess, saveSettings, dropAccess, type Platform } from '@/lib/connectors/vault';
 import { testOdoo } from '@/lib/connectors/odoo';
 import { normalizeOdooUrl, guessDb } from '@/lib/connectors/odoo-core.mjs';
+import { odooBranchNames, selectedOdooBranches } from '@/lib/connectors/odoo-scope-core.mjs';
+import { odooBranchChoices } from '@/lib/connectors/odoo-scope';
 import { connectionRows } from '@/lib/connectors/connect';
 import { chosen } from '@/lib/connectors/accounts.mjs';
 import { errText } from '@/lib/errors';
@@ -181,11 +183,45 @@ export async function connectOdoo(form: FormData) {
     if (!key) throw new Error('Enter the API key.');
     const cfg = { url, db: f('db') || guessDb(url), login: f('login'), key, online: f('online').split(',').map(x => x.trim()).filter(Boolean).slice(0, 20) };
     const t = await testOdoo(cfg);
-    await saveAccess('odoo', { access_token: key }, { url, db: cfg.db, login: cfg.login, online: cfg.online, version: t.version, warehouses: t.warehouses.slice(0, 30), pos: t.pos.slice(0, 30) }, null, user.id);
+    const sameAccount=saved?.settings.url===url&&saved?.settings.db===cfg.db;
+    await saveAccess('odoo', { access_token: key }, { url, db: cfg.db, login: cfg.login, online: cfg.online, version: t.version,
+      warehouses: t.warehouses, pos: t.pos, posBranches: t.posBranches, branchChoices: t.branchChoices,
+      excludedBranches: sameAccount ? odooBranchNames(saved.settings.excludedBranches) : [] }, null, user.id);
     await supabaseAdmin().from('connections').upsert({ provider: 'odoo', status: 'connected', account_ref: `${new URL(url).host}${cfg.db ? ` · ${cfg.db}` : ''}`, last_error: null });
     msg = `Odoo ${t.version} connected: ${t.warehouses.length} warehouse${t.warehouses.length === 1 ? '' : 's'} and ${t.pos.length} point${t.pos.length === 1 ? '' : 's'} of sale found. Press Sync data now to pull sales and stock.`;
   } catch (e) { await fail(e); }
   await done(msg);
+}
+
+export async function refreshOdooBranches() {
+  await admin();
+  try {
+    const saved=await loadAccess('odoo');
+    if(!saved?.settings.url)throw new Error('Connect Odoo before refreshing its branches.');
+    const s=saved.settings;
+    const t=await testOdoo({url:s.url,db:s.db||'',login:s.login||'',key:saved.tokens.access_token,online:s.online||[]});
+    await saveSettings('odoo',{version:t.version,warehouses:t.warehouses,pos:t.pos,posBranches:t.posBranches,branchChoices:t.branchChoices});
+    await done(`${t.branchChoices.length} branch and warehouse labels refreshed from Odoo. Choose which locations to include below.`);
+  } catch(error) { await fail(error); }
+}
+
+export async function saveOdooBranches(form: FormData) {
+  await admin();
+  try {
+    const saved=await loadAccess('odoo');
+    if(!saved?.settings.url)throw new Error('Connect Odoo before choosing branches.');
+    const choices=await odooBranchChoices(saved.settings);
+    const excluded=selectedOdooBranches(choices,form.getAll('includeBranch').map(String));
+    const warehouses=odooBranchNames(saved.settings.warehouses);
+    if(warehouses.length && warehouses.every(name=>excluded.includes(name)))throw new Error('Keep at least one Odoo warehouse included so stock can be read.');
+    await saveSettings('odoo',{excludedBranches:excluded});
+    let syncStarted=false;
+    try {
+      const db=supabaseAdmin(),holder=await claimSync(db);
+      if(holder){syncStarted=true;after(async()=>{try{await runClaimed(db,holder);}catch{/* Sync status is saved by the runner. */}});}
+    } catch { /* The selection is saved; the normal scheduler will retry sync. */ }
+    await done(`${choices.length-excluded.length} Odoo branches included; ${excluded.length} excluded from sales and stock. ${syncStarted?'A refresh started in the background.':'Press Sync data now to refresh stock and recent sales.'}`);
+  } catch(error) { await fail(error); }
 }
 
 export async function disconnectOdoo() {

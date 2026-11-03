@@ -31,6 +31,7 @@ function harness(){
     '@/lib/llm/gemini':{bannerImage:forbidden,geminiJSON:forbidden,imagePart:forbidden,carouselStyleBackground:forbidden},
     '@/lib/llm/gemini-config':{geminiConfigured:forbidden},'@/lib/llm/openai':{canWrite:forbidden,chatJSON:forbidden},
     './library':{pickRefs:async()=>[{id:'reference',name:'Original style'}],refParts:forbidden},
+    './creative-research':{researchArtwork:async()=>null,creativeResearchBrief:()=>''},
     './conversation-sales.mjs':{requestedSalesCategory:()=> 'Ring',conversationSalesWindows:()=>({completeThirtyDays:{from:'2026-09-28',to:'2026-10-28'}}),conversationCategorySales:async()=>({})},
     './carousel-core.mjs':{carouselSelection:()=>products},'@/lib/errors':{errText:e=>e.message},
   };

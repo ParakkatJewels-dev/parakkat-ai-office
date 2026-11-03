@@ -2,21 +2,22 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadAccess } from './vault';
 import { normalizeOdooUrl, guessDb, istDay, utcStart, addDays, m2o, skuOf, orderBranch, totals, runSalesDays, odooDeadline, isMissingOdooModel, type OdooSalesState } from './odoo-core.mjs';
+import { includedOdooBranch, odooBranchNames } from './odoo-scope-core.mjs';
 
 /**
  * Odoo, the ERP: sales for every showroom and the online store, and the stock actually on hand.
  * Odoo 19 and later answer on JSON-2 (/json/2/<model>/<method>, the API key as a bearer token). Older versions only have
  * JSON-RPC (/jsonrpc), which Odoo is retiring, so it is used only when JSON-2 is not there. Everything here only reads.
  */
-export type OdooCfg = { url: string; db: string; login: string; key: string; online: string[] };
+export type OdooCfg = { url: string; db: string; login: string; key: string; online: string[]; excludedBranches?: string[] };
 
 /** The Odoo connected on the Admin page, else one set in Vercel, else null. */
 async function config(): Promise<OdooCfg | null> {
   const s = await loadAccess('odoo');
-  if (s?.settings.url) return { url: s.settings.url, db: s.settings.db || '', login: s.settings.login || '', key: s.tokens.access_token, online: s.settings.online || [] };
+  if (s?.settings.url) return { url: s.settings.url, db: s.settings.db || '', login: s.settings.login || '', key: s.tokens.access_token, online: s.settings.online || [], excludedBranches: odooBranchNames(s.settings.excludedBranches) };
   const url = normalizeOdooUrl(process.env.ODOO_URL), key = process.env.ODOO_API_KEY;
   if (!url || !key) return null;
-  return { url, db: process.env.ODOO_DB || guessDb(url), login: process.env.ODOO_LOGIN || '', key, online: (process.env.ODOO_ONLINE || '').split(',').map(x => x.trim()).filter(Boolean) };
+  return { url, db: process.env.ODOO_DB || guessDb(url), login: process.env.ODOO_LOGIN || '', key, online: (process.env.ODOO_ONLINE || '').split(',').map(x => x.trim()).filter(Boolean), excludedBranches: odooBranchNames((process.env.ODOO_EXCLUDED_BRANCHES || '').split(',')) };
 }
 
 /** The Odoo address and database when it is connected. */
@@ -129,9 +130,16 @@ export async function odooClient() {
 export async function testOdoo(c: OdooCfg) {
   const o = new Odoo(c);
   await o.open();
-  const wh = await o.call<{ name: string }[]>('stock.warehouse', 'search_read', { domain: [], fields: ['name'], limit: 50 });
-  const pos = (await o.fields('pos.config')) ? await o.call<{ name: string }[]>('pos.config', 'search_read', { domain: [], fields: ['name'], limit: 50 }) : [];
-  return { version: o.version, warehouses: wh.map(w => w.name), pos: pos.map(p => p.name) };
+  const wh = await o.call<{ name: string }[]>('stock.warehouse', 'search_read', { domain: [], fields: ['name'], limit: 200 });
+  const pos = (await o.fields('pos.config')) ? await o.call<{ name: string }[]>('pos.config', 'search_read', { domain: [], fields: ['name'], limit: 200 }) : [];
+  const posBranchNames = pos.length ? odooBranchNames([...(await posBranches(o)).values()]) : [];
+  const optionalNames = async (model: string) => {
+    try { return await o.fields(model) ? (await o.call<{name:string}[]>(model, 'search_read', { domain: [], fields: ['name'], limit: 200 })).map(row => row.name) : []; }
+    catch { return []; }
+  };
+  const [teams, websites] = await Promise.all([optionalNames('crm.team'), optionalNames('website')]);
+  return { version: o.version, warehouses: wh.map(w => w.name), pos: pos.map(p => p.name), posBranches: posBranchNames,
+    branchChoices: odooBranchNames([...wh.map(w => w.name), ...posBranchNames, ...teams, ...websites]) };
 }
 
 type Prod = { id: number; default_code: string | false; barcode: string | false; display_name: string };
@@ -161,13 +169,38 @@ async function put(db: SupabaseClient, table: string, rows: Record<string, unkno
  * falling back to Shopify's count.
  */
 export async function syncOdooStock(db: SupabaseClient, deadline: number) {
-  const o = (await odooClient()).until(deadline), started = new Date().toISOString();
+  const cfg = (await config())!, o = new Odoo(cfg).until(deadline), started = new Date().toISOString();
   const pf = await o.fields('product.product');
   // only goods that are counted in stock; services and consumables have no stock to plan with
   const storable = pf?.has('is_storable') ? [['is_storable', '=', true]] : pf?.has('detailed_type') ? [['detailed_type', '=', 'product']] : [['type', '=', 'product']];
   const catalog = await o.all<Prod>('product.product', storable, ['default_code', 'barcode', 'display_name'], deadline);
   const qf = await o.fields('stock.quant');
-  const quants = await o.all<any>('stock.quant', [['location_id.usage', '=', 'internal']],
+  const excluded = odooBranchNames(cfg.excludedBranches);
+  const quantDomain: unknown[] = [['location_id.usage', '=', 'internal']];
+  const warehouseByLocation = new Map<number, string>();
+  if (excluded.length) {
+    const warehouses = await o.all<{name:string;lot_stock_id:any}>('stock.warehouse', [], ['name','lot_stock_id'], deadline);
+    const selected = warehouses.filter(warehouse => includedOdooBranch(warehouse.name, excluded));
+    if (!selected.length) throw new Error('Keep at least one Odoo warehouse included so stock can be read.');
+    if (selected.length < warehouses.length) {
+      const included = selected.map(warehouse => m2o(warehouse.lot_stock_id)?.id).filter((id): id is number => !!id);
+      if (!included.length) throw new Error('No included Odoo warehouse has a stock location. Keep at least one warehouse selected.');
+      quantDomain.push(['location_id', 'child_of', included]);
+      const roots = new Map(selected.map(warehouse => [m2o(warehouse.lot_stock_id)?.id, warehouse.name]));
+      const locations = await o.all<{id:number;parent_id:any}>('stock.location', [['id', 'child_of', included]], ['parent_id'], deadline);
+      const parents = new Map(locations.map(location => [location.id, m2o(location.parent_id)?.id]));
+      for (const location of locations) {
+        let current: number | undefined = location.id;
+        const seen = new Set<number>();
+        while (current && !seen.has(current)) {
+          const warehouse = roots.get(current);
+          if (warehouse) { warehouseByLocation.set(location.id, warehouse); break; }
+          seen.add(current); current = parents.get(current);
+        }
+      }
+    }
+  }
+  const quants = await o.all<any>('stock.quant', quantDomain,
     ['product_id', 'quantity', 'reserved_quantity', ...(qf?.has('warehouse_id') ? ['warehouse_id'] : []), 'location_id'], deadline);
 
   const have = new Map(catalog.map(p => [p.id, p]));
@@ -177,7 +210,8 @@ export async function syncOdooStock(db: SupabaseClient, deadline: number) {
   for (const q of quants) {
     const pid = m2o(q.product_id)?.id; if (!pid) continue;
     const p = have.get(pid), sku = p ? skuOf(p) : `odoo:${pid}`;
-    const wh = m2o(q.warehouse_id)?.name || m2o(q.location_id)?.name.split('/')[0] || 'Stock', k = `${sku}|${wh}`;
+    const location = m2o(q.location_id);
+    const wh = (location && warehouseByLocation.get(location.id)) || m2o(q.warehouse_id)?.name || location?.name.split('/')[0] || 'Stock', k = `${sku}|${wh}`;
     const r = rows.get(k) || { sku, warehouse: wh, product: p?.display_name || m2o(q.product_id)!.name, qty: 0, reserved: 0, updated_at: started };
     r.qty += Number(q.quantity) || 0; r.reserved += Number(q.reserved_quantity) || 0; rows.set(k, r);
   }
@@ -201,15 +235,18 @@ async function posBranches(o: Odoo) {
 }
 
 /** Sales from the showroom tills (Point of Sale) and from sales orders (the website and the other channels), for days from..to. */
-async function readSales(o: Odoo, from: string, to: string, deadline: number, online: string[]) {
+async function readSales(o: Odoo, from: string, to: string, deadline: number, online: string[], excluded: string[]) {
   const t = totals(), names = new Map<number, Prod>(), start = utcStart(from), end = utcStart(addDays(to, 1));
   const lines: { pid: number; day: string | null; branch: string; kind: string; units: number; revenue: number; order: number | null }[] = [];
 
   const posFields = await o.fields('report.pos.order');
   if (posFields) {
     const branch = await posBranches(o);
-    const pos = await o.all<any>('report.pos.order', [['date', '>=', start], ['date', '<', end], ['state', 'not in', ['draft', 'cancel']]],
-      ['date', 'config_id', 'product_id', 'product_qty', 'price_total', 'order_id'], deadline);
+    const eligibleConfigs = [...branch].filter(([, name]) => includedOdooBranch(name, excluded)).map(([id]) => id);
+    const posDomain: unknown[] = [['date', '>=', start], ['date', '<', end], ['state', 'not in', ['draft', 'cancel']]];
+    if (excluded.length) posDomain.push(['config_id', 'in', eligibleConfigs]);
+    const pos = eligibleConfigs.length || !excluded.length ? await o.all<any>('report.pos.order', posDomain,
+      ['date', 'config_id', 'product_id', 'product_qty', 'price_total', 'order_id'], deadline) : [];
     for (const r of pos) {
       const pid = m2o(r.product_id)?.id, cfg = m2o(r.config_id); if (!pid) continue;
       lines.push({ pid, day: istDay(r.date), branch: (cfg && branch.get(cfg.id)) || cfg?.name || 'Point of Sale', kind: 'showroom', units: r.product_qty, revenue: r.price_total, order: m2o(r.order_id)?.id ?? null });
@@ -220,7 +257,9 @@ async function readSales(o: Odoo, from: string, to: string, deadline: number, on
   if (sf) {
     const extra = ['website_id', 'warehouse_id', 'team_id'].filter(f => sf.has(f));
     const orders = await o.all<any>('sale.order', [['date_order', '>=', start], ['date_order', '<', end], ['state', 'in', ['sale', 'done']]], ['date_order', ...extra], deadline);
-    const byId = new Map(orders.map(x => [x.id as number, { day: istDay(x.date_order), ...orderBranch(x, online) }]));
+    const selected: [number, { day: string | null; branch: string; kind: string; warehouse: string | null }][] = orders.map(x => [x.id as number,
+      { day: istDay(x.date_order), ...orderBranch(x, online), warehouse: m2o(x.warehouse_id)?.name || null }]);
+    const byId = new Map(selected.filter(([, value]) => includedOdooBranch(value.branch, excluded) && (!value.warehouse || includedOdooBranch(value.warehouse, excluded))));
     const ids = [...byId.keys()];
     for (let i = 0; i < ids.length; i += 500) {
       const ls = await o.call<any[]>('sale.order.line', 'search_read',
@@ -239,7 +278,7 @@ async function readSales(o: Odoo, from: string, to: string, deadline: number, on
     const p = names.get(l.pid);
     t.add({ ...l, sku: p ? skuOf(p) : `odoo:${l.pid}`, product: p?.display_name || '' });
   }
-  const coverage = posFields && sf ? 'sales orders and POS' : posFields ? 'POS only; sales orders unavailable' : 'sales orders only; POS module unavailable';
+  const coverage = (posFields && sf ? 'sales orders and POS' : posFields ? 'POS only; sales orders unavailable' : 'sales orders only; POS module unavailable') + (excluded.length ? `; ${excluded.length} branch label(s) excluded` : '');
   return { branchRows: t.branchRows(), lineRows: t.lineRows(), coverage };
 }
 
@@ -251,7 +290,7 @@ export async function syncOdooSales(db: SupabaseClient, deadline: number) {
   const { data: saved, error: cursorError } = await db.from('sync_cursors').select('state').eq('name', 'odoo_sales').maybeSingle();
   if (cursorError) throw new Error('Could not read the Odoo sales checkpoint.');
   const result = await runSalesDays({ today, state: (saved?.state || {}) as OdooSalesState, deadline,
-    read: w => readSales(o, w.from, w.to, deadline - 8000, c.online),
+    read: w => readSales(o, w.from, w.to, deadline - 8000, c.online, odooBranchNames(c.excludedBranches)),
     commit: async (w, t, state) => {
       const { error } = await db.rpc('replace_odoo_sales_day', { p_day: w.from, p_branches: t.branchRows, p_sales: t.lineRows, p_state: state })
         .abortSignal(AbortSignal.timeout(Math.max(1, Math.min(15_000, deadline - Date.now()))));

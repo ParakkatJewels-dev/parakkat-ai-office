@@ -79,3 +79,25 @@
 @media(max-width:720px){.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.summary>:nth-child(2){border-right:0}.summary>:nth-child(-n+2){border-bottom:1px solid var(--line)}.galleryCard :global(.card-head){flex-wrap:wrap}.galleryActions{justify-content:flex-start}.filterBar{align-items:stretch}.filterBar :global(.seg){width:100%}.filterBar :global(.seg a){flex:1;justify-content:center;text-align:center}.galleryCard .galleryGrid{grid-template-columns:minmax(0,1fr)}.galleryItem :global(.art){max-height:none}.studioPage :global(.two){grid-template-columns:minmax(0,1fr)}}
 @media(max-width:480px){.studioPage :global(.card){padding:12px}.summary>div,.summary>a{padding:9px 10px}.studioPage :global(.fmts){grid-template-columns:repeat(2,minmax(0,1fr))}.studioPage :global(.picker ul){grid-template-columns:repeat(2,minmax(0,1fr))}.fileActions{grid-template-columns:minmax(0,1fr)}.bulkRedo form>:global(.btn){width:100%}.filterBar :global(.inline){width:100%}.folderRows :global(.grow){min-width:calc(100% - 42px)}}
 @media(pointer:coarse){.studioPage :global(.btn),.studioPage :global(.tabs>a),.filterBar :global(.seg a),.studioPage :global(.field input),.studioPage :global(.field select),.studioPage :global(.in),.studioPage summary{min-height:44px}}
+
+/* Studio follows the shared workspace system while keeping artwork prominent. */
+.studioPage{gap:18px}
+.studioPage :global(.card){padding:20px;border-radius:12px}
+.studioPage :global(.btn){min-height:42px;border-radius:8px;padding:9px 14px}
+.studioPage :global(.in),.studioPage :global(.field input),.studioPage :global(.field select),.studioPage :global(.field textarea){min-height:42px;border-radius:8px;padding:9px 11px}
+.studioPage :global(.flash){padding:12px 14px;border-radius:8px}
+.summary{border-radius:10px}
+.summary>div,.summary>a{padding:14px 16px}
+.summary strong{font-size:22px}
+.handoffNotice{padding:11px 14px;border-radius:8px}
+.galleryCard .galleryGrid{gap:16px}
+.galleryGrid>.galleryItem{border-radius:10px}
+.galleryItem :global(.meta){padding:16px}
+.filterBar :global(.seg){border-radius:8px}
+.galleryItem :global(.verdict),.galleryItem :global(.ver){border-radius:6px}
+.progressOverlay{border-radius:8px}
+.bulkRedo{border-radius:8px}
+.studioPage :global(.fmts label),.studioPage :global(.picker label){border-radius:8px}
+.libraryGrid>li{border-radius:10px}
+@media(max-width:720px){.studioPage :global(.card){padding:16px}.summary>div,.summary>a{padding:12px}.summary strong{font-size:19px}}
+@media(max-width:480px){.studioPage :global(.card){padding:14px}.summary>div,.summary>a{padding:11px 12px}}

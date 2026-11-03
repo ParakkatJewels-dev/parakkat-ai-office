@@ -30,6 +30,14 @@
 .testAction>b,.testAction div>b{font-size:13px;font-weight:600}
 .testAction p{margin-top:4px}
 .testAction form{flex:none}
+.branchScope{display:grid;gap:12px;padding-top:14px;border-top:1px solid var(--line)}
+.branchHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.branchHead b{font-size:13px;color:var(--ink)}
+.branchHead p{font-size:12px;color:var(--muted);margin-top:4px;max-width:650px}
+.branchList{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,170px),1fr));gap:8px 12px;max-height:320px;overflow:auto;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.branchList legend{font-size:12px;color:var(--muted);padding:0 5px}
+.branchList label{display:flex;align-items:center;gap:7px;font-size:12px;overflow-wrap:anywhere}
+.branchList input{flex:none}
 @media(max-width:620px){
   .list>.card{padding:14px;gap:11px}
   .card :global(.integr-top){flex-wrap:wrap;gap:10px}

@@ -18,6 +18,7 @@ function harness(options={}) {
     '@/lib/supabase/admin':{supabaseAdmin:()=>admin},
     '@/lib/agents/conversation-api':{conversationUser:async()=>options.signedOut?null:{db:{from:()=>query(false)},user:{id:options.userId||'owner'},role:options.role||'ecom_manager'}},
     '@/lib/agents/design':{FORMATS:{}},'@/lib/agents/library-core.mjs':{},'@/lib/agents/carousel-card.mjs':{},'@/lib/connectors/drive':{},
+    '@/lib/connectors/shopify':{shopifyArtworkPrice:async()=>null},
     '@/lib/artwork-mode.mjs':{isChatGPTHandoff:()=>true},'./import-core.mjs':core,
   };
   const exports={};new Function('exports','require',code)(exports,name=>{assert.ok(name in modules,`Unexpected import ${name}`);return modules[name];});

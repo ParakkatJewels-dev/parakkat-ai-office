@@ -5,7 +5,7 @@ import { canWrite } from '@/lib/llm/openai';
 import { byId } from '@/lib/agents/people';
 import { runConversationTask } from '@/lib/agents/conversation';
 import { conversationUser, conversationAgent, conversationError, json, uuid, meetingView } from '@/lib/agents/conversation-api';
-import { carouselIntent, salesPosterIntent, carouselRedesignIntent } from '@/lib/agents/carousel-core.mjs';
+import { carouselIntent, salesPosterIntent, productArtworkIntent, carouselRedesignIntent } from '@/lib/agents/carousel-core.mjs';
 import { artworkRevisionIntent, readConversationArtworks } from '@/lib/agents/conversation-artwork.mjs';
 
 export const runtime = 'nodejs';
@@ -70,7 +70,7 @@ export async function POST(request: Request, context: Context) {
   if (!body || typeof body.message !== 'string' || !body.message.trim() || body.message.trim().length > 6000 || !uuid(body.clientId) || (body.threadId != null && !uuid(body.threadId)) || (body.meeting != null && typeof body.meeting !== 'boolean')) return json({ error: 'Enter a task of 1 to 6000 characters.' }, 400);
   try { await checkPause(); } catch { return json({ error: 'Agents are paused. Resume them in Admin before assigning work.' }, 409); }
   const imageJob = body.meeting !== true && byId[agent.id]?.head && (
-    !!salesPosterIntent(body.message) || !!carouselRedesignIntent(body.message) || !!carouselIntent(body.message) || artworkRevisionIntent(body.message));
+    !!salesPosterIntent(body.message) || !!productArtworkIntent(body.message) || !!carouselRedesignIntent(body.message) || !!carouselIntent(body.message) || artworkRevisionIntent(body.message));
   if (!imageJob && !await canWrite()) return json({ error: 'ChatGPT needs available plan usage for this conversation’s final answer. Check Settings → AI providers.' }, 503);
   const { data, error } = await session.db.rpc('enqueue_agent_task', {
     p_agent: agent.id, p_prompt: body.message.trim(), p_client: body.clientId,

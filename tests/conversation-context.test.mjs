@@ -32,6 +32,7 @@ test('source selection retains evidence appropriate to the request and omits unr
     assert.ok(conversationEvidenceKeys(request).includes('productSales30d'), request);
   }
   assert.deepEqual(conversationEvidenceKeys('Top selling Ring products for a carousel'), ['sync', 'categorySales30d']);
+  assert.ok(conversationEvidenceKeys('Find the top selling product today and which branch').includes('odooDay'));
   assert.deepEqual(conversationEvidenceKeys('സഹായിക്കാമോ'), ['sync', 'performance', 'products', 'productSales7d']);
 });
 test('agent work history is included for status requests, not unrelated sales-report or date-range tasks',()=>{

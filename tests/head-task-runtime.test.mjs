@@ -35,6 +35,8 @@ function harness(responses=[plan(),worker(),approval,qc]) {
   const modules={
     'node:crypto':crypto,'server-only':{},'@/office/roster.mjs':{PEOPLE},'./head-task-core.mjs':core,'./head-evidence.mjs':headEvidence,'./head-task-jev':{tryJevHeadPlan:async()=>{state.jevAttempts=(state.jevAttempts||0)+1;if(state.jevError)throw state.jevError;state.onJev?.();return state.jevPlan||state.jevGeneral?{plan:state.jevPlan||null}:null;}},'./handler-core.mjs':handlerCore,
     '@/lib/agents/conversation-context.mjs':context,
+    '@/lib/connectors/odoo-scope':{excludedOdooBranches:async()=>[]},
+    '@/lib/agents/odoo-day.mjs':{readOdooDay:async()=>{state.queries.push('odoo_sales_daily');return {available:true,coverage:{source:'Odoo sale.order lines'},summary:{leader:{sku:'PSR0-15-031',units:10,branches:[{branch:'PPWH',units:10}]}},data:[]};}},
     '@/lib/agents/conversation-sales.mjs':{
       requestedSalesCategory:()=>null,
       conversationProductCatalog:async()=>{state.queries.push('product_stock');return {available:true,observed_at:'2026-10-26',coverage:'Bounded catalogue. Empty rows do not prove zero stock.',data:[]};},

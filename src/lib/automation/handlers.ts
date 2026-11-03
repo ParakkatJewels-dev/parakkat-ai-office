@@ -4,6 +4,8 @@ import { chatJSON } from '@/lib/llm/openai';
 import { agentPrompt } from '@/lib/agents/agent-instructions';
 import { withUsage } from '@/lib/usage';
 import { withAgentWork, type AgentWorkKind } from '@/lib/agents/agent-work';
+import { excludedOdooBranches, scopedOdooTopProducts } from '@/lib/connectors/odoo-scope';
+import { withoutOdooBranches } from '@/lib/connectors/odoo-scope-core.mjs';
 import { boundedText, finiteNumber, closedWindows, missingDays, odooWindowComplete, dataQualityFindings, inventoryPlan, catalogueIssues, validatedCatalogueDrafts, validatedReply, validatedFollowUp, aggregateAds } from './handler-core.mjs';
 
 type Read = { available: boolean; rows: any[]; complete: boolean; count?: number | null };
@@ -61,10 +63,11 @@ function followUp(title: string, brief: string, ownerAgent: string, dueInHours =
 
 async function briefing(ctx: AutomationContext): Promise<AutomationOutcome> {
   const w = closedWindows(), db = ctx.db;
+  const excluded = await excludedOdooBranches();
   await ctx.event('analyticsLead', 'Collecting the completed-day sales and outstanding work for the management brief.');
   const [shop, branches, connections, cursors, approvals, tasks, stock] = await Promise.all([
     one(ctx, db.rpc('dashboard_report', { p_from: w.shopify.from, p_to: w.shopify.to })),
-    readRows(ctx, () => db.from('odoo_branch_daily').select('day,branch,kind,orders,revenue').eq('day', w.odoo.to).order('branch'), 2000),
+    readRows(ctx, () => withoutOdooBranches(db.from('odoo_branch_daily').select('day,branch,kind,orders,revenue').eq('day', w.odoo.to).order('branch'), excluded), 2000),
     readRows(ctx, () => db.from('connections').select('provider,status,last_synced_at').order('provider'), 100),
     readRows(ctx, () => db.from('sync_cursors').select('name,state,updated_at').in('name', ['odoo_sales', 'shopify_products']).order('name'), 20),
     readRows(ctx, () => db.from('campaigns').select('id,name,status,created_at').eq('status', 'in_approval').order('created_at'), 100),
@@ -139,9 +142,10 @@ async function dataQuality(ctx: AutomationContext): Promise<AutomationOutcome> {
 
 async function inventory(ctx: AutomationContext): Promise<AutomationOutcome> {
   const db = ctx.db, w = closedWindows();
+  const excluded = await excludedOdooBranches();
   await ctx.event('forecaster', 'Comparing recorded product demand with mapped warehouse availability.');
   const [top, settings, cursor, connection] = await Promise.all([
-    one(ctx, db.rpc('odoo_top_products', { p_since: w.odooMonth.from, p_limit: 25 })),
+    scopedOdooTopProducts(db, w.odooMonth.from, 25, excluded).then(value => ({ available: true, value })).catch(() => ({ available: false, value: null })),
     one(ctx, db.from('automation_settings').select('inventory_rules').eq('id', 1).maybeSingle()),
     one(ctx, db.from('sync_cursors').select('state,updated_at').eq('name', 'odoo_sales').maybeSingle()),
     one(ctx, db.from('connections').select('status,last_synced_at').eq('provider', 'odoo').maybeSingle()),
@@ -150,8 +154,8 @@ async function inventory(ctx: AutomationContext): Promise<AutomationOutcome> {
   const skus = [...new Set<string>(skuInput.length ? skuInput : (Array.isArray(top.value) ? top.value : []).map((row: any) => boundedText(row.sku, 120)).filter(Boolean))];
   if (!skus.length) return result({ status: 'blocked', summary: 'Inventory planning needs recorded product sales or selected SKUs.', markdown: 'No usable product identifiers were returned. This is not evidence of no demand or zero stock. Sync Odoo or provide known SKUs, then retry.', evidence: [evidence('Odoo', `Candidate lookup ${top.available ? 'returned no usable SKUs' : 'was unavailable'}.`, w.observedAt)], warnings: ['No transfer or reorder quantities were calculated.'] });
   const [sales, stock] = await Promise.all([
-    readRows(ctx, () => db.from('odoo_sales_daily').select('day,branch,sku,product,units,revenue').gte('day', w.odooMonth.from).lte('day', w.odooMonth.to).in('sku', skus).order('day').order('branch').order('sku'), 10000),
-    readRows(ctx, () => db.from('odoo_stock').select('sku,warehouse,product,qty,reserved,updated_at').in('sku', skus).order('sku').order('warehouse'), 5000),
+    readRows(ctx, () => withoutOdooBranches(db.from('odoo_sales_daily').select('day,branch,sku,product,units,revenue').gte('day', w.odooMonth.from).lte('day', w.odooMonth.to).in('sku', skus).order('day').order('branch').order('sku'), excluded), 10000),
+    readRows(ctx, () => withoutOdooBranches(db.from('odoo_stock').select('sku,warehouse,product,qty,reserved,updated_at').in('sku', skus).order('sku').order('warehouse'), excluded, 'warehouse'), 5000),
   ]);
   const stockFresh = connection.value?.status === 'connected' && Date.parse(connection.value?.last_synced_at || '') > Date.now() - 8 * 36e5 && stock.rows.every(row => Date.parse(row.updated_at || '') > Date.now() - 8 * 36e5);
   const plan = inventoryPlan({ sales: sales.rows, stock: stock.rows, rules: settings.value?.inventory_rules || {}, window: w.odooMonth, salesComplete: sales.available && sales.complete && odooWindowComplete(cursor.value?.state, w.odooMonth), stockComplete: stock.available && stock.complete, stockFresh });

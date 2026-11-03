@@ -21,6 +21,8 @@ import { seoSuccessSummary } from './seo-status.mjs';
 import { withAgentWork, type AgentWorkKind } from './agent-work';
 import { runAutomationQueue } from '@/lib/automation/runner';
 import { syncInstagramInbox } from '@/lib/connectors/instagram-inbox';
+import { excludedOdooBranches, scopedOdooTopProducts } from '@/lib/connectors/odoo-scope';
+import { withoutOdooBranches } from '@/lib/connectors/odoo-scope-core.mjs';
 
 /**
  * The agents' own schedule. The every-minute tick calls runAutopilot(), which runs the one job most overdue:
@@ -117,7 +119,7 @@ async function stock(db: SupabaseClient) {
   await emit(db, null, 'think', 'picker', 'Checking stock on this month\'s best sellers');
   const { data } = await db.rpc('sales_by_product', { p_since: daysAgo(30), p_limit: 40 });
   // best sellers in the showrooms come from Odoo, with Odoo's stock; Shopify's best sellers already read Odoo's stock where matched
-  const { data: shop } = await db.rpc('odoo_top_products', { p_since: daysAgo(30), p_limit: 40 });
+  const shop = await scopedOdooTopProducts(db, daysAgo(30), 40);
   const rows = [
     ...(data || []) as { title: string | null; inventory: number | null; units: number }[],
     ...((shop || []) as any[]).map(p => ({ title: p.product || p.sku, inventory: p.stock == null ? null : Math.floor(+p.stock), units: +p.units })),
@@ -153,7 +155,8 @@ async function sales(db: SupabaseClient) {
 
 /** Each branch in Odoo yesterday against its own daily average over the two weeks before; big moves are flagged. */
 async function branchDays(db: SupabaseClient, y: string) {
-  const { data } = await db.from('odoo_branch_daily').select('day, branch, revenue').gte('day', daysAgo(15)).lte('day', y).limit(20000);
+  const excluded = await excludedOdooBranches();
+  const { data } = await withoutOdooBranches(db.from('odoo_branch_daily').select('day, branch, revenue').gte('day', daysAgo(15)).lte('day', y).limit(20000), excluded);
   if (!(data || []).length) return null;
   // a branch has no row on a day it sold nothing, so the average is over the days any branch has, not that branch's own
   const by = new Map<string, { y: number; before: number }>(), days = new Set<string>();

@@ -1,8 +1,11 @@
 import { requestedSalesCategory } from './conversation-sales.mjs';
+import { odooDayIntent } from './odoo-day.mjs';
 const words=text=>new Set(String(text||'').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu)||[]);
 export function conversationEvidenceKeys(request) {
   const text=String(request||'').toLowerCase(),keys=new Set(['sync']);
-  if(requestedSalesCategory(text)) {
+  const dailyOdoo=odooDayIntent(text);
+  if(dailyOdoo)keys.add('odooDay');
+  if(requestedSalesCategory(text)&&!dailyOdoo) {
     keys.add('categorySales30d');
     if(!/\b(?:compare|against|forecast|replenish|performance|roas|spend)\b/.test(text))return [...keys];
   }

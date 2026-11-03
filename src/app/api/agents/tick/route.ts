@@ -8,6 +8,7 @@ import { isCron } from '@/lib/auth/session';
 import { errText } from '@/lib/errors';
 import { isPaused } from '@/lib/pause';
 import { refreshOutcomeMonitoring } from '@/lib/outcomes/service';
+import { runAutomationQueue } from '@/lib/automation/runner';
 
 export const maxDuration = 300;
 
@@ -31,6 +32,12 @@ export async function POST(req: Request) {
   } finally { await db.rpc('release_job_lock', { p_name: 'tick', p_holder: holder }); }
   let autopilot: unknown = null;
   try { autopilot = await runAutopilot(db); } catch (e) { autopilot = 'failed: ' + errText(e); }
+  // Human-assigned workflows must not wait behind unrelated autopilot jobs.
+  // The durable business_automation lock makes this safe when autopilot also chose that job.
+  let workflows: unknown = null;
+  if (Date.now() - t0 < 90_000) {
+    try { workflows = await runAutomationQueue(db); } catch (e) { workflows = 'failed: ' + errText(e); }
+  }
   // designs and redesigns are drawn right after they are ordered; this picks up any whose drawing never started or died
   let designs: unknown = null;
   if (Date.now() - t0 < 120_000) {
@@ -39,5 +46,5 @@ export async function POST(req: Request) {
   }
   let outcomes:unknown=null;
   if(Date.now()-t0<180000&&!await isPaused(true))try{outcomes=await refreshOutcomeMonitoring(db);}catch{outcomes={error:'Outcome monitoring could not complete; saved evidence is retained.'};}
-  return NextResponse.json({ moved, autopilot, designs,outcomes });
+  return NextResponse.json({ moved, autopilot, workflows, designs,outcomes });
 }

@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   const parts = (req.cookies.get(STATE_COOKIE)?.value || '').split('.'), [cp, cState = ''] = parts, shop = parts.slice(2).join('.');
   const state = q.get('state') || '';
   const back = (key: 'msg' | 'error', text: string) => {
-    const res = NextResponse.redirect(new URL(`/admin?tab=connections&${key}=${encodeURIComponent(text)}`, req.url));
+    const res = NextResponse.redirect(new URL(`/admin?tab=connections&${key}=${encodeURIComponent(text)}`, process.env.APP_URL || req.nextUrl.origin));
     res.cookies.delete({ name: STATE_COOKIE, path: '/api/connect' });
     return res;
   };
@@ -36,6 +36,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
         if(selected.length){f.settings.ad_account_ids=selected;f.settings.ad_account_id=selected.includes(old.ad_account_id)?old.ad_account_id:selected[0];}
         const page=(f.settings.choices?.pages||[]).find((page:{id:string})=>page.id===old.page_id);
         if(page){f.settings.page_id=page.id;f.settings.ig_user_id=page.ig||undefined;}
+      }
+    }
+    if(p==='google') {
+      const previous=await loadAccess('google'),old=previous?.settings;
+      if(old){
+        const customers=new Set((f.settings.choices?.customers||[]).map((a:{id:string})=>a.id));
+        const selected=(old.customer_ids||[old.customer_id]).filter((id:string)=>id&&customers.has(id));
+        if(selected.length)f.settings.customer_ids=selected;
+        if(old.login_customer_id&&customers.has(old.login_customer_id))f.settings.login_customer_id=old.login_customer_id;
+        const properties=new Set((f.settings.choices?.properties||[]).map((a:{id:string})=>a.id));
+        if(old.ga4_property_id&&properties.has(old.ga4_property_id))f.settings.ga4_property_id=old.ga4_property_id;
       }
     }
     await saveAccess(p, f.tokens, f.settings, f.expiresAt, user.id);

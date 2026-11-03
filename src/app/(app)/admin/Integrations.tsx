@@ -5,7 +5,9 @@ import { Icon } from '@/components/Icon';
 import { when } from '@/components/ui';
 import { chosen, googleId, googleLabel, metaAdLabel, metaId, pageLabel, type GoogleChoice } from '@/lib/connectors/accounts.mjs';
 import { Locked, Submit, GoLink } from '@/components/forms';
-import { chooseAccounts, disconnect, connectOdoo, disconnectOdoo } from './actions';
+import { chooseAccounts, disconnect, connectOdoo, disconnectOdoo, refreshOdooBranches, saveOdooBranches } from './actions';
+import { odooBranchChoices } from '@/lib/connectors/odoo-scope';
+import { odooBranchNames } from '@/lib/connectors/odoo-scope-core.mjs';
 import { ChatGPTCard } from './ChatGPTCard';
 import { GeminiCard } from './GeminiCard';
 import { JevCard } from './JevCard';
@@ -94,24 +96,25 @@ export async function Integrations() {
         </li>
       );
     })}
-    <OdooCard saved={saved.odoo as any} unavailable={!!error} />
+    <OdooCard saved={saved.odoo as any} unavailable={!!error}
+      branches={saved.odoo ? await odooBranchChoices((saved.odoo as any).settings).catch(() => odooBranchNames((saved.odoo as any).settings?.branchChoices)) : []} />
     </ul>
     </>
   );
 }
 
 /** Odoo connects with an API key typed here rather than a sign-in. The key is never sent back to the page. */
-function OdooCard({ saved: c, unavailable }: { saved?: { settings: Record<string, any>; updated_at: string }; unavailable: boolean }) {
+function OdooCard({ saved: c, unavailable, branches }: { saved?: { settings: Record<string, any>; updated_at: string }; unavailable: boolean; branches: string[] }) {
   const s = c?.settings || {}, viaEnv = !c && !!process.env.ODOO_URL && !!process.env.ODOO_API_KEY;
+  const excluded=new Set(odooBranchNames(s.excludedBranches));
   return (
     <li id="odoo" className={styles.card}>
       <div className="integr-top">
         <span className="tile-ic"><Icon name="plug" size={18} /></span>
-        <div className="grow"><b>Odoo</b><span className="sm">Sales for every showroom and the online store, and the real stock</span></div>
+        <div className="grow"><b>Odoo</b><span className="sm">Selected sales branches and warehouse stock</span></div>
         {unavailable ? <span className="pill warn">Status unavailable</span> : c ? <span className="pill good">Connected</span> : viaEnv ? <span className="pill acc">Server keys</span> : <span className="pill">Not connected</span>}
       </div>
-      {c && <span className="sm">Odoo {s.version} · {s.url ? new URL(s.url).host : ''} · connected {when(c.updated_at)}
-        {(s.warehouses || []).length ? ` · warehouses: ${s.warehouses.join(', ')}` : ''}{(s.pos || []).length ? ` · points of sale: ${s.pos.join(', ')}` : ''}</span>}
+      {c && <span className="sm">Odoo {s.version} · {s.url ? new URL(s.url).host : ''} · connected {when(c.updated_at)} · {excluded.size} branch{excluded.size===1?'':'es'} excluded</span>}
       <details className={styles.configure} open={!c && !viaEnv && !unavailable}>
         <summary>{c || viaEnv ? 'Manage connection' : 'Connect Odoo'}<span>Server and API access</span></summary>
         <div className={styles.configurationBody}>
@@ -123,6 +126,10 @@ function OdooCard({ saved: c, unavailable }: { saved?: { settings: Record<string
         <label className="field">Sales teams that are the online store<input name="online" className="in" defaultValue={(s.online || []).join(', ')} placeholder="Optional, e.g. Website, Shopify" /></label>
         <span className="sm">Read only: the app never changes anything in Odoo. Use a user that can read Sales, Point of Sale and Inventory. On Odoo Online the API needs the Custom plan.</span>
       </Locked>
+      {c && <section className={styles.branchScope} aria-label="Odoo branch selection"><div className={styles.branchHead}><div><b>Branches to include</b><p>Untick branches whose sales and stock should stay out of AI Office. Labels come from Odoo warehouses, sales teams, websites and recorded sales.</p></div><form action={refreshOdooBranches}><Submit ghost small pending="Refreshing…">Refresh list from Odoo</Submit></form></div>
+        {branches.length ? <form action={saveOdooBranches}><fieldset className={styles.branchList}><legend>{branches.length} Odoo labels</legend>{branches.map(branch=><label key={branch} className="check"><input type="checkbox" name="includeBranch" value={branch} defaultChecked={!excluded.has(branch)} /><span>{branch}</span></label>)}</fieldset><p className="sm">The selection filters saved reports immediately. A background Odoo sync refreshes stock and recent sales without excluded branches.</p><Submit small pending="Saving…">Save branch selection</Submit></form>
+          : <p className="sm">No branch labels are available yet. Refresh the list from Odoo.</p>}
+      </section>}
       {c && <div className="integr-act"><form action={disconnectOdoo}><Submit ghost small danger pending="Disconnecting…" confirmTitle="Disconnect Odoo?" confirmLabel="Disconnect" confirm="Remove the saved Odoo connection from AI Office. Any installed server credentials may still be used. Your Odoo records are unchanged.">Disconnect</Submit></form></div>}
         </div>
       </details>

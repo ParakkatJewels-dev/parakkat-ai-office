@@ -32,6 +32,7 @@ export function TopBar({ name, role, waiting, admin = false, seo = false, studio
   const box = useRef<HTMLInputElement>(null), profile = useRef<HTMLDetailsElement>(null);
   const pages = useMemo<Hit[]>(() => [
     { id: 'page-dashboard', label: 'Dashboard', sub: 'Business overview', href: '/dashboard', icon: 'chart' },
+    { id: 'page-tasks', label: 'Tasks & chat', sub: 'Assign work and read team reports', href: '/tasks', icon: 'doc' },
     { id: 'page-office', label: 'Office map', sub: 'Your team at work', href: '/office', icon: 'map' },
     { id: 'page-agents', label: 'Agent reports', sub: 'People, activity and conversations', href: '/agents', icon: 'users' },
     { id: 'page-approvals', label: 'Approvals', sub: 'Review work waiting for you', href: '/approvals', icon: 'check' },
@@ -111,6 +112,7 @@ export function TopBar({ name, role, waiting, admin = false, seo = false, studio
         </div>}
       </div>
       <div className="top-actions">
+        <Link href="/tasks" className="top-create" aria-label="Create a new task"><Icon name="plus" size={17}/><span>New task</span></Link>
         <button type="button" className="iconbtn theme-toggle" onClick={theme} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}><Icon name={dark ? 'sun' : 'moon'} /></button>
         <Link href="/approvals" className="iconbtn" aria-label={waiting ? `${waiting} approvals waiting for you` : 'View approvals'} title="Approvals"><Icon name="bell" />{waiting > 0 && <i className="dot" />}</Link>
         <details className="me" ref={profile}>

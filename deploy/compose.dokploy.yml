@@ -14,6 +14,7 @@ services:
       - ${PARAKKAT_ENV_FILE:-/etc/parakkat-ai-office.env}
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=1536
       CHATGPT_AUTH_DIR: /var/lib/parakkat-ai-office/chatgpt
       GEMINI_CONFIG_DIR: /var/lib/parakkat-ai-office/provider-secrets
       # Runtime variables are already injected; the host env-file path is not inside the container.
@@ -28,7 +29,7 @@ services:
       - office
     restart: unless-stopped
     cpus: 1.0
-    mem_limit: 1536m
+    mem_limit: 2560m
     pids_limit: 192
     init: true
     security_opt:

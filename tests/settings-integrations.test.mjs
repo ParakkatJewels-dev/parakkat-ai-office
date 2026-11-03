@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import * as accounts from '../src/lib/connectors/accounts.mjs';
+import * as odooScopeCore from '../src/lib/connectors/odoo-scope-core.mjs';
 
 const jsx={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'fragment'};
 function load(file,modules,env={}){
@@ -24,6 +25,7 @@ test('business connection cards preserve account controls, keep errors visible, 
   const {Integrations,AIIntegrations}=load('../src/app/(app)/admin/Integrations.tsx',{
     ...shared,'@/lib/supabase/admin':{supabaseAdmin:()=>({from:()=>({select:async fields=>{selected=fields;return {data:saved,error:null};}})})},
     '@/lib/connectors/connect':{APP_KEYS:{meta:[],google:[],shopify:[]},appReady:()=>true},'@/lib/connectors/accounts.mjs':accounts,
+    '@/lib/connectors/odoo-scope':{odooBranchChoices:async settings=>settings.warehouses||[]},'@/lib/connectors/odoo-scope-core.mjs':odooScopeCore,
     './actions':{chooseAccounts:'chooseAccounts',disconnect:'disconnect',connectOdoo:'connectOdoo',disconnectOdoo:'disconnectOdoo'},'./ChatGPTCard':{ChatGPTCard:'ChatGPTCard'},'./NimCard':{NimCard:'NimCard'},'./GeminiCard':{GeminiCard:'GeminiCard'},'./JevCard':{JevCard:'JevCard'},
   });
   const tree=await Integrations();

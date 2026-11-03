@@ -68,6 +68,7 @@ function harness(options = {}) {
     '@/lib/agents/library-core.mjs': { rankDesignReferences, referenceFingerprint },
     '@/lib/agents/carousel-card.mjs': { shopifyPhotoUrl, fetchShopifyPhoto: async url => { state.photoReads.push(url); return url === photo(2) ? images[1] : images[0]; } },
     '@/lib/connectors/drive': { designImageById: async (driveId,signal,expected) => { state.driveReads.push({ driveId, signal, expected }); if (options.driveError) throw new Error('Changed Drive original'); return { data: images[3] }; } },
+    '@/lib/connectors/shopify': { shopifyArtworkPrice: async () => options.price || null },
     '@/lib/artwork-mode.mjs': { isChatGPTHandoff: () => true }, './import-core.mjs': core,
   };
   const api = {};
@@ -105,6 +106,18 @@ test('packet and pack keep selected product order, actual source pixels and prev
   assert.equal(h.state.saves,1);
   assert.ok(h.state.writes.every(write => Object.keys(write.values).length === 1 && write.values.artwork_handoff));
   assert.equal(JSON.stringify(h.state.row.artwork_handoff).includes('base64'),false);
+});
+
+test('a carousel keeps its shared format and only displays a live verified price', async () => {
+  const row={product_ids:[1],carousel_source:{series_id:'series-1',index:2,total:3,direction:'Warm ivory grid; fixed product position.'},ref_ids:['chain']};
+  const priced=harness({row,price:{min:1299,max:1799,currency:'INR',checkedAt:'2026-11-02T10:00:00Z'}});
+  const packet=await priced.packet();
+  assert.match(packet.prompt,/card 2 of a 3-card carousel ad/);
+  assert.match(packet.prompt,/Warm ivory grid; fixed product position/);
+  assert.match(packet.prompt,/from ₹1,299/);
+  assert.match(packet.prompt,/offer only when the manager explicitly supplied/);
+  const unpriced=harness({row});
+  assert.match((await unpriced.packet()).prompt,/omit all prices/);
 });
 
 test('normal revisions rerank prior irrelevant references using product category and manager direction', async () => {

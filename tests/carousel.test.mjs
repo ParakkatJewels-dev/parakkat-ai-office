@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import { carouselIntent, carouselSelection, salesPosterIntent, carouselRedesignIntent, carouselIdFromConversation } from '../src/lib/agents/carousel-core.mjs';
+import { carouselIntent, carouselSelection, salesPosterIntent, productArtworkIntent, carouselRedesignIntent, carouselIdFromConversation } from '../src/lib/agents/carousel-core.mjs';
 import { imageReferencePart, renderCarouselCard, shopifyPhotoUrl } from '../src/lib/agents/carousel-card.mjs';
 
 const photo = 'https://cdn.shopify.com/s/files/1/1234/files/ring.webp';
@@ -13,16 +13,25 @@ test('carousel request requires an explicit build instruction and exact sales ca
 });
 
 test('a top-seller ad poster is one image while a later carousel redesign resolves the saved set',()=>{
-  assert.deepEqual(salesPosterIntent('find the top selling product and generate a poster for ads'),{category:null,format:'portrait'});
-  assert.deepEqual(salesPosterIntent('Find the top-selling product from the latest complete 30 days of recorded Shopify sales, then ask the right design agent to generate an ad poster for human review. Do not publish it.'),{category:null,format:'portrait'});
-  assert.deepEqual(salesPosterIntent('Generate an ad poster for the highest-selling rings'),{category:'Ring',format:'portrait'});
-  assert.deepEqual(salesPosterIntent('make a printed poster for the best selling rings'),{category:'Ring',format:'poster'});
+  assert.deepEqual(salesPosterIntent('find the top selling product and generate a poster for ads'),{category:null,format:'portrait',count:1,productCount:1,cohesiveSeries:false});
+  assert.deepEqual(salesPosterIntent('Find the top-selling product from the latest complete 30 days of recorded Shopify sales, then ask the right design agent to generate an ad poster for human review. Do not publish it.'),{category:null,format:'portrait',count:1,productCount:1,cohesiveSeries:false});
+  assert.deepEqual(salesPosterIntent('Generate an ad poster for the highest-selling rings'),{category:'Ring',format:'portrait',count:1,productCount:1,cohesiveSeries:false});
+  assert.deepEqual(salesPosterIntent('make a printed poster for the best selling rings'),{category:'Ring',format:'poster',count:1,productCount:1,cohesiveSeries:false});
+  assert.deepEqual(salesPosterIntent('find the top selling chain in Shopify and create 3 posters'),{category:'Chain',format:'portrait',count:3,productCount:1,cohesiveSeries:false});
+  assert.deepEqual(salesPosterIntent('select 3 top selling men chain and create 3 poster for carsoul ads'),{category:'Chain',format:'portrait',count:3,productCount:3,cohesiveSeries:true});
+  assert.equal(carouselIntent('select 3 top selling men chain and create 3 poster for carsoul ads'),null);
   assert.equal(salesPosterIntent('make a five-card carousel poster of top selling rings'),null);
   assert.equal(salesPosterIntent('draft a brief only for a top selling poster'),null);
   const id='11111111-1111-4111-8111-111111111111';
   assert.equal(carouselRedesignIntent('redesign the 5 carsoule cards'),true);
   assert.equal(carouselIdFromConversation('redesign the 5 carsoule cards',[{content:`Review: /studio?carousel=${id}`}]),id);
   assert.equal(carouselIdFromConversation('redesign this set',[{content:'No saved carousel link'}]),null);
+});
+
+test('direct artwork orders preserve exact Shopify identifiers and shared-series intent',()=>{
+  assert.deepEqual(productArtworkIntent('Create 3 matching posters for Shopify product ID 123 and https://store.example/products/gold-chain'),{format:'portrait',count:3,cohesiveSeries:true,ids:[123],handles:['gold-chain']});
+  assert.equal(productArtworkIntent('Create three matching product designs for Shopify product ID 123')?.count,3);
+  assert.equal(productArtworkIntent('Draft a brief only for product 123 poster'),null);
 });
 
 test('selection skips zero stock while preserving exact category sales order', () => {
