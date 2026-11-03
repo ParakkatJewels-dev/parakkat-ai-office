@@ -13,12 +13,18 @@ export function projectLibraryRuntime({cursor,lease,paused,designerEnabled,gemin
 }
 
 /** Queued work is not evidence that a worker is running. Counts are independently queried, not guessed from text. */
-export function libraryDisplayState(runtime,{pendingFolders,waiting,failed,folderErrors,readError=false}) {
+export function libraryDisplayState(runtime,{pendingFolders,waiting,failed,folderErrors,readError=false},{discoveryOnly=false}={}) {
   const queue=`${pendingFolders ?? 'Unknown number of'} folder${pendingFolders===1?'':'s'} waiting to be read; ${waiting ?? 'unknown number of'} design${waiting===1?'':'s'} waiting to be studied.`;
   const result=(state,label,message,active=false,poll=false)=>({state,label,message,active,poll});
   if(runtime.readError || readError)return result('unknown','Status unavailable','The latest library progress could not be read. Refresh to try again.');
-  if(runtime.paused)return result('paused','Paused',`${queue} The agents are paused. The Super Admin can resume them in Admin.`);
+  if(runtime.paused)return result('paused','Paused',discoveryOnly?`${pendingFolders ?? 'Unknown number of'} folders waiting to be read. Folder scans are paused. Image study is disabled; ${waiting ?? 'an unknown number of'} indexed designs have no AI notes.`:`${queue} The agents are paused. The Super Admin can resume them in Admin.`);
   if(runtime.active)return result(runtime.stage,runtime.stage==='reading'?'Reading folders':'Studying designs',`${runtime.stage==='reading'?'A library worker is reading'+(runtime.activeFolderName?` ${runtime.activeFolderName}`:' a Drive folder'):'The Banner Designer is studying indexed designs'}. ${queue}`,true,true);
+  if(discoveryOnly) {
+    const noNotes=`${waiting ?? 'An unknown number of'} indexed design${waiting===1?' has':'s have'} no AI study notes because image study is disabled.`;
+    if((folderErrors || 0)>0)return result('attention','Folder scan needs attention',`${folderErrors} folder${folderErrors===1?'':'s'} reported an error. ${noNotes} Review the folder errors and resume the scan.`);
+    if((pendingFolders || 0)>0)return result('queued','Folder scan queued',`${pendingFolders} folder${pendingFolders===1?'':'s'} waiting to be read. No active folder worker is confirmed. Use Resume scan to start a pass now, or wait for the scheduled pass. ${noNotes}`,false,true);
+    return result('idle','Folder scan complete',`No folders are waiting to be read. ${noNotes} Saved notes on previously studied designs remain available. Use Read folders again to check Drive for changes.`);
+  }
   const backlog=(pendingFolders || 0)>0 || (waiting || 0)>0;
   if((waiting || 0)>0 && runtime.designerEnabled===false)return result('blocked','Study blocked',`${queue} The Banner Designer is disabled. Enable the agent before studying designs.`);
   if((waiting || 0)>0 && runtime.geminiConfigured===false)return result('blocked','Study blocked',`${queue} Add a Gemini key in Settings → AI providers before studying designs.`);

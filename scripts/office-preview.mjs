@@ -6,7 +6,7 @@ const files = new Map([
   ['/styles.css', 'src/app/globals.css'],
   ['/lib/agents/activity-core.mjs', 'src/lib/agents/activity-core.mjs'],
   ['/office/foliage-cluster.png', 'public/office/foliage-cluster.png'],
-  ...['engine', 'world', 'roster', 'landscape', 'materials', 'meeting-paths', 'direct-dialogue', 'work-status'].map(n => [`/${n}.mjs`, `src/office/${n}.mjs`]),
+  ...['engine', 'world', 'roster', 'landscape', 'materials', 'meeting-paths', 'direct-dialogue', 'work-status', 'character-motion', 'map-input'].map(n => [`/${n}.mjs`, `src/office/${n}.mjs`]),
   ['/three.mjs', 'node_modules/three/build/three.module.js'],
   ['/OrbitControls.mjs', 'node_modules/three/examples/jsm/controls/OrbitControls.js'],
 ]);

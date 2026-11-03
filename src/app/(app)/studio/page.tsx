@@ -216,7 +216,7 @@ async function Library({ db, sp, role }: { db: Db; sp: Record<string, string | u
   const picked = roots.filter(f => f.id === f.root_id);
   const sub = (root: string) => roots.filter(f => f.root_id === root);
   const countsError=[ready,hidden,waiting,failed,skipped,pendingFolders,folderErrors,folderCount,indexed].some(result=>result.error || result.count==null);
-  const status=libraryDisplayState(runtime,{pendingFolders:pendingFolders.count,waiting:waiting.count,failed:failed.count,folderErrors:folderErrors.count,readError:countsError});
+  const status=libraryDisplayState(runtime,{pendingFolders:pendingFolders.count,waiting:waiting.count,failed:failed.count,folderErrors:folderErrors.count,readError:countsError},{discoveryOnly:handoff});
   const rootCounts=new Map(await Promise.all(picked.map(async root=>{
     if(!folders.complete)return [root.id,null] as const;
     const ids=sub(root.id).map(folder=>folder.id),chunks=[];
@@ -259,8 +259,8 @@ async function Library({ db, sp, role }: { db: Db; sp: Record<string, string | u
           <div><small>Design files indexed so far</small><b>{indexed.count ?? '—'}</b></div>
           <div><small>Ready to use</small><b>{ready.count ?? '—'}</b></div>
           <div><small>Hidden ready designs</small><b>{hidden.count ?? '—'}</b></div>
-          <div><small>Waiting to be studied</small><b>{waiting.count ?? '—'}</b></div>
-          <div><small>Failed — can be retried</small><b>{failed.count ?? '—'}</b></div>
+          <div><small>{handoff?'Indexed without AI study notes':'Waiting to be studied'}</small><b>{waiting.count ?? '—'}</b></div>
+          <div><small>{handoff?'Previous study failures':'Failed — can be retried'}</small><b>{failed.count ?? '—'}</b></div>
           <div><small>Skipped — not a finished design</small><b>{skipped.count ?? '—'}</b></div>
         </div>
         {(runtime.lastResult || job?.last_result) && <p className="sm">Latest recorded result: {safeLibraryNote(runtime.lastResult || job?.last_result)}</p>}
@@ -271,7 +271,7 @@ async function Library({ db, sp, role }: { db: Db; sp: Record<string, string | u
     <section className={`card ${studioStyles.libraryCard}`}>
       <div className="card-head"><div><h3>Past designs</h3><p className="sub">Pin the ones you want the designers to follow more; hide any that should not be followed. {count || 0} shown.</p></div></div>
       <div className={`seg-row ${studioStyles.filterBar}`}>
-        <div className="seg" role="group" aria-label="Show">{Object.entries(REFS).map(([k, l]) => <a key={k} href={qs({ lib: k, lp: null })} className={show === k ? 'on' : ''} aria-current={show === k ? 'page' : undefined}>{l}</a>)}</div>
+        <div className="seg" role="group" aria-label="Show">{Object.entries(REFS).map(([k, l]) => <a key={k} href={qs({ lib: k, lp: null })} className={show === k ? 'on' : ''} aria-current={show === k ? 'page' : undefined}>{handoff&&k==='waiting'?'No study notes':handoff&&k==='failed'?'Previous failures':l}</a>)}</div>
         <form action="/studio" className="inline"><input type="hidden" name="tab" value="library" />{sp.lib && <input type="hidden" name="lib" value={sp.lib} />}
           <input className="in" type="search" name="q" defaultValue={q} placeholder="Search: Onam, bridal, green…" aria-label="Search the library" /><button className="btn ghost sm-btn" type="submit">Search</button></form>
       </div>

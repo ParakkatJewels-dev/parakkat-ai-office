@@ -145,6 +145,16 @@ test('resuming queued or failed image studies does not reset completed folder in
     await h.resetLibraryScan(h.db);assert.equal(h.tables.design_library_folders[0].scanned_at,'2026-10-26T01:00:00Z');assert.equal(h.tables.design_library_folders[0].files,8);assert.equal(h.tables.design_refs[0].status,'new');
   }
 });
+test('manual artwork mode rereads completed folders even with unstudied designs and never retries image study',async()=>{
+  const h=harness({handoff:true,folders:[folder('done',{scanned_at:'2026-10-26T01:00:00Z',files:8})],refs:[{id:'new',drive_id:'new',status:'new',modified_at:null},{id:'failed',drive_id:'failed',status:'failed',modified_at:null}]});
+  const result=await h.resetLibraryScan(h.db);
+  assert.match(result.summary,/full folder inventory/);
+  assert.equal(h.tables.design_library_folders[0].scanned_at,null);
+  assert.equal(h.tables.design_refs[0].status,'new');assert.equal(h.tables.design_refs[1].status,'failed');
+  await h.scanLibrary(h.db,{trigger:'manual'});
+  assert.deepEqual(h.calls.drive,[['done',null]]);assert.equal(h.calls.model,0);
+  assert.equal(h.tables.sync_cursors[0].state.state,'idle');
+});
 test('interrupted paid claims become explicit failures, while completed references are preserved',async()=>{
   const refs=[{id:'a',drive_id:'a',status:'new',modified_at:'2026-10-20T00:00:00Z'},{id:'b',drive_id:'b',status:'ready',modified_at:null}];
   const h=harness({folders:[],refs,progress:{name:'design_library',state:{version:2,claims:[{id:'a',driveId:'a',modifiedAt:refs[0].modified_at},{id:'b',driveId:'b',modifiedAt:null}]}}});

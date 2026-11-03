@@ -45,6 +45,15 @@ test('discovery may proceed before there is a Gemini study queue',()=>{
   assert.equal(status.state,'queued');assert.match(status.message,/41 folders/);
 });
 
+test('discovery-only mode reports indexed designs without promising an image-study worker',()=>{
+  const status=libraryDisplayState(runtime({lease:null,geminiConfigured:false}),{pendingFolders:0,waiting:81,failed:0,folderErrors:0},{discoveryOnly:true});
+  assert.equal(status.state,'idle');assert.equal(status.label,'Folder scan complete');assert.equal(status.poll,false);
+  assert.match(status.message,/81 indexed designs have no AI study notes/);
+  assert.doesNotMatch(status.message,/No active library worker|Resume scan|waiting to be studied/);
+  const pending=libraryDisplayState(runtime({lease:null,geminiConfigured:false}),{pendingFolders:2,waiting:81,failed:0,folderErrors:0},{discoveryOnly:true});
+  assert.equal(pending.state,'queued');assert.match(pending.message,/2 folders waiting to be read/);
+});
+
 test('failed studies and folder errors are visible separately rather than represented as skipped',()=>{
   const status=libraryDisplayState(runtime({lease:null}),{pendingFolders:1,waiting:0,failed:3,folderErrors:1});
   assert.equal(status.state,'attention');assert.equal(status.active,false);

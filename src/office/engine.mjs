@@ -3,7 +3,7 @@
 //
 // The streets, traffic, flats, hills and sky around it live in world.mjs.
 //
-// Speed: everything that never moves is merged into one mesh per material after the scene is built, each person is five
+// Speed: everything that never moves is merged into one mesh per material after the scene is built, each person is eight
 // meshes, shadows refresh every third frame, and labels are placed every other frame. If frames still run slow the
 // renderer lowers its resolution and then drops shadows.
 
@@ -13,6 +13,8 @@ import { createCampusMaterials } from './materials.mjs';
 import { aroundMeetingTable } from './meeting-paths.mjs';
 import { createDirectDialogueController, dialogueBubble, dialogueDuration } from './direct-dialogue.mjs';
 import { normalizeWorkStatuses, agentWorkStatus, layoutWorkStatuses } from './work-status.mjs';
+import { characterMotion } from './character-motion.mjs';
+import { forwardLabelWheel } from './map-input.mjs';
 import { isWorkingStatus } from '../lib/agents/activity-core.mjs';
 
 export const DEPT_COLOR = {
@@ -410,23 +412,32 @@ export function createOffice(o) {
   for(const b of Object.values(B))for(let i=0;i<b.cols;i++){const pool=new THREE.Mesh(new THREE.PlaneGeometry(9,8),poolM);pool.rotation.x=-Math.PI/2;pool.position.set(b.ox-b.half+6+12*i,.065,-11);lightPools.add(pool)}
   lightPools.visible=false;
 
-  /* ---------- people: a body and four limbs each, in vertex colours ---------- */
+  /* ---------- people: articulated figures with shared geometry and vertex colours ---------- */
   const folderM = M('#d8c3a5', { roughness: .4 });
-  const G = { leg: new THREE.CapsuleGeometry(.085, .62, 3, 6), shoe: new THREE.BoxGeometry(.14, .08, .26), torso: new THREE.CapsuleGeometry(.2, .42, 3, 10), arm: new THREE.CapsuleGeometry(.06, .46, 3, 6), hand: new THREE.SphereGeometry(.065, 8, 6), neck: new THREE.CylinderGeometry(.07, .08, .1, 8), head: new THREE.SphereGeometry(.17, 14, 10), hair: new THREE.SphereGeometry(.182, 14, 8, 0, Math.PI * 2, 0, Math.PI * .52), eye: new THREE.SphereGeometry(.022, 6, 4), badge: new THREE.BoxGeometry(.08, .1, .02), folder: new THREE.BoxGeometry(.32, .04, .24), ring: new THREE.RingGeometry(.42, .52, 28), quest: new THREE.OctahedronGeometry(.22) };
+  const G = { leg: new THREE.CapsuleGeometry(.085, .62, 3, 6), shoe: new THREE.BoxGeometry(.17, .09, .29), torso: new THREE.CapsuleGeometry(.22, .42, 3, 10), waist: new THREE.CylinderGeometry(.18, .16, .16, 10), belt: new THREE.CylinderGeometry(.175, .175, .035, 10), sleeve: new THREE.CapsuleGeometry(.068, .15, 3, 6), forearm: new THREE.CapsuleGeometry(.054, .17, 3, 6), cuff: new THREE.CylinderGeometry(.065, .065, .055, 8), hand: new THREE.SphereGeometry(.072, 8, 6), neck: new THREE.CylinderGeometry(.075, .085, .11, 8), head: new THREE.SphereGeometry(.19, 14, 10), hair: new THREE.SphereGeometry(.202, 14, 8, 0, Math.PI * 2, 0, Math.PI * .54), ear: new THREE.SphereGeometry(.045, 8, 6), nose: new THREE.SphereGeometry(.035, 8, 6), eye: new THREE.SphereGeometry(.022, 6, 4), collar: new THREE.BoxGeometry(.12, .055, .035), badge: new THREE.BoxGeometry(.08, .1, .02), folder: new THREE.BoxGeometry(.32, .04, .24), ring: new THREE.RingGeometry(.42, .52, 28), quest: new THREE.OctahedronGeometry(.22) };
   const RING_MAT = Object.fromEntries(Object.entries(STATUS_COL).map(([k, c]) => [k, new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: .85 })]));
   const questMat = new THREE.MeshStandardMaterial({ color: '#e1c38f', emissive: '#b08d57', emissiveIntensity: .8, metalness: .6, roughness: .25 });
   people.forEach(p => {
     const g = new THREE.Group(), pants = p.human ? '#1c1c1c' : '#3a4152';
     const tag = m => { m.userData.person = p; return m; };
-    const body = tag(colored([[G.torso, p.shirt, 0, 1.25, 0, 0, [1, 1, .7]], [G.neck, p.skin, 0, 1.6, 0], [G.head, p.skin, 0, 1.79, 0], [G.hair, p.hair, 0, 1.81, -.015, -.25],
-      [G.eye, '#111111', -.06, 1.8, .155], [G.eye, '#111111', .06, 1.8, .155], ...(p.human ? [[G.badge, '#d8c3a5', .1, 1.36, .145]] : [])]));
-    g.add(body);
+    const upper = new THREE.Group(); upper.position.y = 1.1; g.add(upper);
+    upper.add(tag(colored([[G.torso, p.shirt, 0, .15, 0, 0, [1, 1, .76]], [G.waist, pants, 0, -.19, 0], [G.belt, p.human ? '#cba66e' : '#455365', 0, -.23, 0],
+      [G.collar, '#f2eee6', -.08, .39, .125, -.35], [G.collar, '#f2eee6', .08, .39, .125, -.35], ...(p.human ? [[G.badge, '#d8c3a5', .1, .26, .17]] : [])])));
+    const head = new THREE.Group(); head.position.y = .51; upper.add(head);
+    head.add(tag(colored([[G.neck, p.skin, 0, .01, 0], [G.head, p.skin, 0, .19, 0], [G.hair, p.hair, 0, .215, -.015, -.25],
+      [G.ear, p.skin, -.18, .17, 0], [G.ear, p.skin, .18, .17, 0], [G.nose, p.skin, 0, .17, .19],
+      [G.eye, '#111111', -.065, .205, .174], [G.eye, '#111111', .065, .205, .174]])));
     const legs = [-1, 1].map(sd => { const pv = new THREE.Group(); pv.position.set(.11 * sd, .9, 0); pv.add(tag(colored([[G.leg, pants, 0, -.42, 0], [G.shoe, '#17181b', 0, -.85, .05]]))); g.add(pv); return pv; });
-    const arms = [-1, 1].map(sd => { const pv = new THREE.Group(); pv.position.set(.27 * sd, 1.48, 0); pv.add(tag(colored([[G.arm, p.shirt, 0, -.27, 0], [G.hand, p.skin, 0, -.56, 0]]))); g.add(pv); return pv; });
+    const elbows = [];
+    const arms = [-1, 1].map(sd => { const shoulder = new THREE.Group(); shoulder.position.set(.27 * sd, .38, 0);
+      shoulder.add(tag(colored([[G.sleeve, p.shirt, 0, -.14, 0]])));
+      const elbow = new THREE.Group(); elbow.position.y = -.28;
+      elbow.add(tag(colored([[G.forearm, p.shirt, 0, -.15, 0], [G.cuff, p.human ? '#f2eee6' : mix(p.shirt, '#ffffff', .15), 0, -.28, 0], [G.hand, p.skin, 0, -.36, 0]])));
+      shoulder.add(elbow); upper.add(shoulder); elbows.push(elbow); return shoulder; });
     const ring = new THREE.Mesh(G.ring, RING_MAT.idle); ring.rotation.x = -Math.PI / 2; ring.position.y = .03; ring.visible = false; scene.add(ring);
     const folder = new THREE.Mesh(G.folder, folderM); folder.position.set(.3, 1.0, .25); folder.visible = false; g.add(folder);
     const qm = new THREE.Mesh(G.quest, questMat); qm.scale.y = 1.5; qm.visible = false; scene.add(qm);
-    scene.add(g); Object.assign(p, { g, legs, arms, ring, folder, qm });
+    scene.add(g); Object.assign(p, { g, upper, head, legs, arms, elbows, ring, folder, qm });
   });
 
   /* ---------- HUD layer ---------- */
@@ -604,6 +615,8 @@ export function createOffice(o) {
   };
   const onLeave = () => { down = null; hovered = null; canvas.style.cursor = ''; };
   canvas.addEventListener('pointerdown', onDown); canvas.addEventListener('pointerup', onUp); canvas.addEventListener('pointermove', onMove); canvas.addEventListener('pointerleave', onLeave); canvas.addEventListener('pointercancel', onLeave);
+  const onLabelWheel = e => forwardLabelWheel(e, canvas);
+  labels.addEventListener('wheel', onLabelWheel, { passive: false, capture: true });
   controls.addEventListener('start', () => { fly = null; follow = null; untouched = false; });
 
   /* ---------- movement ---------- */
@@ -632,19 +645,22 @@ export function createOffice(o) {
   }
   function pose(p, t) {
     const g = p.g, walking = !p.sitting && p.path.length;
-    // someone sitting still needs no update unless they are typing or something about them just changed
-    if (p._still) { p.ring.visible = p === sel || p.status !== 'idle'; return; }
-    p._still = p.sitting && !p.path.length && p.status !== 'thinking' && !((p.meetingId || p.visitId) && p.status === 'talking');
+    const lease = workStatuses[p.id];
+    const work = lease?.expiresAt > Date.now() ? lease.state : null;
+    const motion = characterMotion(p, t, work, reduce);
     g.position.set(p.x, 0, p.z);
-    if (p.sitting) { g.position.y = -.4; g.position.z = p.z - .05; g.rotation.y = p.meetingId ? p.seatHeading || 0 : p.visitId && p.faceTo ? Math.atan2(p.faceTo.x - p.x, p.faceTo.z - p.z) : 0; p.legs.forEach(l => { l.rotation.x = -Math.PI / 2 + .1; }); p.arms.forEach((a, i) => { a.rotation.x = -.9 + (p.status === 'thinking' ? Math.sin(t * 9 + i * 3) * .12 : (p.meetingId || p.visitId) && p.status === 'talking' ? Math.sin(t * 4 + i * 2) * .08 : 0); }); }
-    else { g.position.y = walking ? Math.abs(Math.sin(t * 9 + p.phase)) * .04 : 0;
+    if (p.sitting) { g.position.y = -.4; g.position.z = p.z - .05; g.rotation.y = p.meetingId ? p.seatHeading || 0 : p.visitId && p.faceTo ? Math.atan2(p.faceTo.x - p.x, p.faceTo.z - p.z) : 0; }
+    else { g.position.y = motion.lift;
       const face = !walking && p.faceTo ? Math.atan2(p.faceTo.x - p.x, p.faceTo.z - p.z) : p.heading;
       g.rotation.y += ((((face - g.rotation.y) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI) * .2;
-      const sw = walking ? Math.sin(t * 9 + p.phase) * .6 : 0; p.legs[0].rotation.x = sw; p.legs[1].rotation.x = -sw; p.arms[0].rotation.x = p.carry ? -1.1 : -sw * .8; p.arms[1].rotation.x = sw * .8 + (p.status === 'talking' ? Math.sin(t * 5) * .3 - .3 : 0); }
+    }
+    p.upper.rotation.set(motion.bodyX, 0, motion.bodyZ);
+    p.head.rotation.set(motion.headX, motion.headY, motion.headZ);
+    p.legs.forEach((leg, i) => { leg.rotation.x = motion.legsX[i]; });
+    p.arms.forEach((arm, i) => { arm.rotation.set(motion.armsX[i], 0, motion.armsZ[i]); p.elbows[i].rotation.x = motion.elbowsX[i]; });
     p.folder.visible = p.carry && !p.sitting;
     p.ring.visible = p === sel || p.status !== 'idle'; p.ring.position.set(p.x, .03, p.z); p.ring.material = RING_MAT[p.status] || RING_MAT.idle;
   }
-  const markDirty = p => { p._still = false; };
 
   /* ---------- loop ---------- */
   let last = performance.now(), T = 0, visible = true, frameNo = 0, slow = 0, timed = 0;
@@ -726,15 +742,14 @@ export function createOffice(o) {
     // Revoked private dialogue must disappear even if the tab's HUD is paused.
     if (p.bub) { p.bub.replaceChildren(); p.bub._t = null; p.bub.hidden = true; }
     if (p.workTag) { p.workTag.querySelector('.agent-work-speech')?.remove(); p.workTag.removeAttribute('title'); p.workTag.removeAttribute('aria-label'); p.workTag._t = null; }
-    markDirty(p);
   }
   async function speak(p, text, kind, ms, signal, visitId) {
     const token = Symbol('speech'), meetingId = p.meetingId; p.speechToken = token; p.visitSpeaking = !!visitId;
-    markDirty(p); p.active = performance.now(); p.status = kind === 'thinking' ? 'thinking' : 'talking';
+    p.active = performance.now(); p.status = kind === 'thinking' ? 'thinking' : 'talking';
     p.bubble = text; p.bubbleKind = kind;
     if (!visitId) { p.log.unshift(text); p.log.length = Math.min(p.log.length, 3); }
     const finished = await sleep(ms, signal);
-    if (p.speechToken === token) { clearSpeech(p); p.status = rest(p); markDirty(p); }
+    if (p.speechToken === token) { clearSpeech(p); p.status = rest(p); }
     return finished && !disposed && (!visitId || p.visitId === visitId) && p.meetingId === meetingId;
   }
   const visits = createDirectDialogueController({
@@ -744,18 +759,20 @@ export function createOffice(o) {
       for (const p of [visitor, recipient]) {
         clearSpeech(p); stopMoving(p); p.visitId = session.id; p.carry = p === visitor;
         p.faceTo = null; p.active = performance.now(); p.status = 'walking';
-        p.task = p === visitor ? `Visiting ${recipient.name}` : `Conversation with ${visitor.name}`; markDirty(p);
+        p.task = p === visitor ? `Visiting ${recipient.name}` : `Conversation with ${visitor.name}`;
       }
       const point = standBy(recipient);
       // The recipient stays at their own office. A prior animation may have
       // left them returning home, so finish that move before showing dialogue.
       const recipientHome = Math.hypot(recipient.x - recipient.home.x, recipient.z - recipient.home.z) < .05;
-      if (recipientHome) { recipient.sitting = true; recipient.status = 'waiting'; markDirty(recipient); }
+      if (recipientHome) { recipient.sitting = true; recipient.status = 'waiting'; }
       const [arrived, ready] = await Promise.all([goTo(visitor, point.x, point.z, signal), recipientHome ? Promise.resolve(true) : goTo(recipient, recipient.home.x, recipient.home.z, signal)]);
       if (!arrived || !ready || signal.aborted || disposed || visitor.meetingId || recipient.meetingId) return false;
       visitor.room = recipient.homeRoom; recipient.room = recipient.homeRoom; recipient.sitting = true;
       visitor.faceTo = recipient; recipient.faceTo = visitor;
-      visitor.status = recipient.status = 'waiting'; markDirty(visitor); markDirty(recipient);
+      visitor.greetingAt = recipient.greetingAt = T;
+      visitor.greetingSide = 1; recipient.greetingSide = 0;
+      visitor.status = recipient.status = 'waiting';
       return true;
     },
     async speak(session, turn, signal) {
@@ -768,12 +785,13 @@ export function createOffice(o) {
       await Promise.all([session.visitorId, session.recipientId].map(async id => {
         const p = P[id]; if (p.visitId !== session.id) return;
         p.visitId = null;
+        p.greetingAt = null;
         // Meeting movement has already replaced this visit's path. Never
         // cancel or overwrite it from a late visit completion.
         if (disposed || p.meetingId || isBlocked(id)) return;
         clearSpeech(p);
         stopMoving(p); p.faceTo = null; p.carry = false;
-        p.status = 'walking'; p.task = 'Returning from the conversation'; markDirty(p);
+        p.status = 'walking'; p.task = 'Returning from the conversation';
         const atHome = Math.hypot(p.x - p.home.x, p.z - p.home.z) < .05;
         const arrived = atHome || await goTo(p, p.home.x, p.home.z, signal);
         if (disposed || p.meetingId || p.visitId || isBlocked(id)) return;
@@ -784,11 +802,11 @@ export function createOffice(o) {
           p.x = p.home.x; p.z = p.home.z;
         }
         p.room = p.homeRoom; p.sitting = true; p.status = rest(p);
-        p.task = p.quest ? 'Waiting on an approval' : 'Waiting for the next job'; markDirty(p);
+        p.task = p.quest ? 'Waiting on an approval' : 'Waiting for the next job';
       }));
     },
   });
-  function select(id) { if (sel) markDirty(sel); sel = P[id] || null; follow = sel; if (sel) markDirty(sel); o.onSelect && sel && o.onSelect(sel); }
+  function select(id) { sel = P[id] || null; follow = sel; if (sel) o.onSelect?.(sel); }
   function focusMeeting() {
     follow = null; untouched = false;
     const { x, z } = meetingPoint, pos = view === '2d' ? [x, 23, z + .01] : [x + 3, 12, z + 14];
@@ -811,11 +829,11 @@ export function createOffice(o) {
       if (p.meetingId && (!assigned.has(p.id) || p.meetingId !== next?.id)) {
         clearSpeech(p);
         p.meetingId = null; p.meetingSeatIndex = null; p.meetingSpeaking = false; p.seatHeading = 0; p.faceTo = null; p.carry = false;
-        p.status = 'walking'; p.task = 'Returning from the meeting'; markDirty(p);
+        p.status = 'walking'; p.task = 'Returning from the meeting';
         const returning = goTo(p, p.home.x, p.home.z);
         returning.then(arrived => {
           if (!arrived || disposed || p.meetingId) return;
-          p.room = p.homeRoom; p.sitting = true; p.status = rest(p); p.task = p.quest ? 'Waiting on an approval' : 'Waiting for the next job'; markDirty(p);
+          p.room = p.homeRoom; p.sitting = true; p.status = rest(p); p.task = p.quest ? 'Waiting on an approval' : 'Waiting for the next job';
         });
       }
     }
@@ -823,13 +841,13 @@ export function createOffice(o) {
     ids.forEach((id, index) => {
       const p = P[id], seat = meetingSeats[index];
       p.meetingSpeaking = next.speakerId === id || next.speaker_id === id;
-      if (p.meetingId === next.id && p.meetingSeatIndex === index) { if (!p.path.length) { p.status = rest(p); markDirty(p); } return; }
+      if (p.meetingId === next.id && p.meetingSeatIndex === index) { if (!p.path.length) { p.status = rest(p); } return; }
       clearSpeech(p);
       p.meetingId = next.id; p.meetingSeatIndex = index; p.seatHeading = seat.heading; p.carry = false; p.faceTo = meetingPoint;
-      p.active = performance.now(); p.status = 'walking'; p.task = `Meeting: ${next.title || 'Team discussion'}`; markDirty(p);
+      p.active = performance.now(); p.status = 'walking'; p.task = `Meeting: ${next.title || 'Team discussion'}`;
       goTo(p, seat.x, seat.z).then(arrived => {
         if (!arrived || disposed || p.meetingId !== next.id || p.meetingSeatIndex !== index) return;
-        p.room = meetingRoom; p.sitting = true; p.faceTo = meetingPoint; p.status = rest(p); markDirty(p);
+        p.room = meetingRoom; p.sitting = true; p.faceTo = meetingPoint; p.status = rest(p);
       });
     });
   }
@@ -843,7 +861,7 @@ export function createOffice(o) {
     else return;
     fly = { t: 0, ft: controls.target.clone(), fp: camera.position.clone(), tt: new THREE.Vector3(...tgt), tp: new THREE.Vector3(...pos) };
   }
-  function focus(id) { const p = P[id]; if (!p) return; p.meetingId ? focusMeeting() : flyTo(roomAt(p.x, p.z)?.id || p.room.id); sel && markDirty(sel); sel = p; markDirty(p); o.onSelect && o.onSelect(p); }
+  function focus(id) { const p = P[id]; if (!p) return; p.meetingId ? focusMeeting() : flyTo(roomAt(p.x, p.z)?.id || p.room.id); sel = p; o.onSelect?.(p); }
   function setView(v) {
     view = v === '2d' ? '2d' : '3d';
     controls.enableRotate = view === '3d'; controls.minPolarAngle = view === '2d' ? 0 : .08; controls.maxPolarAngle = view === '2d' ? .02 : 1.47;
@@ -893,15 +911,15 @@ export function createOffice(o) {
       const active = l => ai(l).filter(p => isWorkingStatus(workStatuses[p.id], now)).length;
       return { total: ai(people).length, active: active(people), buildings: Object.values(B).map(b => ({ id: b.id, name: b.short, total: ai(b.people).length, active: active(b.people), rooms: b.rooms })) }; },
     info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, quality }; },
-    async walkTo(id, toId) { const p = P[id], b = P[toId]; if (!p || !b || p.meetingId || b.meetingId || visits.isReserved(id) || visits.isReserved(toId)) return; markDirty(p); p.active = performance.now(); p.status = 'walking'; p.task = `Walking to ${b.name}`; p.faceTo = null; const s = standBy(b); const arrived = await goTo(p, s.x, s.z); if (!arrived || disposed || p.meetingId || visits.isReserved(id)) return; p.room = roomAt(s.x, s.z) || p.room; p.faceTo = b; },
-    async walkHome(id) { const p = P[id]; if (!p || p.meetingId || visits.isReserved(id)) return; markDirty(p); p.status = 'walking'; p.faceTo = null; const arrived = await goTo(p, p.home.x, p.home.z); if (!arrived || disposed || p.meetingId || visits.isReserved(id)) return; p.room = p.homeRoom; p.sitting = true; p.status = rest(p); markDirty(p); p.task = p.quest ? 'Waiting on an approval' : 'Waiting for the next job'; p.carry = false; },
+    async walkTo(id, toId) { const p = P[id], b = P[toId]; if (!p || !b || p.meetingId || b.meetingId || visits.isReserved(id) || visits.isReserved(toId)) return; p.active = performance.now(); p.status = 'walking'; p.task = `Walking to ${b.name}`; p.faceTo = null; const s = standBy(b); const arrived = await goTo(p, s.x, s.z); if (!arrived || disposed || p.meetingId || visits.isReserved(id)) return; p.room = roomAt(s.x, s.z) || p.room; p.faceTo = b; },
+    async walkHome(id) { const p = P[id]; if (!p || p.meetingId || visits.isReserved(id)) return; p.status = 'walking'; p.faceTo = null; const arrived = await goTo(p, p.home.x, p.home.z); if (!arrived || disposed || p.meetingId || visits.isReserved(id)) return; p.room = p.homeRoom; p.sitting = true; p.status = rest(p); p.task = p.quest ? 'Waiting on an approval' : 'Waiting for the next job'; p.carry = false; },
     async say(id, text, kind = 'talking', ms = 2600) { const p = P[id]; if (!p || (visits.isReserved(id) && !p.meetingId)) return; return speak(p, dialogueBubble(text), kind, Math.min(8_000, ms + dialogueBubble(text).length * 20)); },
     async think(id, text, ms = 2600) { const p = P[id]; if (!p || p.meetingId || visits.isReserved(id)) return; p.task = text; return speak(p, dialogueBubble(text) + '…', 'thinking', Math.min(8_000, ms)); },
-    setCarry(id, v) { if (P[id] && !P[id].meetingId && !visits.isReserved(id)) { P[id].carry = v; markDirty(P[id]); } },
-    setQuest(id, v) { const p = P[id]; if (!p) return; p.quest = v; if (!p.meetingId && !visits.isReserved(id)) { if (p.sitting && !p.bubble) p.status = v ? 'waiting' : 'idle'; p.task = v ? 'Waiting on an approval' : 'Nothing waiting'; } markDirty(p); },
+    setCarry(id, v) { if (P[id] && !P[id].meetingId && !visits.isReserved(id)) { P[id].carry = v; } },
+    setQuest(id, v) { const p = P[id]; if (!p) return; p.quest = v; if (!p.meetingId && !visits.isReserved(id)) { if (p.sitting && !p.bubble) p.status = v ? 'waiting' : 'idle'; p.task = v ? 'Waiting on an approval' : 'Nothing waiting'; } },
     dispose() {
       disposed = true; visits.dispose(); people.forEach(stopMoving);
-      cancelAnimationFrame(raf); canvas.removeEventListener('keydown', onKey); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerleave', onLeave); canvas.removeEventListener('pointercancel', onLeave); document.removeEventListener('fullscreenchange', onFs); controls.dispose();
+      cancelAnimationFrame(raf); canvas.removeEventListener('keydown', onKey); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerleave', onLeave); canvas.removeEventListener('pointercancel', onLeave); labels.removeEventListener('wheel', onLabelWheel, true); document.removeEventListener('fullscreenchange', onFs); controls.dispose();
       const geos=new Set(), mats=new Set(), textures=new Set();
       scene.traverse(node=>{if(node.geometry)geos.add(node.geometry);if(node.material)for(const m of Array.isArray(node.material)?node.material:[node.material])mats.add(m)});
       for(const m of mats){for(const value of Object.values(m))if(value?.isTexture)textures.add(value);if(m.uniforms)for(const u of Object.values(m.uniforms))if(u?.value?.isTexture)textures.add(u.value)}
