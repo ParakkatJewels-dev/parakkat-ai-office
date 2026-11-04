@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ai-office-video": {
+      "command": "node",
+      "args": ["./channel/office-video.mjs"]
+    }
+  }
+}

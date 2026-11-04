@@ -1,0 +1,9 @@
+{
+  "name": "parakkat-ai-office-video-channel",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  }
+}

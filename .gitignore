@@ -5,6 +5,7 @@ out
 .env.local
 .env
 deploy/video-worker/config.env
+deploy/video-worker/subscription.env
 __pycache__/
 .env*.local
 .vercel

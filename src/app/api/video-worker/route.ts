@@ -23,6 +23,14 @@ export async function POST(request: Request) {
   catch { return json({ error: 'Invalid worker request.' }, 400); }
   if (!body || typeof body !== 'object') return json({ error: 'Invalid worker request.' }, 400);
   const db = supabaseAdmin();
+  if (body.action === 'peek') {
+    if (await isPaused()) return json({ job: null, paused: true });
+    // A Claude Code channel can announce a job before claiming it. If its
+    // notification is dropped during startup, the job stays safely queued.
+    const next = await db.from('video_edit_jobs').select('id').eq('status', 'queued')
+      .order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1).maybeSingle();
+    return next.error ? json({ error: 'Could not check the edit queue.' }, 503) : json({ job: next.data });
+  }
   if (body.action === 'claim') {
     const workerId = safeWorkerText(body.workerId, 80);
     if (!workerId) return json({ error: 'Invalid worker ID.' }, 400);

@@ -1,5 +1,44 @@
 # Editing computer worker (Mac or Windows)
 
+## AI Office jobs with Claude Max on Windows
+
+This is the subscription workflow: assign a job on AI Office's **Video editing**
+page, then a Claude Code session running on the Windows editing PC receives it
+through a local [Claude Code Channel](https://code.claude.com/docs/en/channels).
+Claude Code signs in through Anthropic's own Max login. AI Office never sees or
+stores the Claude credential. The channel polls AI Office for a queued job,
+notifies Claude, and Claude claims it, edits with the local `/video-edit` skill,
+exports through Resolve Studio, and reports the local MP4 and `.drp` paths to
+AI Office. Raw video stays on the PC; Claude sees preview frames and task text.
+
+Channels are in research preview. This custom channel needs a first-run
+development-channel confirmation in Claude Code. The signed-in Claude session,
+Windows desktop, and Resolve must remain open and awake. Tool permissions may
+need approval in the session; type `/remote-control` there if you want to watch
+or approve work from `https://claude.ai/code` on another device.
+
+Before starting this PC workflow, apply the video job SQL migration to the
+AI Office Supabase project, deploy the current AI Office source to its VPS, and
+set `VIDEO_WORKER_TOKEN` (at least 32 random characters) in the VPS
+`/opt/parakkat-ai-office/runtime.env`. Put the **same** secret in this PC's
+private `subscription.env` beside the launcher. Copy
+`subscription.env.example` as a starting point. The example uses
+`E:\Ai-Office\Videos` for raw footage and `E:\Ai-Office\Exports` for exports;
+adjust them to the actual folders. Do not put a Claude API key in this file.
+
+The PC needs Node.js LTS in addition to Python, FFmpeg, Claude Code, and the
+Resolve connection. Double-click `run-ai-office-subscription.cmd`. It installs
+the small local MCP dependency on first run, checks Resolve and the office
+queue, and starts the signed-in Claude Code session with the channel enabled.
+Confirm the channel warning and the new MCP server when Claude asks. Leave the
+terminal open. Create a short test job in AI Office with a source folder name
+relative to the media root, such as `Test`. A failed or lost job requires
+checking the Resolve project and export folder before retrying.
+
+The starter editing bridge makes ordered cuts with source audio. Captions,
+grading, effects, music, and editorial review require more editing tools or a
+custom `VIDEO_BRIDGE_SCRIPT` adapter and must be checked on the exported video.
+
 ## Claude Max Remote Control (interactive, no API key)
 
 This folder also contains a local Claude Code skill, `/video-edit`, and
@@ -28,17 +67,14 @@ Remote Control session. Send a task such as:
 > Save the MP4 and Resolve project in E:\Ai-Office\Exports.
 
 Claude can inspect the source folder, choose ordered cuts, invoke the local
-Resolve bridge and report the output paths. This path does **not** read
-`config.env` and does **not** require `ANTHROPIC_API_KEY` or
-`VIDEO_WORKER_TOKEN`. The existing AI Office queue below is a separate,
-unattended workflow and still requires API key authentication. Remote Control
-is operated by the signed-in subscriber; other AI Office users do not acquire
-access to that Claude subscription through the queue.
+Resolve bridge and report the output paths. This direct Remote Control path
+does **not** read `config.env` or require an API key or worker token. The AI
+Office channel above uses a worker token to read and update its job queue.
 
 The included bridge currently supports ordered cuts with source audio. It does
 not produce captions, grading, effects, music, or a reviewed creative final.
 
-## AI Office unattended queue (API key)
+## Legacy unattended CLI worker (API key)
 
 This worker receives **only the task brief and a folder name** from AI Office. It reads
 footage from `VIDEO_MEDIA_ROOT`, asks Claude Code on this computer to plan ordered cuts,
