@@ -4,12 +4,28 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { stat } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const result = (value, isError = false) => ({ content: [{ type: 'text', text: JSON.stringify(value) }], isError });
+
+export function readSubscriptionConfig(file) {
+  const values = {};
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+    const match = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(line);
+    if (!match || !['VIDEO_OFFICE_URL', 'VIDEO_WORKER_TOKEN', 'VIDEO_MEDIA_ROOT', 'VIDEO_EXPORT_ROOT'].includes(match[1])) {
+      throw new Error('Invalid setting in subscription.env');
+    }
+    let value = match[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+    values[match[1]] = value.replace(/%([A-Z_][A-Z0-9_]*)%/gi, (_whole, name) => process.env[name] || '');
+  }
+  return values;
+}
 
 export function confined(root, relative) {
   if (typeof relative !== 'string' || !relative || path.isAbsolute(relative) || /^[A-Za-z]:[\\/]/.test(relative) || /^\\\\/.test(relative) || /(^|[\\/])\.\.([\\/]|$)/.test(relative)) {
@@ -179,11 +195,12 @@ export function createChannel({ officeUrl, token, mediaRoot, exportRoot, workerI
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  const config = readSubscriptionConfig(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'subscription.env'));
   const channel = createChannel({
-    officeUrl: process.env.VIDEO_OFFICE_URL,
-    token: process.env.VIDEO_WORKER_TOKEN,
-    mediaRoot: process.env.VIDEO_MEDIA_ROOT,
-    exportRoot: process.env.VIDEO_EXPORT_ROOT,
+    officeUrl: config.VIDEO_OFFICE_URL,
+    token: config.VIDEO_WORKER_TOKEN,
+    mediaRoot: config.VIDEO_MEDIA_ROOT,
+    exportRoot: config.VIDEO_EXPORT_ROOT,
   });
   channel.start().catch(error => { console.error(`AI Office channel: ${error.message}`); process.exitCode = 1; });
 }

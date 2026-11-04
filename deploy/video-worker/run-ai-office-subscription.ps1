@@ -50,5 +50,6 @@ try {
 Set-Location $workerDir
 Write-Host 'Claude Code will use your signed-in Max account. Accept the development channel prompt on first launch.'
 Write-Host 'The Claude session and DaVinci Resolve must remain open for AI Office video jobs.'
+$env:VIDEO_WORKER_TOKEN = $null
 & claude --dangerously-load-development-channels server:ai-office-video
 exit $LASTEXITCODE
