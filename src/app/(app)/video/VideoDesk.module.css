@@ -14,3 +14,4 @@
 .job p{margin:10px 0}
 .progress{color:var(--accent);font-weight:600}
 .error{color:var(--bad);font-weight:600}
+.report{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.5}

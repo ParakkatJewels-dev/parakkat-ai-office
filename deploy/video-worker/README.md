@@ -39,6 +39,20 @@ The starter editing bridge makes ordered cuts with source audio. Captions,
 grading, effects, music, and editorial review require more editing tools or a
 custom `VIDEO_BRIDGE_SCRIPT` adapter and must be checked on the exported video.
 
+### Updating this Windows worker
+
+Sign in to AI Office as Super Admin on the editing PC, open **Video editing**, and
+use **Download Windows worker update**. Exit the current Claude Code session,
+extract the ZIP, and replace the old worker files. Keep the private
+`subscription.env` in the worker folder; the ZIP does not include it. Start
+`run-ai-office-subscription.cmd` again. The launcher detects a previously
+rejected MCP server and tells you how to reset Claude's saved choice.
+
+The worker can save detailed style-study findings to the AI Office job through
+`video_job_report`, and keeps `video-editor-style-profile.md` under the export
+folder for future local edits. This profile describes example edits and usable
+assets; it does not retrain Claude's model weights.
+
 ## Claude Max Remote Control (interactive, no API key)
 
 This folder also contains a local Claude Code skill, `/video-edit`, and

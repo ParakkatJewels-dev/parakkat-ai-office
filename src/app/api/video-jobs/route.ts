@@ -21,7 +21,7 @@ export async function GET() {
   const now = new Date().toISOString();
   await supabaseAdmin().from('video_edit_jobs').update({ status: 'failed', error: 'Editing computer disconnected. Check the project and export there before retrying.', lease_until: null, claim_token: null, updated_at: now, finished_at: now }).eq('status', 'running').lt('lease_until', now);
   const { data, error } = await session.db.from('video_edit_jobs')
-    .select('id,brief,source_folder,output_name,status,progress,worker_id,project_path,export_path,error,created_at,updated_at,finished_at')
+    .select('id,brief,source_folder,output_name,status,progress,worker_id,project_path,export_path,worker_report,error,created_at,updated_at,finished_at')
     .order('created_at', { ascending: false }).limit(40);
   return error ? json({ error: 'Could not load video jobs.' }, 503) : json({ jobs: data || [] });
 }
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     return changed.data ? json({ ok: true }) : json({ error: 'This job has already started. Refresh its status.' }, 409);
   }
   if (body.action === 'retry' && existing.data.status === 'failed') {
-    const changed = await admin.from('video_edit_jobs').update({ status: 'queued', progress: null, worker_id: null, claim_token: null, lease_until: null, error: null, project_path: null, export_path: null, updated_at: new Date().toISOString(), finished_at: null }).eq('id', body.id).eq('status', 'failed').select('id').maybeSingle();
+    const changed = await admin.from('video_edit_jobs').update({ status: 'queued', progress: null, worker_id: null, claim_token: null, lease_until: null, error: null, project_path: null, export_path: null, worker_report: null, updated_at: new Date().toISOString(), finished_at: null }).eq('id', body.id).eq('status', 'failed').select('id').maybeSingle();
     return changed.data ? json({ ok: true }) : json({ error: 'This job changed. Refresh its status.' }, 409);
   }
   return json({ error: 'This action is not available for the current job status.' }, 409);

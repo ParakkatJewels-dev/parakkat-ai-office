@@ -48,6 +48,8 @@ try {
     Write-Host 'AI Office video queue reachable.'
 } catch { throw 'AI Office video queue is not reachable with this token. Check the VPS deployment, migration, URL and token.' }
 Set-Location $workerDir
+$serverStatus = (& $claude.Source mcp get ai-office-video 2>&1 | Out-String)
+if ($serverStatus -match 'Rejected') { throw 'ai-office-video was rejected in Claude. Run "claude mcp reset-project-choices" in this folder, then choose Use this MCP server when prompted.' }
 Write-Host 'Claude Code will use your signed-in Max account. Accept the development channel prompt on first launch.'
 Write-Host 'The Claude session and DaVinci Resolve must remain open for AI Office video jobs.'
 $env:VIDEO_WORKER_TOKEN = $null

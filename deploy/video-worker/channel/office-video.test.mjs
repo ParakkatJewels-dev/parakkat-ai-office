@@ -44,6 +44,11 @@ test('queue notification leaves the job queued until Claude claims and completes
   assert.equal(claimed.source_folder, path.join(mediaRoot, 'Test'));
   assert.equal(channel.active.claimToken, claimToken);
 
+  const report = JSON.parse((await channel.reportJob({ job_id: jobId, report: 'Style notes saved on the editing PC.' })).content[0].text);
+  assert.equal(report.ok, true);
+  assert.equal(calls.at(-1).action, 'report');
+  assert.equal(calls.at(-1).claimToken, claimToken);
+
   const project = path.join(exportRoot, 'test.drp');
   const video = path.join(exportRoot, 'test.mp4');
   await writeFile(project, Buffer.alloc(2048));

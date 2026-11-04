@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   if (!authorized(request)) return json({ error: 'Worker authentication failed.' }, 401);
   if (!request.headers.get('content-type')?.startsWith('application/json')) return json({ error: 'Send JSON.' }, 415);
   let body: any;
-  try { const raw = await request.text(); if (raw.length > 8_000) throw new Error(); body = JSON.parse(raw); }
+  try { const raw = await request.text(); if (raw.length > 32_000) throw new Error(); body = JSON.parse(raw); }
   catch { return json({ error: 'Invalid worker request.' }, 400); }
   if (!body || typeof body !== 'object') return json({ error: 'Invalid worker request.' }, 400);
   const db = supabaseAdmin();
@@ -53,6 +53,13 @@ export async function POST(request: Request) {
     const changed = await base.update({ progress, lease_until: new Date(now.getTime() + 180_000).toISOString(), updated_at: now.toISOString() })
       .eq('id', body.id).eq('claim_token', body.claimToken).eq('status', 'running').gt('lease_until', now.toISOString()).select('id').maybeSingle();
     return changed.error ? json({ error: 'Could not update progress.' }, 503) : changed.data ? json({ ok: true }) : json({ error: 'The worker lease expired.' }, 409);
+  }
+  if (body.action === 'report') {
+    const report = typeof body.report === 'string' ? body.report.trim() : '';
+    if (!report || report.length > 12_000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(report)) return json({ error: 'Enter a report of at most 12,000 characters.' }, 400);
+    const changed = await base.update({ worker_report: report, lease_until: new Date(now.getTime() + 180_000).toISOString(), updated_at: now.toISOString() })
+      .eq('id', body.id).eq('claim_token', body.claimToken).eq('status', 'running').gt('lease_until', now.toISOString()).select('id').maybeSingle();
+    return changed.error ? json({ error: 'Could not save the editor report.' }, 503) : changed.data ? json({ ok: true }) : json({ error: 'The worker lease expired.' }, 409);
   }
   if (body.action === 'complete') {
     const projectPath = safeWorkerText(body.projectPath, 1000), exportPath = safeWorkerText(body.exportPath, 1000);

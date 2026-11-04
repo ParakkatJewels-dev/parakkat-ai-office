@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import styles from './VideoDesk.module.css';
 
-type Job = { id:string; brief:string; source_folder:string; output_name:string; status:string; progress:string|null; worker_id:string|null; project_path:string|null; export_path:string|null; error:string|null; created_at:string; updated_at:string; finished_at:string|null };
+type Job = { id:string; brief:string; source_folder:string; output_name:string; status:string; progress:string|null; worker_id:string|null; project_path:string|null; export_path:string|null; worker_report:string|null; error:string|null; created_at:string; updated_at:string; finished_at:string|null };
 const statusName:Record<string,string>={queued:'Waiting for editing computer',running:'Editing on editing computer',review:'Export ready for review',failed:'Needs attention',cancelled:'Cancelled'};
 
 export default function VideoDesk() {
@@ -40,7 +40,7 @@ export default function VideoDesk() {
     try{await post({action,id});}catch(e){setError(e instanceof Error?e.message:'Could not change this edit.');}finally{setBusy(false);}
   }
   return <div className={`page ${styles.page}`}>
-    <header><Link className="back" href="/agents/videoEditor">← Video Editor</Link><h1>Video editing</h1><p>Assign an edit to the computer running DaVinci Resolve Studio. The source files, Resolve project and export stay there. The starter editor assembles cuts; titles, effects, colour and sound work need an expanded Resolve bridge.</p></header>
+    <header><Link className="back" href="/agents/videoEditor">← Video Editor</Link><h1>Video editing</h1><p>Assign an edit to the computer running DaVinci Resolve Studio. The source files, Resolve project and export stay there. The starter editor assembles cuts; titles, effects, colour and sound work need an expanded Resolve bridge.</p><a className="btn ghost sm-btn" href="/api/video-worker/download">Download Windows worker update</a><p>When updating the editing PC, keep its private <code>subscription.env</code> file and replace the other worker files.</p></header>
     <section className={`card ${styles.card}`}><h2>New edit</h2><form onSubmit={create} className={styles.form}>
       <label>Source folder on editing computer<input required maxLength={240} value={folder} onChange={e=>{setFolder(e.target.value);requestId.current=null;}} placeholder="November launch/Raw clips"/><small>Relative to the media root configured in the local worker.</small></label>
       <label>Export name<input required maxLength={120} value={name} onChange={e=>{setName(e.target.value);requestId.current=null;}} placeholder="November launch reel"/></label>
@@ -54,6 +54,7 @@ export default function VideoDesk() {
       {job.progress&&<p className={styles.progress}>{job.progress}</p>}
       {job.project_path&&<p><b>Resolve project:</b> {job.project_path}</p>}
       {job.export_path&&<p><b>Export on editing computer:</b> {job.export_path}</p>}
+      {job.worker_report&&<details><summary>Editor report</summary><pre className={styles.report}>{job.worker_report}</pre></details>}
       {job.error&&<p className={styles.error}>{job.error}</p>}
       {job.status==='queued'&&<button type="button" className="btn ghost sm-btn" disabled={busy} onClick={()=>void change('cancel',job.id)}>Cancel</button>}
       {job.status==='failed'&&<button type="button" className="btn ghost sm-btn" disabled={busy} onClick={()=>void change('retry',job.id)}>Retry after checking output</button>}
