@@ -1,5 +1,45 @@
 # Editing computer worker (Mac or Windows)
 
+## Claude Max Remote Control (interactive, no API key)
+
+This folder also contains a local Claude Code skill, `/video-edit`, and
+`remote_edit.py`. It lets the person signed in with Claude Max start Claude Code
+**on the editing computer**, then direct it from another device using
+[Remote Control](https://code.claude.com/docs/en/remote-control). Remote Control
+keeps the local filesystem and tools available, and the editing computer must
+stay awake with Resolve and the Claude session running.
+
+On Windows, open Command Prompt in this folder and run:
+
+```cmd
+run-claude-max-windows.cmd
+```
+
+The launcher checks the local editing tools and starts Remote Control in this
+folder, so Claude Code discovers the `/video-edit` skill. It ignores any API key
+setting for this one session and uses the subscriber's Claude login. On macOS,
+run `chmod +x run-claude-max-macos.sh && ./run-claude-max-macos.sh`.
+
+If prompted, sign in to Claude Code using the owner's Max account. On another
+device, sign in to `https://claude.ai/code` with the same account and open that
+Remote Control session. Send a task such as:
+
+> /video-edit Make a 15-second highlight from E:\Ai-Office\Videos\Test.
+> Save the MP4 and Resolve project in E:\Ai-Office\Exports.
+
+Claude can inspect the source folder, choose ordered cuts, invoke the local
+Resolve bridge and report the output paths. This path does **not** read
+`config.env` and does **not** require `ANTHROPIC_API_KEY` or
+`VIDEO_WORKER_TOKEN`. The existing AI Office queue below is a separate,
+unattended workflow and still requires API key authentication. Remote Control
+is operated by the signed-in subscriber; other AI Office users do not acquire
+access to that Claude subscription through the queue.
+
+The included bridge currently supports ordered cuts with source audio. It does
+not produce captions, grading, effects, music, or a reviewed creative final.
+
+## AI Office unattended queue (API key)
+
 This worker receives **only the task brief and a folder name** from AI Office. It reads
 footage from `VIDEO_MEDIA_ROOT`, asks Claude Code on this computer to plan ordered cuts,
 uses Resolve Studio's local Python scripting API, exports an MP4 and `.drp` project
