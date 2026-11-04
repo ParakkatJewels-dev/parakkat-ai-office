@@ -31,7 +31,7 @@ test('queue notification leaves the job queued until Claude claims and completes
       : { ok: true };
     return { ok: true, json: async () => data };
   };
-  const channel = createChannel({ officeUrl: 'https://office.example', token: 'x'.repeat(64), mediaRoot, exportRoot, fetchImpl });
+  const channel = createChannel({ officeUrl: 'https://office.example', token: 'x'.repeat(64), mediaRoot, exportRoot, fetchImpl, autoUpdate: false });
   channel.mcp.notification = async message => notices.push(message);
   await channel.poll();
   assert.equal(calls.length, 1);

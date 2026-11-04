@@ -41,12 +41,22 @@ custom `VIDEO_BRIDGE_SCRIPT` adapter and must be checked on the exported video.
 
 ### Updating this Windows worker
 
-Sign in to AI Office as Super Admin on the editing PC, open **Video editing**, and
-use **Download Windows worker update**. Exit the current Claude Code session,
-extract the ZIP, and replace the old worker files. Keep the private
-`subscription.env` in the worker folder; the ZIP does not include it. Start
-`run-ai-office-subscription.cmd` again. The launcher detects a previously
+To install automatic updates on an existing Windows worker, sign in to AI
+Office as Super Admin on the editing PC, open **Video editing**, and use
+**Download Windows worker update** once. Exit the current Claude Code session,
+extract the ZIP over the existing worker folder, keep the private
+`subscription.env` in place, and start `run-ai-office-subscription.cmd` again.
+The ZIP never contains the private settings. The launcher detects a previously
 rejected MCP server and tells you how to reset Claude's saved choice.
+
+After this one-time update, the running channel checks AI Office every five
+minutes for a newer worker package over HTTPS. It verifies the package checksum
+and installs code and guide changes only while no video job is active. A newly
+claimed job reads the current `EDITING_GUIDE.md`, and each Python editing command
+loads the current bridge code. Routine editing improvements therefore apply to
+the next job without downloading another ZIP or restarting Claude. Changes to
+the channel's tool definitions still require restarting the Claude session.
+The worker does not need GitHub access or a second repository.
 
 The worker can save detailed style-study findings to the AI Office job through
 `video_job_report`, and keeps `video-editor-style-profile.md` under the export
