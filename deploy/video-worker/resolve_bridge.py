@@ -81,10 +81,10 @@ def prepare_audio(source, destination, duration, gain_db, music=False):
     if done.returncode or not destination.is_file() or destination.stat().st_size < 1024:
         raise RuntimeError(f'Could not prepare audio: {(done.stderr or done.stdout)[-500:]}')
 
-def add_audio(data, timeline, pool, storage, scratch, target):
+def add_audio(data, timeline, pool, storage, assets_dir, target):
     audio = data['plan'].get('audio') or {}
     if not audio:
-        return False
+        return None
     duration = sum(item['end_seconds'] - item['start_seconds'] for item in data['plan']['segments'])
     start_frame = require(timeline.GetStartFrame(), 'Resolve could not read timeline start')
     fps = target['fps']
@@ -94,7 +94,7 @@ def add_audio(data, timeline, pool, storage, scratch, target):
     choices.extend((f'sfx-{index + 1}', item) for index, item in enumerate(audio.get('sound_effects', [])))
     for label, item in choices:
         at = float(item.get('at_seconds', 0))
-        prepared = scratch / 'audio' / f'{label}.wav'
+        prepared = assets_dir / f'{label}.wav'
         prepare_audio(Path(item['file']).resolve(strict=True), prepared, duration - at, item.get('gain_db', 0), music=(label == 'music'))
         with wave.open(str(prepared), 'rb') as wav:
             prepared_duration = wav.getnframes() / wav.getframerate()
@@ -106,7 +106,8 @@ def add_audio(data, timeline, pool, storage, scratch, target):
         entry = {'mediaPoolItem': clip, 'startFrame': 0, 'endFrame': frame_count - 1,
                  'mediaType': 2, 'trackIndex': track_index, 'recordFrame': int(start_frame + round(at * fps))}
         require(pool.AppendToTimeline([entry]), f'Resolve could not place {label} on the timeline')
-    return True
+    (assets_dir / 'sources.json').write_text(json.dumps(audio, indent=2, ensure_ascii=False), encoding='utf-8')
+    return assets_dir
 
 def main(manifest_path):
     data = json.loads(Path(manifest_path).read_text(encoding='utf-8'))
@@ -175,7 +176,7 @@ def main(manifest_path):
             raise RuntimeError('Resolve returned an unexpected number of timeline clips for grading')
         for index, item in enumerate(timeline_items):
             require(item.SetCDL(cdl), f'Resolve could not apply the colour grade to clip {index + 1}')
-    audio_applied = add_audio(data, timeline, pool, storage, Path(manifest_path).parent, target)
+    audio_assets_dir = add_audio(data, timeline, pool, storage, output / f'{name}-{job_id}-assets', target)
     require(manager.SaveProject(), 'Resolve could not save the project')
     project_path = output / f'{name}-{job_id}.drp'
     require(manager.ExportProject(project_name, str(project_path)), 'Resolve could not export the project backup')
@@ -205,7 +206,8 @@ def main(manifest_path):
         raise RuntimeError('Resolve finished without creating a usable MP4; check its render job status')
     require(manager.SaveProject(), 'Resolve could not save the completed project')
     print(json.dumps({'project_path': str(project_path), 'export_path': str(export_path), 'target_format': target,
-                      'grade_applied': bool(grade), 'audio_applied': audio_applied}))
+                      'grade_applied': bool(grade), 'audio_applied': bool(audio_assets_dir),
+                      'audio_assets_dir': str(audio_assets_dir) if audio_assets_dir else None}))
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:

@@ -35,9 +35,12 @@ terminal open. Create a short test job in AI Office with a source folder name
 relative to the media root, such as `Test`. A failed or lost job requires
 checking the Resolve project and export folder before retrying.
 
-The starter editing bridge makes ordered cuts with source audio. Captions,
-grading, effects, music, and editorial review require more editing tools or a
-custom `VIDEO_BRIDGE_SCRIPT` adapter and must be checked on the exported video.
+The subscription editing bridge makes ordered cuts, portrait or landscape
+exports, a global CDL grade, and basic music and timed sound-effect tracks. It
+checks export dimensions and audible audio. Keep each export's `-assets` folder
+beside its MP4 and `.drp`; the Resolve project references those prepared audio
+stems. Captions, complex transitions, and a full creative review still require
+additional editing work and must be checked on the exported video.
 
 ### Updating this Windows worker
 
@@ -95,8 +98,8 @@ Resolve bridge and report the output paths. This direct Remote Control path
 does **not** read `config.env` or require an API key or worker token. The AI
 Office channel above uses a worker token to read and update its job queue.
 
-The included bridge currently supports ordered cuts with source audio. It does
-not produce captions, grading, effects, music, or a reviewed creative final.
+The included bridge supports ordered cuts, basic grading and audio tracks, but
+does not produce captions, complex transitions, or a reviewed creative final.
 
 ## Legacy unattended CLI worker (API key)
 
