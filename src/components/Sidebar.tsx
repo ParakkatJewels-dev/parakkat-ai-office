@@ -6,11 +6,11 @@ import { Icon, type IconName } from './Icon';
 
 type NavItem = [href: string, label: string, icon: IconName, visible: boolean];
 
-export function Sidebar({ admin, waiting, seo, studio }: { admin: boolean; waiting: number; seo: boolean; studio: boolean }) {
+export function Sidebar({ admin, waiting, seo, studio, video }: { admin: boolean; waiting: number; seo: boolean; studio: boolean; video: boolean }) {
   const path = usePathname(), dialog = useRef<HTMLDialogElement>(null);
   const groups: { label: string; items: NavItem[] }[] = [
     { label: 'Workspace', items: [['/dashboard', 'Overview', 'chart', true], ['/tasks', 'Tasks & chat', 'doc', true], ['/office', 'Office map', 'map', true]] },
-    { label: 'Create & review', items: [['/approvals', 'Approvals', 'check', true], ['/studio', 'Design studio', 'spark', studio], ['/automations', 'Automations', 'rocket', true], ['/agents', 'Agent reports', 'users', true]] },
+    { label: 'Create & review', items: [['/approvals', 'Approvals', 'check', true], ['/studio', 'Design studio', 'spark', studio], ['/video', 'Video editing', 'play', video], ['/automations', 'Automations', 'rocket', true], ['/agents', 'Agent reports', 'users', true]] },
     { label: 'Insights', items: [['/outcomes', 'Outcomes', 'trend', true], ['/seo', 'SEO', 'search', seo]] },
     { label: 'Manage', items: [['/agents/manage', 'Agent management', 'edit', true], ['/usage', 'Usage & billing', 'rupee', admin], ['/admin', 'Settings', 'settings', admin]] },
   ];

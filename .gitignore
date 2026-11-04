@@ -3,6 +3,9 @@ node_modules
 out
 .env
 .env.local
+.env
+deploy/video-worker/config.env
+__pycache__/
 .env*.local
 .vercel
 *.tsbuildinfo

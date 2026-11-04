@@ -61,7 +61,7 @@ export default async function AgentReport({ params, searchParams }: { params: Pr
           <div><small>Reports to</small><b>{ROLE_LABEL[dept.human_head_role as AppRole]}</b></div>
           <div><small>Runs on</small><b>{agent.model}</b></div>
         </div>
-        <div className={styles.profileActions}>{role!=='viewer'&&<Link href={`/automations?workflow=head_task&agent=${encodeURIComponent(agent.is_lead?agent.id:lead?.id||agent.id)}`} className="btn"><Icon name="users" size={18}/>{agent.is_lead?'Assign a task':'Assign through AI head'}</Link>}
+        <div className={styles.profileActions}>{agent.id==='videoEditor'&&role!=='viewer'&&<Link href="/video" className="btn"><Icon name="play" size={18}/>Assign a video edit</Link>}{role!=='viewer'&&<Link href={`/automations?workflow=head_task&agent=${encodeURIComponent(agent.is_lead?agent.id:lead?.id||agent.id)}`} className="btn"><Icon name="users" size={18}/>{agent.is_lead?'Assign a task':'Assign through AI head'}</Link>}
         <Link href={`/agents/manage?agent=${agent.id}`} className="btn ghost"><Icon name="edit" size={18} />Manage instructions</Link>
         <Link href={`/office?focus=${agent.id}`} className="btn ghost"><Icon name="map" size={18} />Find in the office</Link></div>
       </header>

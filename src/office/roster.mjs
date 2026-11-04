@@ -108,7 +108,7 @@ export const PEOPLE = [
   { id: 'bgGen', name: 'Background Artist', role: 'Festive scenes behind products', room: 'photo', seat: 2, model: GEM_I, dept: 'photo' },
   { id: 'modelShot', name: 'Model Shot Composer', role: 'On-model jewellery images', room: 'photo', seat: 3, model: GEM_I, dept: 'photo' },
   { id: 'reelsProducer', name: 'Reels Producer', role: 'Head of Reels Studio', room: 'reels', seat: 0, model: GPT_M, dept: 'reels', head: true },
-  { id: 'videoEditor', name: 'Video Editor', role: 'Cuts reels and stories', room: 'reels', seat: 1, model: GEM, dept: 'reels' },
+  { id: 'videoEditor', name: 'Video Editor', role: 'Edits and exports video on the editing computer', room: 'reels', seat: 1, model: 'Claude Code + DaVinci Resolve Studio', dept: 'reels' },
   { id: 'scriptWriter', name: 'Reels Scriptwriter', role: 'Hooks and scripts', room: 'reels', seat: 2, model: GPT_W, dept: 'reels' },
   { id: 'catalogLead', name: 'Catalogue Lead', role: 'Head of Catalogue Room', room: 'catalog', seat: 0, model: GPT_M, dept: 'catalog', head: true },
   { id: 'layoutDesigner', name: 'Layout Designer', role: 'Catalogue pages', room: 'catalog', seat: 1, model: GEM_I, dept: 'catalog' },

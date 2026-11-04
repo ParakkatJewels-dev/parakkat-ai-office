@@ -34,7 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <WorkspaceFrame>
       <a href="#main-content" className="skip-link">Skip to content</a>
       <TopBar name={name} role={ROLE_LABEL[role]} waiting={waiting} admin={role === 'super_admin'} seo={leads('seo')} studio={role !== 'viewer'} />
-      <Sidebar admin={role === 'super_admin'} waiting={waiting} seo={leads('seo')} studio={role !== 'viewer'} />
+      <Sidebar admin={role === 'super_admin'} waiting={waiting} seo={leads('seo')} studio={role !== 'viewer'} video={leads('reels')&&role!=='viewer'} />
       <main className="main" id="main-content" tabIndex={-1}>
         {role === 'viewer' && <p className="flash" role="status">Your account has no role yet. Ask the Super Admin to set you up as a department head.</p>}
         {sys?.paused && (

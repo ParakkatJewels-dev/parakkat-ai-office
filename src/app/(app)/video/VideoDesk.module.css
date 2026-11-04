@@ -1,0 +1,16 @@
+.page{display:grid;gap:20px;max-width:1000px}
+.page header h1{margin:12px 0 4px}
+.page header p{color:var(--muted);max-width:730px}
+.card{padding:22px}
+.card h2{margin:0 0 18px}
+.form{display:grid;gap:16px}
+.form label{display:grid;gap:7px;font-weight:600}
+.form input,.form textarea{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid var(--line-2);border-radius:9px;background:var(--panel);color:var(--ink);font:inherit}
+.form small,.job small{color:var(--muted);font-weight:400}
+.form button{justify-self:start}
+.jobs{list-style:none;padding:0;margin:0;display:grid;gap:12px}
+.job{border:1px solid var(--line);border-radius:10px;padding:16px;overflow-wrap:anywhere}
+.jobHead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.job p{margin:10px 0}
+.progress{color:var(--accent);font-weight:600}
+.error{color:var(--bad);font-weight:600}

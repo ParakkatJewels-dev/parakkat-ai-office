@@ -42,4 +42,8 @@ npm run seed:gen              # after editing src/office/roster.mjs
 
 Deploying: see [docs/DEPLOY.md](docs/DEPLOY.md).
 
+For edits on a separate DaVinci Resolve Studio Mac or Windows PC, see
+[deploy/video-worker/README.md](deploy/video-worker/README.md). The existing Video
+Editor uses a dedicated queue; source media and exports remain on that computer.
+
 For a VPS with **ChatGPT OAuth instead of an OpenAI API key**, follow [docs/SELF_HOST.md](docs/SELF_HOST.md). This uses the official Sign in with ChatGPT flow, keeps renewable credentials in protected storage on the VPS, and sends agent reasoning through your connected ChatGPT plan. Staff still sign in through Supabase; Gemini image generation remains a separate provider.

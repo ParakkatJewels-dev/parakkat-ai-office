@@ -80,7 +80,7 @@ insert into agents (id, name, role_desc, department_id, is_lead, model) values
   ('bgGen', 'Background Artist', 'Festive scenes behind products', 'photo', false, 'Gemini image model'),
   ('modelShot', 'Model Shot Composer', 'On-model jewellery images', 'photo', false, 'Gemini image model'),
   ('reelsProducer', 'Reels Producer', 'Head of Reels Studio', 'reels', true, 'OpenAI GPT, manager tier'),
-  ('videoEditor', 'Video Editor', 'Cuts reels and stories', 'reels', false, 'Gemini, worker tier'),
+  ('videoEditor', 'Video Editor', 'Edits and exports video on the editing computer', 'reels', false, 'Claude Code + DaVinci Resolve Studio'),
   ('scriptWriter', 'Reels Scriptwriter', 'Hooks and scripts', 'reels', false, 'OpenAI GPT, worker tier'),
   ('catalogLead', 'Catalogue Lead', 'Head of Catalogue Room', 'catalog', true, 'OpenAI GPT, manager tier'),
   ('layoutDesigner', 'Layout Designer', 'Catalogue pages', 'catalog', false, 'Gemini image model'),
