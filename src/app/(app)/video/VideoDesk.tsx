@@ -9,7 +9,7 @@ const statusName:Record<string,string>={queued:'Waiting for editing computer',ru
 
 export default function VideoDesk() {
   const [jobs,setJobs]=useState<Job[]>([]),[folder,setFolder]=useState(''),[name,setName]=useState(''),[brief,setBrief]=useState('');
-  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[loaded,setLoaded]=useState(false);
+  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[loadError,setLoadError]=useState(''),[loaded,setLoaded]=useState(false);
   const requestId=useRef<string|null>(null);
   const load=useCallback(async(signal?:AbortSignal)=>{
     const response=await fetch('/api/video-jobs',{cache:'no-store',signal});
@@ -19,7 +19,7 @@ export default function VideoDesk() {
   },[]);
   useEffect(()=>{
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
-    const poll=async()=>{try{await load(controller.signal);setError('');}catch(e){if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Could not load edits.');}finally{if(!controller.signal.aborted)timer=setTimeout(poll,6000);}};
+    const poll=async()=>{try{await load(controller.signal);setLoadError('');}catch(e){if(!controller.signal.aborted)setLoadError(e instanceof Error?e.message:'Could not load edits.');}finally{if(!controller.signal.aborted)timer=setTimeout(poll,6000);}};
     void poll();return()=>{controller.abort();clearTimeout(timer);};
   },[load]);
   async function post(body:Record<string,unknown>) {
@@ -42,12 +42,12 @@ export default function VideoDesk() {
   return <div className={`page ${styles.page}`}>
     <header><Link className="back" href="/agents/videoEditor">← Video Editor</Link><h1>Video editing</h1><p>Assign an edit to the computer running DaVinci Resolve Studio. Source files, Resolve projects and exports stay there. The editor supports cuts, basic colour grading, music and timed sound effects. Titles and advanced transitions need more editing tools.</p><a className="btn ghost sm-btn" href="/api/video-worker/download">Download Windows worker update</a><p>Install this update once on the editing PC, keeping its private <code>subscription.env</code> file. The running worker then checks for future code and guide updates automatically between jobs.</p></header>
     <section className={`card ${styles.card}`}><h2>New edit</h2><form onSubmit={create} className={styles.form}>
-      <label>Source folder on editing computer<input required maxLength={240} value={folder} onChange={e=>{setFolder(e.target.value);requestId.current=null;}} placeholder="November launch/Raw clips"/><small>Relative to the media root configured in the local worker.</small></label>
-      <label>Export name<input required maxLength={120} value={name} onChange={e=>{setName(e.target.value);requestId.current=null;}} placeholder="November launch reel"/></label>
-      <label>Edit brief<textarea required maxLength={6000} rows={5} value={brief} onChange={e=>{setBrief(e.target.value);requestId.current=null;}} placeholder="Make a 30-second vertical reel. Start with the close-up, remove pauses, keep natural colour and end on the logo shot."/></label>
+      <label>Source folder on editing computer<input required maxLength={240} value={folder} onChange={e=>{setFolder(e.target.value);setError('');requestId.current=null;}} placeholder="Test"/><small>Enter only the part after the media root. Example: for <code>E:\Ai-Office\Videos\Test</code>, enter <code>Test</code>.</small></label>
+      <label>Export name<input required maxLength={120} value={name} onChange={e=>{setName(e.target.value);setError('');requestId.current=null;}} placeholder="resort-highlight"/><small>Choose a filename such as <code>resort-highlight</code>; the worker adds the file extension.</small></label>
+      <label>Edit brief<textarea required maxLength={6000} rows={5} value={brief} onChange={e=>{setBrief(e.target.value);setError('');requestId.current=null;}} placeholder="Make a 30-second vertical reel. Start with the close-up, remove pauses, keep natural colour and end on the logo shot."/></label>
       <button className="btn" type="submit" disabled={busy||!folder.trim()||!name.trim()||!brief.trim()}>{busy?'Saving…':'Send to editing computer'}</button>
     </form></section>
-    {error&&<p className={styles.error} role="alert">{error}</p>}
+    {(error||loadError)&&<p className={styles.error} role="alert">{error||loadError}</p>}
     <section className={`card ${styles.card}`}><h2>Editing jobs</h2>{!loaded?<p>Loading…</p>:jobs.length===0?<p>No edits assigned yet.</p>:<ol className={styles.jobs}>{jobs.map(job=><li key={job.id} className={styles.job}>
       <div className={styles.jobHead}><b>{job.output_name}.mp4</b><span className="pill">{statusName[job.status]||job.status}</span></div>
       <p>{job.brief}</p><small>Source: {job.source_folder} · Assigned {new Date(job.created_at).toLocaleString()}</small>

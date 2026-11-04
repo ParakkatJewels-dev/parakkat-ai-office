@@ -40,7 +40,10 @@ export async function POST(request: Request) {
   if (body.action === 'create') {
     const brief = typeof body.brief === 'string' ? body.brief.trim() : '';
     const folder = sourceFolder(body.sourceFolder), name = outputName(body.outputName);
-    if (!UUID.test(body.clientId || '') || !folder || !name || !brief || brief.length > 6000) return json({ error: 'Enter a brief, a folder under the editing computer media root, and an export name.' }, 400);
+    if (!UUID.test(body.clientId || '')) return json({ error: 'The request expired. Refresh the page and try again.' }, 400);
+    if (!folder) return json({ error: 'Source folder: enter only the folder inside the editing computer media root. For E:\\Ai-Office\\Videos\\Test, enter Test.' }, 400);
+    if (!name) return json({ error: 'Export name: use letters, numbers, spaces, dots, dashes, or underscores. Do not include a folder path.' }, 400);
+    if (!brief || brief.length > 6000) return json({ error: 'Edit brief: describe the video you want in up to 6,000 characters.' }, 400);
     try { await checkPause(); } catch { return json({ error: 'Agents are paused. Resume them before assigning work.' }, 409); }
     const { data: agent } = await session.db.from('agents').select('enabled').eq('id', 'videoEditor').maybeSingle();
     if (!agent?.enabled) return json({ error: 'The Video Editor is disabled.' }, 409);
