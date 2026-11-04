@@ -23,7 +23,7 @@ export async function GET() {
   const { data, error } = await session.db.from('video_edit_jobs')
     .select('id,brief,source_folder,output_name,status,progress,worker_id,project_path,export_path,worker_report,error,created_at,updated_at,finished_at')
     .order('created_at', { ascending: false }).limit(40);
-  return error ? json({ error: 'Could not load video jobs.' }, 503) : json({ jobs: data || [] });
+  return error ? json({ error: 'Could not load video jobs.' }, 503) : json({ jobs: data || [], mediaRootHint: process.env.VIDEO_MEDIA_ROOT_HINT || null });
 }
 
 export async function POST(request: Request) {
@@ -39,10 +39,10 @@ export async function POST(request: Request) {
   const admin = supabaseAdmin();
   if (body.action === 'create') {
     const brief = typeof body.brief === 'string' ? body.brief.trim() : '';
-    const folder = sourceFolder(body.sourceFolder), name = outputName(body.outputName);
+    const folder = sourceFolder(body.sourceFolder, process.env.VIDEO_MEDIA_ROOT_HINT), name = outputName(body.outputName);
     if (!UUID.test(body.clientId || '')) return json({ error: 'The request expired. Refresh the page and try again.' }, 400);
-    if (!folder) return json({ error: 'Source folder: enter only the folder inside the editing computer media root. For E:\\Ai-Office\\Videos\\Test, enter Test.' }, 400);
-    if (!name) return json({ error: 'Export name: use letters, numbers, spaces, dots, dashes, or underscores. Do not include a folder path.' }, 400);
+    if (!folder) return json({ error: `Source folder must be inside ${process.env.VIDEO_MEDIA_ROOT_HINT || 'the editing computer media root'}. Enter a folder name under that root or paste its full path.` }, 400);
+    if (!name) return json({ error: 'Export name: use up to 80 English letters, numbers, spaces, dots, dashes, or underscores. Do not include a folder path.' }, 400);
     if (!brief || brief.length > 6000) return json({ error: 'Edit brief: describe the video you want in up to 6,000 characters.' }, 400);
     try { await checkPause(); } catch { return json({ error: 'Agents are paused. Resume them before assigning work.' }, 409); }
     const { data: agent } = await session.db.from('agents').select('enabled').eq('id', 'videoEditor').maybeSingle();

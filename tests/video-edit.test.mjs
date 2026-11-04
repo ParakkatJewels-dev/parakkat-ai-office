@@ -37,11 +37,17 @@ async function as(who, sql, params = []) {
   finally { await db.exec('reset role'); }
 }
 
-test('media folders and export names remain relative and cannot escape the Mac root', () => {
+test('media folders can use relative names or an absolute path inside the configured root', () => {
   assert.equal(sourceFolder('Launch/Raw clips'), 'Launch/Raw clips');
   assert.equal(sourceFolder('Launch\\Raw clips'), 'Launch/Raw clips');
+  assert.equal(sourceFolder('"E:\\Ai-Office\\Videos\\Test\\"', 'E:\\Ai-Office\\Videos'), 'Test');
+  assert.equal(sourceFolder('e:\\ai-office\\videos\\Resort (2026)\\Raw', 'E:\\Ai-Office\\Videos'), 'Resort (2026)/Raw');
+  assert.equal(sourceFolder('/Volumes/Edit/Videos/Test', '/Volumes/Edit/Videos'), 'Test');
+  assert.equal(sourceFolder('E:\\Ai-Office\\Videos\\Test'), null);
+  assert.equal(sourceFolder('E:\\Ai-Office\\Videos2\\Test', 'E:\\Ai-Office\\Videos'), null);
+  assert.equal(sourceFolder('E:\\Ai-Office\\Videos\\Test\\..\\Other', 'E:\\Ai-Office\\Videos'), null);
   for (const path of ['../outside', '/absolute', 'folder/../outside', 'folder//child', 'C:\\Windows', '.']) assert.equal(sourceFolder(path), null);
-  assert.equal(outputName('November reel.mp4'), 'November reel');
+  assert.equal(outputName('November reel.mp4'), 'November-reel');
   for (const name of ['../evil', '/absolute', 'x/y', '']) assert.equal(outputName(name), null);
   assert.equal(safeWorkerText('Editing clip 1'), 'Editing clip 1');
   assert.equal(safeWorkerText('line\nbreak'), null);

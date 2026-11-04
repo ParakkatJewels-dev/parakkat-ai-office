@@ -8,14 +8,14 @@ type Job = { id:string; brief:string; source_folder:string; output_name:string; 
 const statusName:Record<string,string>={queued:'Waiting for editing computer',running:'Editing on editing computer',review:'Export ready for review',failed:'Needs attention',cancelled:'Cancelled'};
 
 export default function VideoDesk() {
-  const [jobs,setJobs]=useState<Job[]>([]),[folder,setFolder]=useState(''),[name,setName]=useState(''),[brief,setBrief]=useState('');
+  const [jobs,setJobs]=useState<Job[]>([]),[folder,setFolder]=useState(''),[name,setName]=useState(''),[brief,setBrief]=useState(''),[mediaRootHint,setMediaRootHint]=useState<string|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[loadError,setLoadError]=useState(''),[loaded,setLoaded]=useState(false);
   const requestId=useRef<string|null>(null);
   const load=useCallback(async(signal?:AbortSignal)=>{
     const response=await fetch('/api/video-jobs',{cache:'no-store',signal});
     const data=await response.json().catch(()=>null);
     if(!response.ok)throw new Error(data?.error||'Could not load edits.');
-    setJobs(data.jobs||[]);setLoaded(true);
+    setJobs(data.jobs||[]);setMediaRootHint(data.mediaRootHint||null);setLoaded(true);
   },[]);
   useEffect(()=>{
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
@@ -42,8 +42,8 @@ export default function VideoDesk() {
   return <div className={`page ${styles.page}`}>
     <header><Link className="back" href="/agents/videoEditor">← Video Editor</Link><h1>Video editing</h1><p>Assign an edit to the computer running DaVinci Resolve Studio. Source files, Resolve projects and exports stay there. The editor supports cuts, basic colour grading, music and timed sound effects. Titles and advanced transitions need more editing tools.</p><a className="btn ghost sm-btn" href="/api/video-worker/download">Download Windows worker update</a><p>Install this update once on the editing PC, keeping its private <code>subscription.env</code> file. The running worker then checks for future code and guide updates automatically between jobs.</p></header>
     <section className={`card ${styles.card}`}><h2>New edit</h2><form onSubmit={create} className={styles.form}>
-      <label>Source folder on editing computer<input required maxLength={240} value={folder} onChange={e=>{setFolder(e.target.value);setError('');requestId.current=null;}} placeholder="Test"/><small>Enter only the part after the media root. Example: for <code>E:\Ai-Office\Videos\Test</code>, enter <code>Test</code>.</small></label>
-      <label>Export name<input required maxLength={120} value={name} onChange={e=>{setName(e.target.value);setError('');requestId.current=null;}} placeholder="resort-highlight"/><small>Choose a filename such as <code>resort-highlight</code>; the worker adds the file extension.</small></label>
+      <label>Source folder on editing computer<input required maxLength={240} value={folder} onChange={e=>{setFolder(e.target.value);setError('');requestId.current=null;}} placeholder={mediaRootHint?`${mediaRootHint}\\Test`:'Test'}/><small>{mediaRootHint?<>Enter <code>Test</code> or paste the full path <code>{mediaRootHint}\Test</code>.</>:<>Enter a folder name under the editing computer media root.</>}</small></label>
+      <label>Export name<input required maxLength={120} value={name} onChange={e=>{setName(e.target.value);setError('');requestId.current=null;}} placeholder="resort-highlight"/><small>Choose a filename such as <code>resort-highlight</code>. Spaces become dashes; the worker adds the file extension.</small></label>
       <label>Edit brief<textarea required maxLength={6000} rows={5} value={brief} onChange={e=>{setBrief(e.target.value);setError('');requestId.current=null;}} placeholder="Make a 30-second vertical reel. Start with the close-up, remove pauses, keep natural colour and end on the logo shot."/></label>
       <button className="btn" type="submit" disabled={busy||!folder.trim()||!name.trim()||!brief.trim()}>{busy?'Saving…':'Send to editing computer'}</button>
     </form></section>

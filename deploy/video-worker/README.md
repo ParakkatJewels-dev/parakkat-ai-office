@@ -25,6 +25,10 @@ private `subscription.env` beside the launcher. Copy
 `subscription.env.example` as a starting point. The example uses
 `E:\Ai-Office\Videos` for raw footage and `E:\Ai-Office\Exports` for exports;
 adjust them to the actual folders. Do not put a Claude API key in this file.
+Optionally set `VIDEO_MEDIA_ROOT_HINT` in the AI Office VPS runtime environment
+to the same media root (for example `E:\Ai-Office\Videos`). The Video editing
+form can then accept a pasted full path under that root, as well as a relative
+folder name. The worker still checks the path against its own configured root.
 
 The PC needs Node.js LTS in addition to Python, FFmpeg, Claude Code, and the
 Resolve connection. Double-click `run-ai-office-subscription.cmd`. It installs
