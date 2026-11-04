@@ -1,6 +1,12 @@
 import unittest
+import math
+import shutil
+import struct
+import tempfile
+import wave
+from pathlib import Path
 
-from resolve_bridge import edit_format
+from resolve_bridge import edit_format, prepare_audio
 
 
 class ResolveFormatTests(unittest.TestCase):
@@ -19,6 +25,21 @@ class ResolveFormatTests(unittest.TestCase):
             'plan': {'segments': [{'file': 'clip.mp4', 'start_seconds': 0, 'end_seconds': 2}]},
         }
         self.assertEqual(edit_format(data), {'width': 1920, 'height': 1080, 'fps': 30})
+
+    @unittest.skipUnless(shutil.which('ffmpeg'), 'FFmpeg is required')
+    def test_music_is_prepared_to_fit_the_edit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'source.wav'
+            destination = Path(folder) / 'audio' / 'music.wav'
+            with wave.open(str(source), 'wb') as output:
+                output.setnchannels(1)
+                output.setsampwidth(2)
+                output.setframerate(48000)
+                output.writeframes(b''.join(struct.pack('<h', int(10000 * math.sin(2 * math.pi * 440 * i / 48000))) for i in range(48000)))
+            prepare_audio(source, destination, 2.0, 0, music=True)
+            with wave.open(str(destination), 'rb') as prepared:
+                self.assertEqual(prepared.getnchannels(), 2)
+                self.assertAlmostEqual(prepared.getnframes() / prepared.getframerate(), 2.0, places=2)
 
 
 if __name__ == '__main__':

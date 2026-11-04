@@ -6,6 +6,7 @@ chooses the edit plan, then invokes this script to render it on the editing PC.
 """
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -20,6 +21,48 @@ HERE = Path(__file__).resolve().parent
 SAFE_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
 CATALOG_LIMIT = 500
 PREVIEW_PAGE_SIZE = 50
+AUDIO_SUFFIXES = {'.mp3', '.wav', '.m4a', '.flac', '.aac', '.aiff'}
+
+
+def validate_grade(grade):
+    if grade is None:
+        return
+    if not isinstance(grade, dict) or set(grade) != {'slope', 'offset', 'power', 'saturation'}:
+        raise ValueError('Grade must contain slope, offset, power, and saturation')
+    for name, low, high in (('slope', 0.5, 1.5), ('offset', -0.2, 0.2), ('power', 0.5, 1.5)):
+        values = grade[name]
+        if not isinstance(values, list) or len(values) != 3 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not low <= v <= high for v in values):
+            raise ValueError(f'Grade {name} must be three finite values from {low} to {high}')
+    saturation = grade['saturation']
+    if isinstance(saturation, bool) or not isinstance(saturation, (int, float)) or not math.isfinite(saturation) or not 0 <= saturation <= 2:
+        raise ValueError('Grade saturation must be a finite number from 0 to 2')
+
+
+def validate_audio(audio, duration):
+    if audio is None:
+        return
+    if not isinstance(audio, dict) or set(audio) - {'music', 'sound_effects'}:
+        raise ValueError('Audio plan may contain music and sound_effects only')
+    effects = audio.get('sound_effects', [])
+    if not isinstance(effects, list) or len(effects) > 16:
+        raise ValueError('Audio plan may contain up to 16 sound effects')
+    choices = ([audio['music']] if 'music' in audio else []) + effects
+    if not choices:
+        raise ValueError('Audio plan has no clips')
+    for choice in choices:
+        if not isinstance(choice, dict) or not isinstance(choice.get('file'), str):
+            raise ValueError('Audio clip needs a local file path')
+        path = Path(choice['file']).expanduser().resolve(strict=True)
+        if not path.is_file() or path.suffix.lower() not in AUDIO_SUFFIXES or path.stat().st_size > 100_000_000:
+            raise ValueError('Audio clip must be a local supported audio file under 100 MB')
+        at = choice.get('at_seconds', 0)
+        gain = choice.get('gain_db', 0)
+        if isinstance(at, bool) or not isinstance(at, (int, float)) or not math.isfinite(at) or not 0 <= at < duration:
+            raise ValueError('Audio start must be within the edit')
+        if isinstance(gain, bool) or not isinstance(gain, (int, float)) or not math.isfinite(gain) or not -30 <= gain <= 6:
+            raise ValueError('Audio gain must be from -30 to +6 dB')
+        if 'source_url' in choice and (not isinstance(choice['source_url'], str) or len(choice['source_url']) > 500):
+            raise ValueError('Audio source URL is invalid')
 
 
 def preview_page(manifest, manifest_path, offset):
@@ -96,6 +139,9 @@ def render(args):
         if not file_path.is_relative_to(source) or not file_path.is_file() or file_path.suffix.lower() not in VIDEO_SUFFIXES:
             raise ValueError('Source file in manifest is missing or outside the source folder')
     validate_plan(plan, manifest['media'], max_segments=300)
+    validate_grade(plan.get('grade'))
+    planned_duration = sum(segment['end_seconds'] - segment['start_seconds'] for segment in plan['segments'])
+    validate_audio(plan.get('audio'), planned_duration)
     catalog_count = len(manifest['media'])
     selected = {segment['file'] for segment in plan['segments']}
     manifest['media'] = [item for item in manifest['media'] if item['file'] in selected]
@@ -119,7 +165,14 @@ def render(args):
     target_format = result.get('target_format')
     if target_format and (info.get('width'), info.get('height')) != (target_format['width'], target_format['height']):
         raise RuntimeError(f'Resolve exported {info.get("width")}x{info.get("height")} instead of {target_format["width"]}x{target_format["height"]}. Inspect {exported} and the Resolve project before retrying.')
-    expected = sum(segment['end_seconds'] - segment['start_seconds'] for segment in plan['segments'])
+    if plan.get('audio'):
+        measured = subprocess.run(['ffmpeg', '-nostdin', '-hide_banner', '-i', str(exported), '-map', '0:a:0',
+                                   '-af', 'volumedetect', '-f', 'null', '-'], capture_output=True, text=True, timeout=120)
+        match = re.search(r'max_volume:\s*(-?\d+(?:\.\d+)?) dB', measured.stderr)
+        if measured.returncode or not match or float(match.group(1)) < -60:
+            raise RuntimeError(f'The export has no audible audio. Inspect {exported} and the Resolve project before retrying.')
+        result['audio_max_dbfs'] = float(match.group(1))
+    expected = planned_duration
     result['duration_seconds'] = info['duration']
     result['width'] = info.get('width')
     result['height'] = info.get('height')

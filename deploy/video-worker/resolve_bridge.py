@@ -8,8 +8,10 @@ project_path and export_path. Run in the same logged-in desktop session as Resol
 import json
 import math
 import os
+import subprocess
 import sys
 import time
+import wave
 from collections import defaultdict
 from fractions import Fraction
 from pathlib import Path
@@ -62,6 +64,50 @@ def edit_format(data):
     fps = min(supported, key=lambda value: abs(value - (chosen_fps or 30)))
     return {'width': width, 'height': height, 'fps': fps}
 
+def prepare_audio(source, destination, duration, gain_db, music=False):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    filters = []
+    if music:
+        filters.append('loudnorm=I=-14:TP=-1.5:LRA=11')
+    filters.append(f'volume={float(gain_db):g}dB')
+    if music:
+        filters.extend(('afade=t=in:st=0:d=0.15', f'afade=t=out:st={max(0, duration - 0.5):.3f}:d=0.5'))
+    command = ['ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-y']
+    if music:
+        command.extend(['-stream_loop', '-1'])
+    command.extend(['-i', str(source), '-t', f'{duration:.3f}', '-vn', '-ac', '2', '-ar', '48000',
+                    '-af', ','.join(filters), '-c:a', 'pcm_s16le', str(destination)])
+    done = subprocess.run(command, capture_output=True, text=True, timeout=180)
+    if done.returncode or not destination.is_file() or destination.stat().st_size < 1024:
+        raise RuntimeError(f'Could not prepare audio: {(done.stderr or done.stdout)[-500:]}')
+
+def add_audio(data, timeline, pool, storage, scratch, target):
+    audio = data['plan'].get('audio') or {}
+    if not audio:
+        return False
+    duration = sum(item['end_seconds'] - item['start_seconds'] for item in data['plan']['segments'])
+    start_frame = require(timeline.GetStartFrame(), 'Resolve could not read timeline start')
+    fps = target['fps']
+    choices = []
+    if 'music' in audio:
+        choices.append(('music', audio['music']))
+    choices.extend((f'sfx-{index + 1}', item) for index, item in enumerate(audio.get('sound_effects', [])))
+    for label, item in choices:
+        at = float(item.get('at_seconds', 0))
+        prepared = scratch / 'audio' / f'{label}.wav'
+        prepare_audio(Path(item['file']).resolve(strict=True), prepared, duration - at, item.get('gain_db', 0), music=(label == 'music'))
+        with wave.open(str(prepared), 'rb') as wav:
+            prepared_duration = wav.getnframes() / wav.getframerate()
+        imported = require(storage.AddItemListToMediaPool([str(prepared)]), f'Resolve could not import {label}')
+        clip = imported[0]
+        require(timeline.AddTrack('audio', 'stereo'), f'Resolve could not add an audio track for {label}')
+        track_index = timeline.GetTrackCount('audio')
+        frame_count = math.ceil(min(duration - at, prepared_duration) * fps)
+        entry = {'mediaPoolItem': clip, 'startFrame': 0, 'endFrame': frame_count - 1,
+                 'mediaType': 2, 'trackIndex': track_index, 'recordFrame': int(start_frame + round(at * fps))}
+        require(pool.AppendToTimeline([entry]), f'Resolve could not place {label} on the timeline')
+    return True
+
 def main(manifest_path):
     data = json.loads(Path(manifest_path).read_text(encoding='utf-8'))
     root = Path(data['source_root']).resolve(strict=True)
@@ -110,14 +156,34 @@ def main(manifest_path):
         end = math.ceil(float(item['end_seconds']) * fps) - 1
         if end <= start: raise RuntimeError('Edit segment is shorter than two frames')
         segments.append({'mediaPoolItem': clip, 'startFrame': start, 'endFrame': end})
-    require(pool.AppendToTimeline(segments), 'Resolve could not assemble the timeline')
+    timeline_items = require(pool.AppendToTimeline(segments), 'Resolve could not assemble the timeline')
+    grade = data['plan'].get('grade')
+    if grade:
+        video_items = timeline.GetItemListInTrack('video', 1) if hasattr(timeline, 'GetItemListInTrack') else None
+        if isinstance(video_items, (list, tuple)):
+            timeline_items = video_items
+        elif not isinstance(timeline_items, (list, tuple)):
+            raise RuntimeError('Resolve could not list video timeline clips for grading')
+        cdl = {
+            'NodeIndex': '1',
+            'Slope': ' '.join(str(v) for v in grade['slope']),
+            'Offset': ' '.join(str(v) for v in grade['offset']),
+            'Power': ' '.join(str(v) for v in grade['power']),
+            'Saturation': str(grade['saturation']),
+        }
+        if len(timeline_items) != len(segments):
+            raise RuntimeError('Resolve returned an unexpected number of timeline clips for grading')
+        for index, item in enumerate(timeline_items):
+            require(item.SetCDL(cdl), f'Resolve could not apply the colour grade to clip {index + 1}')
+    audio_applied = add_audio(data, timeline, pool, storage, Path(manifest_path).parent, target)
     require(manager.SaveProject(), 'Resolve could not save the project')
     project_path = output / f'{name}-{job_id}.drp'
     require(manager.ExportProject(project_name, str(project_path)), 'Resolve could not export the project backup')
     require(project.SetCurrentRenderFormatAndCodec('mp4', 'H264'), 'Resolve could not select MP4 H.264 encoding')
     render_name = f'{name}-{job_id}'
     require(project.SetRenderSettings({'TargetDir': str(output), 'CustomName': render_name, 'SelectAllFrames': True,
-                                       'FormatWidth': target['width'], 'FormatHeight': target['height'], 'FrameRate': target['fps']}), 'Resolve could not configure export')
+                                       'FormatWidth': target['width'], 'FormatHeight': target['height'], 'FrameRate': target['fps'],
+                                       'ExportAudio': True, 'AudioCodec': 'aac', 'AudioSampleRate': 48000}), 'Resolve could not configure export')
     render_id = require(project.AddRenderJob(), 'Resolve could not add a render job')
     require(project.StartRendering(render_id), 'Resolve could not start rendering')
     deadline = time.monotonic() + 7000
@@ -138,7 +204,8 @@ def main(manifest_path):
     if not export_path.is_file() or export_path.stat().st_size < 1024:
         raise RuntimeError('Resolve finished without creating a usable MP4; check its render job status')
     require(manager.SaveProject(), 'Resolve could not save the completed project')
-    print(json.dumps({'project_path': str(project_path), 'export_path': str(export_path), 'target_format': target}))
+    print(json.dumps({'project_path': str(project_path), 'export_path': str(export_path), 'target_format': target,
+                      'grade_applied': bool(grade), 'audio_applied': audio_applied}))
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:

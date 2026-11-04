@@ -10,6 +10,21 @@ import remote_edit
 
 
 class RemoteEditTest(unittest.TestCase):
+    def test_grade_values_must_be_bounded(self):
+        remote_edit.validate_grade({'slope': [1.02, 1.02, 1.02], 'offset': [0, 0, 0], 'power': [1, 1, 1], 'saturation': 0.98})
+        with self.assertRaises(ValueError):
+            remote_edit.validate_grade({'slope': [10, 1, 1], 'offset': [0, 0, 0], 'power': [1, 1, 1], 'saturation': 0.98})
+        with self.assertRaises(ValueError):
+            remote_edit.validate_grade({'slope': [1, 1, 1], 'offset': [0, 0, 0], 'power': [1, 1, 1], 'saturation': float('nan')})
+
+    def test_audio_plan_checks_local_asset_and_timing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            track = Path(folder) / 'music.mp3'
+            track.write_bytes(b'example')
+            remote_edit.validate_audio({'music': {'file': str(track), 'at_seconds': 0, 'gain_db': -3}}, 10)
+            with self.assertRaises(ValueError):
+                remote_edit.validate_audio({'sound_effects': [{'file': str(track), 'at_seconds': 11}]}, 10)
+
     def test_inspect_and_render_local_without_api_credentials(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
