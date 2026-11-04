@@ -51,12 +51,12 @@ def confined_folder(root, relative):
         raise ValueError('Source folder is outside the configured media root')
     return path
 
-def media_in(folder):
+def media_in(folder, max_files=50):
     files = sorted(p for p in folder.rglob('*') if p.is_file() and p.suffix.lower() in VIDEO_SUFFIXES and p.resolve().is_relative_to(folder))
     if not files:
         raise ValueError('No supported video files were found in the source folder')
-    if len(files) > 50:
-        raise ValueError('Source folder contains more than 50 videos; split this into smaller jobs')
+    if len(files) > max_files:
+        raise ValueError(f'Source folder contains more than {max_files} videos')
     return files
 
 def probe(path):
@@ -129,9 +129,9 @@ def claude_plan(brief, media, scratch, lost):
     validate_plan(plan, media)
     return plan
 
-def validate_plan(plan, media):
+def validate_plan(plan, media, max_segments=100):
     known = {item['file']: item for item in media}
-    if not isinstance(plan, dict) or not isinstance(plan.get('segments'), list) or not 1 <= len(plan['segments']) <= 100:
+    if not isinstance(plan, dict) or not isinstance(plan.get('segments'), list) or not 1 <= len(plan['segments']) <= max_segments:
         raise ValueError('Claude did not return a usable edit plan')
     total = 0.0
     for segment in plan['segments']:
