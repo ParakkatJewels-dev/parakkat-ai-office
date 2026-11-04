@@ -116,8 +116,14 @@ def render(args):
             raise RuntimeError(f'Resolve returned an invalid {field}')
     exported = Path(result['export_path'])
     info = probe(exported)
+    target_format = result.get('target_format')
+    if target_format and (info.get('width'), info.get('height')) != (target_format['width'], target_format['height']):
+        raise RuntimeError(f'Resolve exported {info.get("width")}x{info.get("height")} instead of {target_format["width"]}x{target_format["height"]}. Inspect {exported} and the Resolve project before retrying.')
     expected = sum(segment['end_seconds'] - segment['start_seconds'] for segment in plan['segments'])
     result['duration_seconds'] = info['duration']
+    result['width'] = info.get('width')
+    result['height'] = info.get('height')
+    result['fps'] = info.get('fps')
     result['planned_duration_seconds'] = round(expected, 3)
     result['summary'] = plan.get('summary', '')
     result_path = manifest_path.parent / 'result.json'

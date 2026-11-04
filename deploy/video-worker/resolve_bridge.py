@@ -10,6 +10,7 @@ import math
 import os
 import sys
 import time
+from collections import defaultdict
 from fractions import Fraction
 from pathlib import Path
 
@@ -35,6 +36,32 @@ def require(value, message):
         raise RuntimeError(message)
     return value
 
+def edit_format(data):
+    """Choose a deliverable format from the brief and selected clip geometry."""
+    media = {item['file']: item for item in data['media']}
+    orientation_seconds = defaultdict(float)
+    chosen_fps = None
+    for segment in data['plan']['segments']:
+        item = media[segment['file']]
+        width, height = item.get('width'), item.get('height')
+        if width and height:
+            orientation = 'portrait' if height > width * 1.1 else 'landscape' if width > height * 1.1 else 'square'
+            orientation_seconds[orientation] += segment['end_seconds'] - segment['start_seconds']
+        if chosen_fps is None:
+            try: chosen_fps = float(Fraction(str(item.get('fps') or '')))
+            except (ValueError, ZeroDivisionError): pass
+    brief = str(data.get('brief', '')).lower()
+    if any(word in brief for word in ('horizontal', 'landscape', '16:9', 'widescreen')):
+        orientation = 'landscape'
+    elif any(word in brief for word in ('vertical', 'portrait', '9:16', 'reel', 'shorts', 'tiktok')):
+        orientation = 'portrait'
+    else:
+        orientation = max(orientation_seconds, key=orientation_seconds.get) if orientation_seconds else 'landscape'
+    width, height = {'portrait': (1080, 1920), 'landscape': (1920, 1080), 'square': (1080, 1080)}[orientation]
+    supported = (23.976, 24, 25, 29.97, 30, 50, 59.94, 60)
+    fps = min(supported, key=lambda value: abs(value - (chosen_fps or 30)))
+    return {'width': width, 'height': height, 'fps': fps}
+
 def main(manifest_path):
     data = json.loads(Path(manifest_path).read_text(encoding='utf-8'))
     root = Path(data['source_root']).resolve(strict=True)
@@ -54,6 +81,13 @@ def main(manifest_path):
     if project is None:
         # A previous uncertain run may have created the project. Do not overwrite it.
         raise RuntimeError(f'Resolve project {project_name} already exists; inspect it before retrying')
+    target = edit_format(data)
+    for key, value in (
+        ('timelineResolutionWidth', str(target['width'])),
+        ('timelineResolutionHeight', str(target['height'])),
+        ('timelineFrameRate', str(target['fps'])),
+    ):
+        require(project.SetSetting(key, value), f'Resolve could not set {key} to {value}')
     pool = require(project.GetMediaPool(), 'Resolve Media Pool is unavailable')
     storage = require(resolve.GetMediaStorage(), 'Resolve media storage is unavailable')
     imported = require(storage.AddItemListToMediaPool([str(path) for path in files.values()]), 'Resolve could not import the source videos')
@@ -82,7 +116,8 @@ def main(manifest_path):
     require(manager.ExportProject(project_name, str(project_path)), 'Resolve could not export the project backup')
     require(project.SetCurrentRenderFormatAndCodec('mp4', 'H264'), 'Resolve could not select MP4 H.264 encoding')
     render_name = f'{name}-{job_id}'
-    require(project.SetRenderSettings({'TargetDir': str(output), 'CustomName': render_name, 'SelectAllFrames': True}), 'Resolve could not configure export')
+    require(project.SetRenderSettings({'TargetDir': str(output), 'CustomName': render_name, 'SelectAllFrames': True,
+                                       'FormatWidth': target['width'], 'FormatHeight': target['height'], 'FrameRate': target['fps']}), 'Resolve could not configure export')
     render_id = require(project.AddRenderJob(), 'Resolve could not add a render job')
     require(project.StartRendering(render_id), 'Resolve could not start rendering')
     deadline = time.monotonic() + 7000
@@ -103,7 +138,7 @@ def main(manifest_path):
     if not export_path.is_file() or export_path.stat().st_size < 1024:
         raise RuntimeError('Resolve finished without creating a usable MP4; check its render job status')
     require(manager.SaveProject(), 'Resolve could not save the completed project')
-    print(json.dumps({'project_path': str(project_path), 'export_path': str(export_path)}))
+    print(json.dumps({'project_path': str(project_path), 'export_path': str(export_path), 'target_format': target}))
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
