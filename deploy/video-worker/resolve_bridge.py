@@ -38,6 +38,23 @@ def require(value, message):
         raise RuntimeError(message)
     return value
 
+
+def clip_fps(clip, label):
+    """AppendToTimeline source ranges use the media item's FPS, not timeline FPS."""
+    fps_text = str(clip.GetClipProperty('FPS') or '0')
+    try:
+        fps = float(Fraction(fps_text))
+    except (ValueError, ZeroDivisionError):
+        fps = 0
+    if not math.isfinite(fps) or fps <= 0:
+        raise RuntimeError(f'Could not read source frame rate for {label}: {fps_text}')
+    return fps
+
+
+def audio_source_end_frame(duration_seconds, source_fps):
+    """The audio clip range is measured in its media-pool source frames."""
+    return max(0, math.ceil(duration_seconds * source_fps) - 1)
+
 def edit_format(data):
     """Choose a deliverable format from the brief and selected clip geometry."""
     media = {item['file']: item for item in data['media']}
@@ -93,6 +110,7 @@ def add_audio(data, timeline, pool, storage, assets_dir, target):
     if 'music' in audio:
         choices.append(('music', audio['music']))
     choices.extend((f'sfx-{index + 1}', item) for index, item in enumerate(audio.get('sound_effects', [])))
+    placements = []
     for label, item in choices:
         at = float(item.get('at_seconds', 0))
         prepared = assets_dir / f'{label}.wav'
@@ -101,13 +119,24 @@ def add_audio(data, timeline, pool, storage, assets_dir, target):
             prepared_duration = wav.getnframes() / wav.getframerate()
         imported = require(storage.AddItemListToMediaPool([str(prepared)]), f'Resolve could not import {label}')
         clip = imported[0]
+        source_fps = clip_fps(clip, label)
         require(timeline.AddTrack('audio', 'stereo'), f'Resolve could not add an audio track for {label}')
         track_index = timeline.GetTrackCount('audio')
-        frame_count = math.ceil(min(duration - at, prepared_duration) * fps)
-        entry = {'mediaPoolItem': clip, 'startFrame': 0, 'endFrame': frame_count - 1,
+        wanted_duration = min(duration - at, prepared_duration)
+        entry = {'mediaPoolItem': clip, 'startFrame': 0, 'endFrame': audio_source_end_frame(wanted_duration, source_fps),
                  'mediaType': 2, 'trackIndex': track_index, 'recordFrame': int(start_frame + round(at * fps))}
-        require(pool.AppendToTimeline([entry]), f'Resolve could not place {label} on the timeline')
+        appended = require(pool.AppendToTimeline([entry]), f'Resolve could not place {label} on the timeline')
+        if not isinstance(appended, (list, tuple)) or len(appended) != 1:
+            raise RuntimeError(f'Resolve did not return the placed {label} audio clip for duration verification')
+        placed_frames = appended[0].GetDuration()
+        expected_frames = round(wanted_duration * fps)
+        if not isinstance(placed_frames, (int, float)) or abs(placed_frames - expected_frames) > 2:
+            raise RuntimeError(f'Resolve placed {label} at {placed_frames} timeline frames, expected {expected_frames}; inspect audio FPS before rendering')
+        placements.append({'label': label, 'source_fps': source_fps, 'timeline_fps': fps,
+                           'source_end_frame': entry['endFrame'], 'expected_timeline_frames': expected_frames,
+                           'placed_timeline_frames': placed_frames, 'start_seconds': at})
     (assets_dir / 'sources.json').write_text(json.dumps(audio, indent=2, ensure_ascii=False), encoding='utf-8')
+    (assets_dir / 'timing.json').write_text(json.dumps(placements, indent=2), encoding='utf-8')
     return assets_dir
 
 def main(manifest_path):
@@ -150,10 +179,7 @@ def main(manifest_path):
         clip = imported_by_path.get(os.path.normcase(str(path)))
         if clip is None:
             raise RuntimeError(f'Resolve did not import {item["file"]}')
-        fps_text = str(clip.GetClipProperty('FPS') or '0')
-        try: fps = float(Fraction(fps_text))
-        except (ValueError, ZeroDivisionError): fps = 0
-        if fps <= 0: raise RuntimeError(f'Could not read frame rate for {item["file"]}')
+        fps = clip_fps(clip, item['file'])
         start = math.floor(float(item['start_seconds']) * fps)
         end = math.ceil(float(item['end_seconds']) * fps) - 1
         if end <= start: raise RuntimeError('Edit segment is shorter than two frames')
