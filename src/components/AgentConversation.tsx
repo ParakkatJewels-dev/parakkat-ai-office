@@ -17,13 +17,13 @@ type Snapshot = {
   threads: Thread[]; thread: Thread | null; messages: Message[]; meetings: AgentMeeting[]; artworks: ConversationArtwork[];
   activity?: { text: string; at: string } | null; canSend: boolean;
 };
-type Props = { agentId: string; agentName: string; initialActivity?: { text: string; at: string } | null; compact?: boolean; initialThreadId?: string; initialMeetingId?: string; requestMeeting?: boolean; onMeetings?: (meetings: AgentMeeting[], threadId: string | null) => void };
+type Props = { agentId: string; agentName: string; initialActivity?: { text: string; at: string } | null; compact?: boolean; initialThreadId?: string; initialMeetingId?: string; requestMeeting?: boolean; quickAsks?: string[]; onMeetings?: (meetings: AgentMeeting[], threadId: string | null) => void };
 const STATUS: Record<ThreadStatus, string> = { idle: 'Ready', queued: 'Queued', running: 'Working', completed: 'Replied', failed: 'Needs attention' };
 const empty: Snapshot = { threads: [], thread: null, messages: [], meetings: [], artworks: [], canSend: false };
 const atTime = (value: string) => new Date(value).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const isBusy = (thread: Thread | null) => thread?.status === 'queued' || thread?.status === 'running';
 
-export default function AgentConversation({ agentId, agentName, initialActivity, compact = false, initialThreadId, initialMeetingId, requestMeeting = false, onMeetings }: Props) {
+export default function AgentConversation({ agentId, agentName, initialActivity, compact = false, initialThreadId, initialMeetingId, requestMeeting = false, quickAsks, onMeetings }: Props) {
   const labelId = useId(), historyId = useId(), meetingId = useId();
   const [snapshot, setSnapshot] = useState<Snapshot>(empty), [threadId, setThreadId] = useState<string | null>(initialThreadId || null);
   const [loading, setLoading] = useState(true), [sending, setSending] = useState(false), [error, setError] = useState(''), [sendError, setSendError] = useState('');
@@ -137,6 +137,7 @@ export default function AgentConversation({ agentId, agentName, initialActivity,
       </div>)}{typeof msg.metadata?.design_id === 'string' && /^[0-9a-f-]{36}$/i.test(msg.metadata.design_id) && <a className="btn sm-btn" href={`/studio?made=${msg.metadata.design_id}#d-${msg.metadata.design_id}`}>View poster in Design Studio</a>}{typeof msg.metadata?.carousel_id === 'string' && /^[0-9a-f-]{36}$/i.test(msg.metadata.carousel_id) && <a className="btn sm-btn" href={`/studio?carousel=${msg.metadata.carousel_id}`}>Open five-card carousel</a>}</li>)}</ol> : <div className={styles.empty}><Icon name="doc" size={28} /><h3>Work with {name}</h3><p>Ask what they are doing, give them a task, or discuss a plan. They can visit colleagues for one-to-one help and bring their findings back here. Choose Hold a meeting when you want the team around the table.</p><button type="button" className={styles.suggestion} onClick={() => { setDraft('What are you working on, and what needs my attention?'); textarea.current?.focus(); }}>What are you working on?<Icon name="arrow" size={14} /></button></div>}
     </div>
     {(sendError || error) && <div className={styles.error} role="alert"><span>{sendError || error}</span><button type="button" onClick={() => { setSendError(''); setRefresh(n => n + 1); }}>Refresh</button></div>}
+    {quickAsks?.length && snapshot.canSend ? <div className={styles.quickAsks} role="group" aria-label="Suggested questions">{quickAsks.map(q => <button type="button" key={q} onClick={() => { setDraft(q); textarea.current?.focus(); }}>{q}</button>)}</div> : null}
     <form className={styles.composer} onSubmit={send}>
       <label htmlFor={labelId}>{snapshot.thread ? 'Reply or give the next task' : `Message ${name}`}</label>
       <textarea id={labelId} ref={textarea} rows={compact ? 3 : 4} maxLength={6000} value={draft} onChange={e => setDraft(e.target.value)} disabled={!snapshot.canSend || loading || sending} placeholder={snapshot.canSend ? 'What would you like them to work on?' : loading ? 'Loading…' : 'You do not have permission to assign tasks to this agent.'} onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />

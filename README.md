@@ -1,10 +1,10 @@
 # Parakkat AI Office
 
-An AI marketing team for Parakkat Jewels that lives in a 3D office. Agents read Shopify, Meta, Instagram and Google data, watch competitors, plan festival campaigns, make banners from real product photos, and publish to Meta only after people approve.
+An AI marketing team for Parakkat Jewels that lives in a 3D office you can walk through. Agents read Shopify, Meta, Instagram and Google data, watch competitors, plan festival campaigns, make banners from real product photos, and publish to Meta only after people approve.
 
 ## How work flows
 
-1. **Staff agents** (63 of them, across the Intelligence Centre, Marketing HQ and Creative House) do the work and write reports.
+1. **Staff agents** do the work and write reports.
 2. **AI team lead** of each department re-checks every report and either forwards it to the human head, sends it back to revise (up to twice), or rejects it.
 3. **Human heads** (Creative Head, E-com Manager, Performance Marketer) see forwarded reports for their departments and accept, send back or reject them.
 4. **Campaign plans** go from the AI CMO to the heads they touch, then to the **Super Admin**, who alone can approve and publish.
@@ -16,13 +16,13 @@ An AI marketing team for Parakkat Jewels that lives in a 3D office. Agents read 
 - Next.js 15 (App Router) on Vercel
 - Supabase: Postgres with row-level security, Auth, Storage (banners), Realtime (drives the office)
 - OpenAI for agent reasoning (manager and worker tiers), Gemini for images, Jev by TypeSafe AI for scoring (falls back to OpenAI until a key is set)
-- three.js r147 for the office (`src/office/engine.mjs`), shared with the standalone prototype
+- three.js r147 for the office (`src/office/engine.mjs`)
 
 ## Layout
 
 | Path | What |
 | --- | --- |
-| `src/office/` | 3D campus engine, roster (buildings, rooms, 67 people, department heads), demo story |
+| `src/office/` | The walkable 3D office: `floorplan.mjs` (ten rooms, seats, routes), `walk.mjs` (movement, doors, E to talk), `building.mjs`, `crowd.mjs`, `engine.mjs`, `agent-hq.mjs`, and the roster |
 | `src/lib/agents/` | Campaign pipeline (one stage per call), team-lead review, publishing, data sync |
 | `src/lib/connectors/` | Shopify Admin GraphQL, Meta Graph (ads, Instagram, competitors, publishing), Google Ads and GA4 |
 | `src/lib/llm/` | OpenAI, Gemini and Jev clients (plain REST) |
@@ -38,6 +38,7 @@ cp .env.example .env.local   # fill in Supabase and the keys you have
 npm run dev
 npm test                      # database rules and roster checks, no Supabase needed
 npm run seed:gen              # after editing src/office/roster.mjs
+node scripts/office-preview.mjs   # the 3D office on http://127.0.0.1:4173 with sample data, no login or database
 ```
 
 Deploying: see [docs/DEPLOY.md](docs/DEPLOY.md).

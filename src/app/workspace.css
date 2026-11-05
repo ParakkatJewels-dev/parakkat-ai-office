@@ -389,3 +389,21 @@
 }
 @media(pointer:coarse){.shell :is(.nav,.iconbtn,.top-create),.workspace :is(.btn,.tabs a,.chips a,.seg a){min-height:44px}}
 @media(prefers-reduced-motion:reduce){.shell :is(.nav,.btn,.iconbtn,.top-create){transition:none!important}}
+
+/* The office's voice across every page: heavy headings, mono labels, one yellow highlight. */
+.workspace h1 { font-family: var(--f-display); font-weight: 800; letter-spacing: -.012em; }
+.workspace h2, .workspace h3 { font-family: var(--f-display); font-weight: 700; letter-spacing: -.004em; }
+.workspace .eyebrow, .workspace .nav-group-label, .search-caption, .workspace th { font-family: var(--f-data); font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+.workspace .nav[aria-current="page"] { background: var(--hi); color: var(--hi-ink); box-shadow: none; font-weight: 700; }
+.workspace .nav[aria-current="page"] svg { color: var(--hi-ink); }
+.workspace .nav[aria-current="page"] .count { background: var(--hi-ink); color: var(--hi); }
+.workspace .brand-emblem { background: var(--hi); color: var(--hi-ink); border-color: transparent; }
+.workspace .sidebar-brand b { font-weight: 800; letter-spacing: .01em; }
+.workspace .sidebar-brand small { font-family: var(--f-data); }
+.workspace .btn { font-family: var(--f-display); font-weight: 700; letter-spacing: .005em; }
+.workspace .card-num, .workspace .occ-num { font-family: var(--f-display); font-weight: 800; }
+.mobile-navigation .nav[aria-current="page"] { background: var(--hi); color: var(--hi-ink); }
+.mobile-navigation .nav[aria-current="page"] svg { color: var(--hi-ink); }
+.top-create, .workspace .top-create { background: var(--hi); color: var(--hi-ink); border-color: transparent; font-family: var(--f-display); font-weight: 700; }
+.top-create:hover, .workspace .top-create:hover { background: var(--hi); filter: brightness(1.06); color: var(--hi-ink); }
+.top-create svg, .workspace .top-create svg { color: var(--hi-ink); }

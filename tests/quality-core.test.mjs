@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
-import {PEOPLE,ROOMS,BUILDINGS} from '../src/office/roster.mjs';
+import {PEOPLE} from '../src/office/roster.mjs';
+import {seatsFor} from '../src/office/floorplan.mjs';
 import {ROLE_GUIDANCE} from '../src/lib/agents/role-guidance.mjs';
 import {campaignVerdict,campaignArtifact,campaignQualityCurrent,reportReviewDecision} from '../src/lib/agents/quality-core.mjs';
 import {headQualityArtifact,headQualityCurrent,validateHeadQuality,headTaskRoster} from '../src/lib/automation/head-task-core.mjs';
@@ -37,11 +38,8 @@ test('independent QC binds all criteria, evidence and versions, and cannot appro
 });
 test('exactly three additions have distinct finite usable map seats, remain real conversation roles, and QC cannot be a worker',()=>{
   assert.equal(PEOPLE.filter(p=>!p.human).length,70);assert.deepEqual(Object.keys(ROLE_GUIDANCE).sort(),['funnelCro','outcomesAnalyst','outputQc']);
-  const source=readFileSync(new URL('../src/office/engine.mjs',import.meta.url),'utf8');
-  const ast=ts.createSourceFile('engine.mjs',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
-  const seats=ast.statements.flatMap(n=>ts.isVariableStatement(n)?n.declarationList.declarations:[]).find(n=>n.name.getText(ast)==='SEAT');
-  const offsets=new Function(`return ${seats.initializer.getText(ast)}`)();const occupied=new Set();
-  for(const p of PEOPLE) {const r=ROOMS.find(r=>r.id===p.room),b=BUILDINGS.find(b=>b.id===r.building),seat=offsets[p.seat];assert.ok(seat,`${p.id} needs a seat`);const x=b.ox-b.cols*6+6+12*r.col+seat[0],z=(r.row?9:-9)+seat[1];assert.ok(Number.isFinite(x)&&Number.isFinite(z));const key=`${p.room}:${x}:${z}`;assert.equal(occupied.has(key),false,`overlap ${p.id}`);occupied.add(key);}
+  const seats=seatsFor(PEOPLE),occupied=new Set();
+  for(const p of PEOPLE) {const seat=seats[p.id];assert.ok(seat,`${p.id} needs a seat`);assert.ok(Number.isFinite(seat.x)&&Number.isFinite(seat.z));const key=`${seat.x}:${seat.z}`;assert.equal(occupied.has(key),false,`overlap ${p.id}`);occupied.add(key);}
   const agents=PEOPLE.filter(p=>!p.human).map(p=>({id:p.id,name:p.name,role_desc:p.role,department_id:p.dept,is_lead:!!p.head,enabled:true}));
   const pool=headTaskRoster(agents,PEOPLE,'analyticsLead',['insights','perf','qa']).specialists.map(a=>a.id);
   assert.ok(pool.includes('funnelCro')&&pool.includes('outcomesAnalyst'));assert.equal(pool.includes('outputQc'),false);
