@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { isPaused } from '@/lib/pause';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { UUID, safeWorkerText } from '@/lib/video-edit/core.mjs';
+import { markVideoWorkerConnected } from '@/lib/video-edit/presence';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
   if (!body || typeof body !== 'object') return json({ error: 'Invalid worker request.' }, 400);
   const db = supabaseAdmin();
   if (body.action === 'peek') {
+    markVideoWorkerConnected();
     if (await isPaused()) return json({ job: null, paused: true });
     // A Claude Code channel can announce a job before claiming it. If its
     // notification is dropped during startup, the job stays safely queued.
@@ -34,6 +36,7 @@ export async function POST(request: Request) {
   if (body.action === 'claim') {
     const workerId = safeWorkerText(body.workerId, 80);
     if (!workerId) return json({ error: 'Invalid worker ID.' }, 400);
+    markVideoWorkerConnected();
     // A lost worker may have left an export behind. Require inspection before retrying.
     const now = new Date().toISOString();
     const stale = await db.from('video_edit_jobs').update({ status: 'failed', error: 'Editing computer disconnected. Check the project and export there before retrying.', lease_until: null, claim_token: null, updated_at: now, finished_at: now }).eq('status', 'running').lt('lease_until', now);
@@ -52,6 +55,7 @@ export async function POST(request: Request) {
     if (!progress) return json({ error: 'Enter progress text.' }, 400);
     const changed = await base.update({ progress, lease_until: new Date(now.getTime() + 180_000).toISOString(), updated_at: now.toISOString() })
       .eq('id', body.id).eq('claim_token', body.claimToken).eq('status', 'running').gt('lease_until', now.toISOString()).select('id').maybeSingle();
+    if (changed.data) markVideoWorkerConnected();
     return changed.error ? json({ error: 'Could not update progress.' }, 503) : changed.data ? json({ ok: true }) : json({ error: 'The worker lease expired.' }, 409);
   }
   if (body.action === 'report') {

@@ -1,7 +1,8 @@
-import { checkPause } from '@/lib/pause';
+import { checkPause, isPaused } from '@/lib/pause';
 import { conversationUser } from '@/lib/agents/conversation-api';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { workflowOriginAllowed } from '@/lib/automation/core.mjs';
+import { videoWorkerPresence } from '@/lib/video-edit/presence';
 import { UUID, sourceFolder, outputName } from '@/lib/video-edit/core.mjs';
 
 export const runtime = 'nodejs';
@@ -18,12 +19,17 @@ export async function GET() {
   const session = await conversationUser();
   if (!session) return json({ error: 'Please sign in.' }, 401);
   if (!await allowed(session)) return json({ error: 'The video editor is not available to your account.' }, 403);
-  const now = new Date().toISOString();
-  await supabaseAdmin().from('video_edit_jobs').update({ status: 'failed', error: 'Editing computer disconnected. Check the project and export there before retrying.', lease_until: null, claim_token: null, updated_at: now, finished_at: now }).eq('status', 'running').lt('lease_until', now);
-  const { data, error } = await session.db.from('video_edit_jobs')
-    .select('id,brief,source_folder,output_name,status,progress,worker_id,project_path,export_path,worker_report,error,created_at,updated_at,finished_at')
-    .order('created_at', { ascending: false }).limit(40);
-  return error ? json({ error: 'Could not load video jobs.' }, 503) : json({ jobs: data || [], mediaRootHint: process.env.VIDEO_MEDIA_ROOT_HINT || null });
+  const now = new Date();
+  const admin = supabaseAdmin();
+  await admin.from('video_edit_jobs').update({ status: 'failed', error: 'Editing computer disconnected. Check the project and export there before retrying.', lease_until: null, claim_token: null, updated_at: now.toISOString(), finished_at: now.toISOString() }).eq('status', 'running').lt('lease_until', now.toISOString());
+  const [jobs, paused] = await Promise.all([
+    session.db.from('video_edit_jobs')
+      .select('id,brief,source_folder,output_name,status,progress,worker_id,project_path,export_path,worker_report,error,created_at,updated_at,finished_at')
+      .order('created_at', { ascending: false }).limit(40),
+    isPaused(),
+  ]);
+  if (jobs.error) return json({ error: 'Could not load video jobs.' }, 503);
+  return json({ jobs: jobs.data || [], worker: videoWorkerPresence(), paused, mediaRootHint: process.env.VIDEO_MEDIA_ROOT_HINT || null });
 }
 
 export async function POST(request: Request) {
