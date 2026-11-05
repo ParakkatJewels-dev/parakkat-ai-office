@@ -92,6 +92,21 @@ The worker can save detailed style-study findings to the AI Office job through
 folder for future local edits. This profile describes example edits and usable
 assets; it does not retrain Claude's model weights.
 
+### Audio skills
+
+The worker package includes the project-scoped Claude skills **Earshot** and
+**real-sfx**, pinned to the revisions in `THIRD_PARTY_AUDIO.md`. Their files sync
+through the same worker updater. On the next relevant edit, Claude should run
+`py -3 audio_skills.py check` and, if needed, `py -3 audio_skills.py install`.
+This uses a local Python venv for the pinned Earshot GitHub source and installs
+the real-sfx UI sound pack from npm. It does not install the unrelated PyPI
+project named `earshot`. Earshot's model-based listening needs a separate
+download of about 1.1 GB on first use; real-sfx needs a local sound library for
+recorded non-UI effects. The editor can still complete a basic cut if optional
+audio setup fails, but must report that limit. The `EDITING_GUIDE.md` explains
+how to put a real-sfx WAV on the Resolve timeline so the project matches the
+final MP4.
+
 ## Claude Max Remote Control (interactive, no API key)
 
 This folder also contains a local Claude Code skill, `/video-edit`, and
