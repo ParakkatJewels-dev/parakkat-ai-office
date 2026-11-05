@@ -55,6 +55,24 @@ def audio_source_end_frame(duration_seconds, source_fps):
     """The audio clip range is measured in its media-pool source frames."""
     return max(0, math.ceil(duration_seconds * source_fps) - 1)
 
+
+def matching_project_preset(project, target):
+    """Use only a deliberately named AI Office preset; other presets may change colour."""
+    orientation = 'vertical' if target['height'] > target['width'] else 'horizontal' if target['width'] > target['height'] else 'square'
+    rate = f"{target['fps']:g}"
+    wanted = f'AI Office {rate}p {orientation}'
+    presets = project.GetPresetList() or []
+    names = {item.get('Name') if isinstance(item, dict) else item for item in presets}
+    if wanted not in names:
+        return None
+    protected = ('colorScienceMode', 'colorSpaceTimeline', 'colorSpaceOutputGamma', 'hdrDolbyMasterDisplay')
+    before = {key: project.GetSetting(key) for key in protected}
+    require(project.SetPreset(wanted), f'Resolve could not apply project preset {wanted}')
+    changed = [key for key in protected if project.GetSetting(key) != before[key]]
+    if changed:
+        raise RuntimeError(f'Project preset {wanted} changes colour/HDR settings ({", ".join(changed)}); create a clean preset before editing')
+    return wanted
+
 def edit_format(data):
     """Choose a deliverable format from the brief and selected clip geometry."""
     media = {item['file']: item for item in data['media']}
@@ -146,6 +164,7 @@ def main(manifest_path):
     job_id = data['job_id']
     name = data['output_name']
     project_name = f"Parakkat edit {job_id}"
+    target = edit_format(data)
     files = {}
     for item in data['media']:
         path = (root / item['file']).resolve(strict=True)
@@ -158,13 +177,24 @@ def main(manifest_path):
     if project is None:
         # A previous uncertain run may have created the project. Do not overwrite it.
         raise RuntimeError(f'Resolve project {project_name} already exists; inspect it before retrying')
-    target = edit_format(data)
+    preset_applied = matching_project_preset(project, target)
     for key, value in (
         ('timelineResolutionWidth', str(target['width'])),
         ('timelineResolutionHeight', str(target['height'])),
         ('timelineFrameRate', str(target['fps'])),
     ):
         require(project.SetSetting(key, value), f'Resolve could not set {key} to {value}')
+    playback_text = str(project.GetSetting('timelinePlaybackFrameRate') or '')
+    try:
+        playback_fps = float(Fraction(playback_text))
+    except (ValueError, ZeroDivisionError):
+        playback_fps = None
+    preview_warning = None
+    if playback_fps is None or abs(playback_fps - target['fps']) > 0.15:
+        preview_warning = (f'Resolve project playback is {playback_text or "unknown"} fps while the timeline is '
+                           f'{target["fps"]} fps. Resolve 21 does not expose a working scripting setter for playback '
+                           'rate on this PC. Set Project Settings > Master Settings > Playback frame rate in the UI. '
+                           'The exported MP4 uses the timeline/render rate; check it at 1x in a player.')
     pool = require(project.GetMediaPool(), 'Resolve Media Pool is unavailable')
     storage = require(resolve.GetMediaStorage(), 'Resolve media storage is unavailable')
     imported = require(storage.AddItemListToMediaPool([str(path) for path in files.values()]), 'Resolve could not import the source videos')
@@ -234,7 +264,9 @@ def main(manifest_path):
     require(manager.SaveProject(), 'Resolve could not save the completed project')
     print(json.dumps({'project_path': str(project_path), 'export_path': str(export_path), 'target_format': target,
                       'grade_applied': bool(grade), 'audio_applied': bool(audio_assets_dir),
-                      'audio_assets_dir': str(audio_assets_dir) if audio_assets_dir else None}))
+                      'audio_assets_dir': str(audio_assets_dir) if audio_assets_dir else None,
+                      'playback_fps': playback_fps, 'preview_warning': preview_warning,
+                      'project_preset': preset_applied}))
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:

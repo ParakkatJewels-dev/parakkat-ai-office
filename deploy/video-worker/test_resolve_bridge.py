@@ -7,10 +7,30 @@ import wave
 from pathlib import Path
 from unittest.mock import patch
 
-from resolve_bridge import add_audio, audio_source_end_frame, clip_fps, edit_format, prepare_audio
+from resolve_bridge import add_audio, audio_source_end_frame, clip_fps, edit_format, matching_project_preset, prepare_audio
 
 
 class ResolveFormatTests(unittest.TestCase):
+    def test_only_explicit_ai_office_rate_preset_is_applied(self):
+        class Project:
+            selected = None
+            def GetPresetList(self):
+                return [{'Name': 'custom'}, {'Name': 'AI Office 30p vertical'}]
+            def SetPreset(self, name):
+                self.selected = name
+                return True
+            def GetSetting(self, _key):
+                return 'unchanged'
+        project = Project()
+        self.assertEqual(matching_project_preset(project, {'width': 1080, 'height': 1920, 'fps': 30}), 'AI Office 30p vertical')
+        self.assertEqual(project.selected, 'AI Office 30p vertical')
+        self.assertIsNone(matching_project_preset(project, {'width': 1080, 'height': 1920, 'fps': 59.94}))
+
+        class Unsafe(Project):
+            def GetSetting(self, key):
+                return 'ACEScc' if self.selected and key == 'colorSpaceOutputGamma' else 'unchanged'
+        with self.assertRaisesRegex(RuntimeError, 'changes colour/HDR'):
+            matching_project_preset(Unsafe(), {'width': 1080, 'height': 1920, 'fps': 30})
     def test_audio_source_range_uses_media_rate_not_timeline_rate(self):
         class AudioClip:
             def GetClipProperty(self, name):
