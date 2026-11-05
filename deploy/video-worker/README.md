@@ -31,13 +31,23 @@ form can then accept a pasted full path under that root, as well as a relative
 folder name. The worker still checks the path against its own configured root.
 
 The PC needs Node.js LTS in addition to Python, FFmpeg, Claude Code, and the
-Resolve connection. Double-click `run-ai-office-subscription.cmd`. It installs
+Resolve connection. Double-click `run-ai-office-subscription.cmd`. Opening
+Claude Code normally does not connect the AI Office video queue. The launcher installs
 the small local MCP dependency on first run, checks Resolve and the office
 queue, and starts the signed-in Claude Code session with the channel enabled.
 Confirm the channel warning and the new MCP server when Claude asks. Leave the
 terminal open. Create a short test job in AI Office with a source folder name
 relative to the media root, such as `Test`. A failed or lost job requires
 checking the Resolve project and export folder before retrying.
+
+For automatic startup, double-click `install-ai-office-autostart.cmd` **once**
+from the worker folder that contains your private `subscription.env`. It creates
+a shortcut in your Windows Startup folder and opens the AI Office Claude session
+now. The shortcut starts it again whenever you sign in to Windows. The visible
+PowerShell window retries every 30 seconds if Resolve or Claude is not ready;
+closing that window stops the editor until the next sign-in. The script tries to
+open Resolve from its standard installation path. Windows must remain signed in
+and awake, and you may need to respond to Claude sign-in or permission prompts.
 
 The subscription editing bridge makes ordered cuts, portrait or landscape
 exports, a global CDL grade, and basic music and timed sound-effect tracks. It
@@ -63,6 +73,7 @@ claimed job reads the current `EDITING_GUIDE.md`, and each Python editing comman
 loads the current bridge code. Routine editing improvements therefore apply to
 the next job without downloading another ZIP or restarting Claude. Changes to
 the channel's tool definitions still require restarting the Claude session.
+The Startup shortcut also restarts the channel at the next Windows sign-in.
 The worker does not need GitHub access or a second repository.
 
 The worker can save detailed style-study findings to the AI Office job through
