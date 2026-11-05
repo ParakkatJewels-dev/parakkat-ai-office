@@ -17,20 +17,26 @@ REAL_SFX = HERE / '.claude' / 'skills' / 'real-sfx'
 UISFX_PACKAGE = REAL_SFX / 'vendor' / 'node_modules' / 'uisfx' / 'package.json'
 
 
+def earshot_ready():
+    return EARSHOT_PYTHON.is_file() and subprocess.run(
+        [str(EARSHOT_PYTHON), '-c',
+         'from importlib.metadata import version; import earshot, numpy, soundfile; assert version("earshot") == "0.4.0"'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False).returncode == 0
+
+
 def check():
     source_ok = SOURCE.is_file() and hashlib.sha256(SOURCE.read_bytes()).hexdigest() == SOURCE_SHA256
-    earshot_ok = EARSHOT_PYTHON.is_file() and subprocess.run(
-        [str(EARSHOT_PYTHON), '-c', 'import earshot, numpy, soundfile'],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False).returncode == 0
+    earshot_ok = earshot_ready()
     try:
         uisfx_ok = json.loads(UISFX_PACKAGE.read_text(encoding='utf-8')).get('version') == '0.4.0'
     except (OSError, ValueError):
         uisfx_ok = False
     print(f'Pinned earshot source: {"ready" if source_ok else "missing or changed"}')
     print(f'Earshot Python tools: {"ready" if earshot_ok else "not installed"}')
-    print(f'Real SFX skill: {"ready" if (REAL_SFX / "SKILL.md").is_file() else "missing"}')
+    real_sfx_ok = (REAL_SFX / 'SKILL.md').is_file() and (REAL_SFX / 'config.json').is_file()
+    print(f'Real SFX skill: {"ready" if real_sfx_ok else "not configured"}')
     print(f'CC0 UI sounds: {"ready" if uisfx_ok else "not installed"}')
-    return source_ok and earshot_ok and (REAL_SFX / 'SKILL.md').is_file() and uisfx_ok
+    return source_ok and earshot_ok and real_sfx_ok and uisfx_ok
 
 
 def install():
@@ -56,8 +62,7 @@ def install():
 
     if not EARSHOT_PYTHON.is_file():
         venv.EnvBuilder(with_pip=True).create(VENV)
-    if subprocess.run([str(EARSHOT_PYTHON), '-c', 'import earshot, numpy, soundfile'],
-                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False).returncode:
+    if not earshot_ready():
         subprocess.run([str(EARSHOT_PYTHON), '-m', 'pip', 'install', '--disable-pip-version-check',
                         '--no-input', str(SOURCE)], check=True, timeout=3600)
     if not check():
