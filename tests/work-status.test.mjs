@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeWorkStatuses, agentWorkStatus, layoutWorkStatuses } from '../src/office/work-status.mjs';
+import { normalizeWorkStatuses, agentWorkStatus, serverWorkStatus, layoutWorkStatuses } from '../src/office/work-status.mjs';
 
 const person = overrides => ({ id: 'sales', status: 'idle', task: 'Waiting for the next job', path: [], bubble: null, ...overrides });
 const work = { state: 'working', label: 'Reviewing sales evidence', expiresAt: 20_000 };
@@ -64,6 +64,17 @@ test('waiting visits and explicit meetings remain visible without invented progr
 test('an expired backend lease cannot hide an actual walk or revive when the walk ends', () => {
   assert.equal(agentWorkStatus(person({ path: [{ x: 0, z: 1 }], task: 'Returning to the desk' }), work, 30_000).state, 'walking');
   assert.equal(agentWorkStatus(person({ task: 'Returning to the desk' }), work, 30_000), null);
+});
+
+test('large office cards require a live server status even while agents roam or speak', () => {
+  const onBreak = person({ path: [{ x: 1, z: 2 }], task: 'On a break', bubble: 'Hello' });
+  assert.equal(serverWorkStatus(onBreak, null, 1_000), null);
+  assert.equal(serverWorkStatus(onBreak, work, 20_000), null);
+  const shown = serverWorkStatus(onBreak, work, 1_000);
+  assert.equal(shown.source, 'server');
+  assert.equal(shown.state, 'working');
+  assert.equal(shown.label, 'Reviewing sales evidence');
+  assert.equal(shown.speech, 'Hello');
 });
 
 const overlap = (a, b) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.y - b.y) < (a.h + b.h) / 2;

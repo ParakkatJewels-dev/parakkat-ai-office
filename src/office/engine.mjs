@@ -13,7 +13,7 @@ import { WALK, createPlayer, look, movePlayer, promptFor, sitDown, standUp, step
 import { createBuilding } from './building.mjs';
 import { createCrowd, lookFor } from './crowd.mjs';
 import { createDirectDialogueController, dialogueBubble, dialogueDuration } from './direct-dialogue.mjs';
-import { normalizeWorkStatuses, agentWorkStatus, layoutWorkStatuses } from './work-status.mjs';
+import { normalizeWorkStatuses, agentWorkStatus, serverWorkStatus, layoutWorkStatuses } from './work-status.mjs';
 import { characterMotion } from './character-motion.mjs';
 import { forwardLabelWheel } from './map-input.mjs';
 import { isWorkingStatus } from '../lib/agents/activity-core.mjs';
@@ -23,7 +23,7 @@ export const DEPT_COLOR = {
   perf: '#23807a', seo: '#4f8a2b', lead: '#1c1c1c', warroom: '#6f3fa0', customer: '#2f7fa8', goldrate: '#b8913f', datahub: '#4a5568',
   forecast: '#3f8f7a', qa: '#8a6a3a', photo: '#c4566a', reels: '#d9603b', catalog: '#8a5a9e', lang: '#3a8f5c', crm: '#2b6cb0', brand: '#a8865a',
 };
-const STATUS_COL = { idle: '#7aa7d9', thinking: '#e89a3c', talking: '#ffd338', walking: '#ffd338', waiting: '#e6c271' };
+const STATUS_COL = { idle: '#7aa7d9', thinking: '#e89a3c', talking: '#ffd338', walking: '#ffd338', waiting: '#e6c271', blocked: '#ff7a66' };
 const OVERVIEW = { pos: [0, 60, 58], target: [0, 0, 2] };
 const TOP_VIEW = { pos: [0, 96, 2.01], target: [0, 0, 2] };
 const WALK_FOV = 68, MAP_FOV = 38, TALK_RANGE = 15;
@@ -65,6 +65,7 @@ export function createOffice(o) {
   people.forEach(p => { P[p.id] = p; });
   let workStatuses = Object.create(null);
   const workStatus = (p, now = Date.now()) => agentWorkStatus(p, workStatuses[p.id], now);
+  const visibleWork = (p, now = Date.now()) => serverWorkStatus(p, workStatuses[p.id], now);
   Object.values(B).forEach(b => { b.people = people.filter(p => p.homeRoom.b === b); b.rooms = Object.values(R).filter(r => r.b === b).length; });
   const meetingRoom = R.board || Object.values(R)[0];
   const meetingPoint = { x: MEETING_TABLE.x, z: MEETING_TABLE.z };
@@ -151,7 +152,7 @@ export function createOffice(o) {
     placed.push(...avoidRects);
     const walking = mode === 'walk', W = canvas.clientWidth, H = canvas.clientHeight, dist = camera.position.distanceTo(controls.target);
     const near = p => !walking || (Math.hypot(p.x - player.x, p.z - player.z) < TALK_RANGE && !sightBlocked(player.x, player.z, p.x, p.z));
-    const currentWork = new Map(people.map(p => [p, workStatus(p)]));
+    const now = Date.now(), currentWork = new Map(people.map(p => [p, visibleWork(p, now)]));
     const onScreen = s => s.front && s.x > 0 && s.x < W && s.y > 30 && s.y < H;
     const meetAt = project(meetingPoint.x, 1.6, meetingPoint.z);
     const meetShow = !walking && !fly && dist < 150 && onScreen(meetAt) && free(meetAt.x, meetAt.y - 10, currentMeeting ? 205 : 135, 28);
@@ -410,7 +411,7 @@ export function createOffice(o) {
     crowd.begin(); for (const p of people) drawPerson(p, T); for (const a of ambient) { if (a.path.length) a.sitting = false; else if (a.extras.sit) a.sitting = true; drawPerson(a, T); }
     if (mode === 'walk' && thirdPerson && !player.seat) { const moving = Math.hypot(player.vx, player.vz) > .1; const fig = { phase: 1, sitting: false, path: moving ? [{}] : [], status: 'idle' }; crowd.drawFigure(player.x, player.y, player.z, player.yaw, characterMotion(fig, T * (keys.shift ? 1.5 : 1), null, reduce), playerLook, false); }
     crowd.end();
-    let ringN = 0; for (const p of people) { const show = p === sel || !!workStatus(p); if (!show) continue; _ring.makeTranslation(p.x, .05, p.z); rings.setMatrixAt(ringN, _ring); rings.setColorAt(ringN, _ringC.set(p === sel ? '#ffd338' : STATUS_COL[p.status] || '#ffd338')); ringN++; } rings.count = ringN; rings.instanceMatrix.needsUpdate = true; if (rings.instanceColor) rings.instanceColor.needsUpdate = true;
+    let ringN = 0; for (const p of people) { const status = visibleWork(p); if (p !== sel && !status) continue; _ring.makeTranslation(p.x, .05, p.z); rings.setMatrixAt(ringN, _ring); rings.setColorAt(ringN, _ringC.set(p === sel ? '#ffd338' : STATUS_COL[status.state] || '#ffd338')); ringN++; } rings.count = ringN; rings.instanceMatrix.needsUpdate = true; if (rings.instanceColor) rings.instanceColor.needsUpdate = true;
     if (fly?.walk) {
       fly.t = Math.min(1, fly.t + Math.min(raw, .4) / 1.5); const k = fly.t < .5 ? 4 * fly.t ** 3 : 1 - Math.pow(-2 * fly.t + 2, 3) / 2;
       camera.position.lerpVectors(fly.from, fly.to, k); camera.quaternion.slerpQuaternions(fly.q0, fly.q1, k); camera.fov = fly.fov0 + (WALK_FOV - fly.fov0) * k; camera.updateProjectionMatrix(); if (k > .72) showCeiling(true);

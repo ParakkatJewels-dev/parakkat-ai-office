@@ -29,6 +29,12 @@ export function agentWorkStatus(person, source, now = Date.now()) {
   return work ? { state: work.state, label: work.label, source: 'server', speech: '', workLabel: '' } : null;
 }
 
+/** Large overhead cards show tracked work, not ambient walks, breaks, or speech. */
+export function serverWorkStatus(person, source, now = Date.now()) {
+  if (!source || source.expiresAt <= now) return null;
+  return { state: source.state, label: source.label, source: 'server', speech: person.bubble ? clean(person.bubble, 240) : '', workLabel: '' };
+}
+
 const overlap = (a, b) => Math.max(0, (a.w + b.w) / 2 - Math.abs(a.x - b.x)) * Math.max(0, (a.h + b.h) / 2 - Math.abs(a.y - b.y));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
