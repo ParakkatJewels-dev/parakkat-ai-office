@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { isPaused } from '@/lib/pause';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { UUID, safeWorkerText } from '@/lib/video-edit/core.mjs';
-import { markVideoWorkerConnected } from '@/lib/video-edit/presence';
+import { markVideoWorkerConnected, videoWorkerPresence } from '@/lib/video-edit/presence';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,6 +23,7 @@ export async function POST(request: Request) {
   try { const raw = await request.text(); if (raw.length > 32_000) throw new Error(); body = JSON.parse(raw); }
   catch { return json({ error: 'Invalid worker request.' }, 400); }
   if (!body || typeof body !== 'object') return json({ error: 'Invalid worker request.' }, 400);
+  if (body.action === 'status') return json({ worker: videoWorkerPresence() });
   const db = supabaseAdmin();
   if (body.action === 'peek') {
     markVideoWorkerConnected();
