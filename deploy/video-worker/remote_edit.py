@@ -23,6 +23,7 @@ SAFE_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
 CATALOG_LIMIT = 500
 PREVIEW_PAGE_SIZE = 50
 AUDIO_SUFFIXES = {'.mp3', '.wav', '.m4a', '.flac', '.aac', '.aiff'}
+CARD_SUFFIXES = {'.png', '.jpg', '.jpeg', '.webp'}
 SUPPORTED_FRAME_RATES = {23.976, 24, 25, 29.97, 30, 50, 59.94, 60}
 
 
@@ -70,6 +71,25 @@ def validate_audio(audio, duration):
             raise ValueError('Audio gain must be from -30 to +6 dB')
         if 'source_url' in choice and (not isinstance(choice['source_url'], str) or len(choice['source_url']) > 500):
             raise ValueError('Audio source URL is invalid')
+
+
+def validate_end_card(card):
+    if card is None:
+        return 0.0
+    if not isinstance(card, dict) or set(card) - {'file', 'duration_seconds', 'background'}:
+        raise ValueError('End card may contain file, duration_seconds, and background only')
+    file = card.get('file')
+    if not isinstance(file, str):
+        raise ValueError('End card needs a local image path')
+    path = Path(file).expanduser().resolve(strict=True)
+    if not path.is_file() or path.suffix.lower() not in CARD_SUFFIXES or path.stat().st_size > 20_000_000:
+        raise ValueError('End card must be a local PNG, JPEG, or WebP under 20 MB')
+    duration = card.get('duration_seconds')
+    if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or not 1 <= duration <= 10:
+        raise ValueError('End card duration must be 1 to 10 seconds')
+    if card.get('background', 'white') not in ('white', 'black'):
+        raise ValueError('End card background must be white or black')
+    return float(duration)
 
 
 def preview_page(manifest, manifest_path, offset):
@@ -147,8 +167,11 @@ def render(args):
             raise ValueError('Source file in manifest is missing or outside the source folder')
     validate_plan(plan, manifest['media'], max_segments=300)
     validate_grade(plan.get('grade'))
+    for segment in plan['segments']:
+        validate_grade(segment.get('grade'))
     validate_fps(plan.get('fps'))
-    planned_duration = sum(segment['end_seconds'] - segment['start_seconds'] for segment in plan['segments'])
+    card_duration = validate_end_card(plan.get('end_card'))
+    planned_duration = sum(segment['end_seconds'] - segment['start_seconds'] for segment in plan['segments']) + card_duration
     validate_audio(plan.get('audio'), planned_duration)
     catalog_count = len(manifest['media'])
     selected = {segment['file'] for segment in plan['segments']}

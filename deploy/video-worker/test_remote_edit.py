@@ -23,6 +23,14 @@ class RemoteEditTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             remote_edit.validate_fps(41)
 
+    def test_end_card_requires_local_image_and_bounded_duration(self):
+        with tempfile.TemporaryDirectory() as folder:
+            logo = Path(folder) / 'logo.png'
+            logo.write_bytes(b'png fixture')
+            self.assertEqual(remote_edit.validate_end_card({'file': str(logo), 'duration_seconds': 3}), 3)
+            with self.assertRaises(ValueError):
+                remote_edit.validate_end_card({'file': str(logo), 'duration_seconds': 30})
+
     def test_audio_plan_checks_local_asset_and_timing(self):
         with tempfile.TemporaryDirectory() as folder:
             track = Path(folder) / 'music.mp3'

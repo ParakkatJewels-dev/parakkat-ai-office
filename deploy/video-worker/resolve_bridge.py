@@ -73,6 +73,12 @@ def matching_project_preset(project, target):
         raise RuntimeError(f'Project preset {wanted} changes colour/HDR settings ({", ".join(changed)}); create a clean preset before editing')
     return wanted
 
+
+def planned_grades(plan):
+    default = plan.get('grade')
+    return [(index, segment.get('grade') or default) for index, segment in enumerate(plan['segments'])
+            if segment.get('grade') or default]
+
 def edit_format(data):
     """Choose a deliverable format from the brief and selected clip geometry."""
     media = {item['file']: item for item in data['media']}
@@ -117,11 +123,52 @@ def prepare_audio(source, destination, duration, gain_db, music=False):
     if done.returncode or not destination.is_file() or destination.stat().st_size < 1024:
         raise RuntimeError(f'Could not prepare audio: {(done.stderr or done.stdout)[-500:]}')
 
+
+def prepare_end_card(image, destination, target, duration, background='white'):
+    """Create a full-frame branded card from a local image without altering footage."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    width, height, fps = target['width'], target['height'], target['fps']
+    graph = (f'[1:v]scale={int(width * 0.68)}:{int(height * 0.55)}:force_original_aspect_ratio=decrease[logo];'
+             '[0:v][logo]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[out]')
+    command = ['ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+               '-f', 'lavfi', '-i', f'color=c={background}:s={width}x{height}:r={fps}:d={duration:.3f}',
+               '-loop', '1', '-i', str(image), '-filter_complex', graph, '-map', '[out]',
+               '-t', f'{duration:.3f}', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(destination)]
+    done = subprocess.run(command, capture_output=True, text=True, timeout=180)
+    if done.returncode or not destination.is_file() or destination.stat().st_size < 1024:
+        raise RuntimeError(f'Could not prepare end card: {(done.stderr or done.stdout)[-500:]}')
+
+
+def add_end_card(plan, timeline, pool, storage, assets_dir, target):
+    card = plan.get('end_card')
+    if not card:
+        return None
+    image = Path(card['file']).resolve(strict=True)
+    duration = float(card['duration_seconds'])
+    prepared = assets_dir / 'end-card.mp4'
+    prepare_end_card(image, prepared, target, duration, card.get('background', 'white'))
+    imported = require(storage.AddItemListToMediaPool([str(prepared)]), 'Resolve could not import the end card')
+    clip = imported[0]
+    source_rate = clip_fps(clip, 'end card')
+    frame_count = math.ceil(duration * source_rate)
+    entry = {'mediaPoolItem': clip, 'startFrame': 0, 'endFrame': frame_count - 1, 'mediaType': 1}
+    appended = require(pool.AppendToTimeline([entry]), 'Resolve could not append the end card')
+    if not isinstance(appended, (list, tuple)) or len(appended) != 1:
+        raise RuntimeError('Resolve did not return the appended end card')
+    expected = round(duration * target['fps'])
+    placed = appended[0].GetDuration()
+    if not isinstance(placed, (int, float)) or abs(placed - expected) > 2:
+        raise RuntimeError(f'Resolve placed end card at {placed} timeline frames, expected {expected}')
+    (assets_dir / 'end-card-source.json').write_text(json.dumps({'file': str(image), 'duration_seconds': duration,
+                                                                   'background': card.get('background', 'white')}, indent=2), encoding='utf-8')
+    return prepared
+
 def add_audio(data, timeline, pool, storage, assets_dir, target):
     audio = data['plan'].get('audio') or {}
     if not audio:
         return None
     duration = sum(item['end_seconds'] - item['start_seconds'] for item in data['plan']['segments'])
+    duration += float((data['plan'].get('end_card') or {}).get('duration_seconds', 0))
     start_frame = require(timeline.GetStartFrame(), 'Resolve could not read timeline start')
     fps = target['fps']
     choices = []
@@ -215,25 +262,28 @@ def main(manifest_path):
         if end <= start: raise RuntimeError('Edit segment is shorter than two frames')
         segments.append({'mediaPoolItem': clip, 'startFrame': start, 'endFrame': end})
     timeline_items = require(pool.AppendToTimeline(segments), 'Resolve could not assemble the timeline')
-    grade = data['plan'].get('grade')
-    if grade:
+    graded_segments = planned_grades(data['plan'])
+    if graded_segments:
         video_items = timeline.GetItemListInTrack('video', 1) if hasattr(timeline, 'GetItemListInTrack') else None
         if isinstance(video_items, (list, tuple)):
             timeline_items = video_items
         elif not isinstance(timeline_items, (list, tuple)):
             raise RuntimeError('Resolve could not list video timeline clips for grading')
-        cdl = {
-            'NodeIndex': '1',
-            'Slope': ' '.join(str(v) for v in grade['slope']),
-            'Offset': ' '.join(str(v) for v in grade['offset']),
-            'Power': ' '.join(str(v) for v in grade['power']),
-            'Saturation': str(grade['saturation']),
-        }
         if len(timeline_items) != len(segments):
             raise RuntimeError('Resolve returned an unexpected number of timeline clips for grading')
-        for index, item in enumerate(timeline_items):
+        for index, grade in graded_segments:
+            item = timeline_items[index]
+            cdl = {
+                'NodeIndex': '1',
+                'Slope': ' '.join(str(v) for v in grade['slope']),
+                'Offset': ' '.join(str(v) for v in grade['offset']),
+                'Power': ' '.join(str(v) for v in grade['power']),
+                'Saturation': str(grade['saturation']),
+            }
             require(item.SetCDL(cdl), f'Resolve could not apply the colour grade to clip {index + 1}')
-    audio_assets_dir = add_audio(data, timeline, pool, storage, output / f'{name}-{job_id}-assets', target)
+    assets_dir = output / f'{name}-{job_id}-assets'
+    end_card_path = add_end_card(data['plan'], timeline, pool, storage, assets_dir, target)
+    audio_assets_dir = add_audio(data, timeline, pool, storage, assets_dir, target)
     require(manager.SaveProject(), 'Resolve could not save the project')
     project_path = output / f'{name}-{job_id}.drp'
     require(manager.ExportProject(project_name, str(project_path)), 'Resolve could not export the project backup')
@@ -263,8 +313,10 @@ def main(manifest_path):
         raise RuntimeError('Resolve finished without creating a usable MP4; check its render job status')
     require(manager.SaveProject(), 'Resolve could not save the completed project')
     print(json.dumps({'project_path': str(project_path), 'export_path': str(export_path), 'target_format': target,
-                      'grade_applied': bool(grade), 'audio_applied': bool(audio_assets_dir),
+                      'grade_applied': bool(graded_segments), 'graded_clip_count': len(graded_segments),
+                      'audio_applied': bool(audio_assets_dir),
                       'audio_assets_dir': str(audio_assets_dir) if audio_assets_dir else None,
+                      'end_card_applied': bool(end_card_path), 'end_card_path': str(end_card_path) if end_card_path else None,
                       'playback_fps': playback_fps, 'preview_warning': preview_warning,
                       'project_preset': preset_applied}))
 

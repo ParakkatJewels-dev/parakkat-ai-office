@@ -7,10 +7,16 @@ import wave
 from pathlib import Path
 from unittest.mock import patch
 
-from resolve_bridge import add_audio, audio_source_end_frame, clip_fps, edit_format, matching_project_preset, prepare_audio
+from resolve_bridge import add_audio, audio_source_end_frame, clip_fps, edit_format, matching_project_preset, planned_grades, prepare_audio, prepare_end_card
 
 
 class ResolveFormatTests(unittest.TestCase):
+    def test_per_shot_grade_overrides_global_grade(self):
+        global_grade = {'saturation': 0.9}
+        night_grade = {'saturation': 1.1}
+        plan = {'grade': global_grade, 'segments': [{}, {'grade': night_grade}, {}]}
+        self.assertEqual(planned_grades(plan), [(0, global_grade), (1, night_grade), (2, global_grade)])
+
     def test_only_explicit_ai_office_rate_preset_is_applied(self):
         class Project:
             selected = None
@@ -112,6 +118,18 @@ class ResolveFormatTests(unittest.TestCase):
             with wave.open(str(destination), 'rb') as prepared:
                 self.assertEqual(prepared.getnchannels(), 2)
                 self.assertAlmostEqual(prepared.getnframes() / prepared.getframerate(), 2.0, places=2)
+
+    @unittest.skipUnless(shutil.which('ffmpeg'), 'FFmpeg is required')
+    def test_end_card_renders_to_target_frame(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            logo = root / 'logo.png'
+            destination = root / 'assets' / 'end-card.mp4'
+            import subprocess
+            subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=128x64',
+                            '-frames:v', '1', '-y', str(logo)], check=True)
+            prepare_end_card(logo, destination, {'width': 320, 'height': 480, 'fps': 30}, 1.0)
+            self.assertGreater(destination.stat().st_size, 1024)
 
 
 if __name__ == '__main__':
