@@ -12,6 +12,7 @@ import subprocess
 import sys
 import shutil
 from datetime import datetime, timezone
+from fractions import Fraction
 from pathlib import Path
 
 VIDEO = {'.mp4', '.mov', '.mxf', '.mkv', '.avi', '.webm'}
@@ -205,6 +206,18 @@ def compare(reference_paths, draft, output):
                        'candidate': [candidate['width'], candidate['height']], 'reference_values': [list(x) for x in sorted(geometry)]})
         audio_refs = any(x['has_audio'] for x in references)
         checks.append({'check': 'audio present when references have audio', 'pass': bool(candidate['has_audio']) if audio_refs else True})
+        def frame_rate(item):
+            try:
+                return float(Fraction(str(item['fps'])))
+            except (TypeError, ValueError, ZeroDivisionError):
+                return None
+        reference_rates = [frame_rate(item) for item in references]
+        reference_rates = [rate for rate in reference_rates if rate and rate > 0]
+        candidate_rate = frame_rate(candidate)
+        if reference_rates:
+            checks.append({'check': 'frame rate near a reference',
+                           'pass': candidate_rate is not None and any(abs(candidate_rate - rate) < 0.15 for rate in reference_rates),
+                           'candidate_fps': candidate_rate, 'reference_fps': reference_rates})
         durations = [x['duration_seconds'] for x in references if x['duration_seconds'] > 0]
         if durations:
             lower, upper = min(durations) * 0.75, max(durations) * 1.25

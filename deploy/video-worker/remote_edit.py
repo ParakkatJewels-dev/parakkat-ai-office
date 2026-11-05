@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from fractions import Fraction
 from pathlib import Path
 
 from worker import VIDEO_SUFFIXES, media_in, probe, thumbnails, validate_plan
@@ -22,6 +23,7 @@ SAFE_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
 CATALOG_LIMIT = 500
 PREVIEW_PAGE_SIZE = 50
 AUDIO_SUFFIXES = {'.mp3', '.wav', '.m4a', '.flac', '.aac', '.aiff'}
+SUPPORTED_FRAME_RATES = {23.976, 24, 25, 29.97, 30, 50, 59.94, 60}
 
 
 def validate_grade(grade):
@@ -36,6 +38,11 @@ def validate_grade(grade):
     saturation = grade['saturation']
     if isinstance(saturation, bool) or not isinstance(saturation, (int, float)) or not math.isfinite(saturation) or not 0 <= saturation <= 2:
         raise ValueError('Grade saturation must be a finite number from 0 to 2')
+
+
+def validate_fps(fps):
+    if fps is not None and (isinstance(fps, bool) or not isinstance(fps, (int, float)) or fps not in SUPPORTED_FRAME_RATES):
+        raise ValueError('Frame rate must be one of 23.976, 24, 25, 29.97, 30, 50, 59.94, or 60')
 
 
 def validate_audio(audio, duration):
@@ -140,6 +147,7 @@ def render(args):
             raise ValueError('Source file in manifest is missing or outside the source folder')
     validate_plan(plan, manifest['media'], max_segments=300)
     validate_grade(plan.get('grade'))
+    validate_fps(plan.get('fps'))
     planned_duration = sum(segment['end_seconds'] - segment['start_seconds'] for segment in plan['segments'])
     validate_audio(plan.get('audio'), planned_duration)
     catalog_count = len(manifest['media'])
@@ -165,6 +173,13 @@ def render(args):
     target_format = result.get('target_format')
     if target_format and (info.get('width'), info.get('height')) != (target_format['width'], target_format['height']):
         raise RuntimeError(f'Resolve exported {info.get("width")}x{info.get("height")} instead of {target_format["width"]}x{target_format["height"]}. Inspect {exported} and the Resolve project before retrying.')
+    if plan.get('fps') is not None:
+        try:
+            actual_fps = float(Fraction(str(info.get('fps'))))
+        except (TypeError, ValueError, ZeroDivisionError):
+            actual_fps = None
+        if actual_fps is None or abs(actual_fps - plan['fps']) > 0.15:
+            raise RuntimeError(f'Resolve exported at {info.get("fps")} fps instead of the requested {plan["fps"]} fps. Inspect {exported} and the Resolve project before retrying.')
     if plan.get('audio'):
         measured = subprocess.run(['ffmpeg', '-nostdin', '-hide_banner', '-i', str(exported), '-map', '0:a:0',
                                    '-af', 'volumedetect', '-f', 'null', '-'], capture_output=True, text=True, timeout=120)

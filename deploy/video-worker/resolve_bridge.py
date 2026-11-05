@@ -61,7 +61,8 @@ def edit_format(data):
         orientation = max(orientation_seconds, key=orientation_seconds.get) if orientation_seconds else 'landscape'
     width, height = {'portrait': (1080, 1920), 'landscape': (1920, 1080), 'square': (1080, 1080)}[orientation]
     supported = (23.976, 24, 25, 29.97, 30, 50, 59.94, 60)
-    fps = min(supported, key=lambda value: abs(value - (chosen_fps or 30)))
+    requested_fps = data['plan'].get('fps')
+    fps = requested_fps if requested_fps is not None else min(supported, key=lambda value: abs(value - (chosen_fps or 30)))
     return {'width': width, 'height': height, 'fps': fps}
 
 def prepare_audio(source, destination, duration, gain_db, music=False):

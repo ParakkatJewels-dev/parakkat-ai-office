@@ -17,6 +17,12 @@ class RemoteEditTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             remote_edit.validate_grade({'slope': [1, 1, 1], 'offset': [0, 0, 0], 'power': [1, 1, 1], 'saturation': float('nan')})
 
+    def test_reference_frame_rate_is_limited_to_supported_values(self):
+        remote_edit.validate_fps(24)
+        remote_edit.validate_fps(29.97)
+        with self.assertRaises(ValueError):
+            remote_edit.validate_fps(41)
+
     def test_audio_plan_checks_local_asset_and_timing(self):
         with tempfile.TemporaryDirectory() as folder:
             track = Path(folder) / 'music.mp3'
