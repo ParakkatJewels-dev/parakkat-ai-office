@@ -40,6 +40,8 @@ terminal open. Create a short test job in AI Office with a source folder name
 relative to the media root, such as `Test`. A failed or lost job requires
 checking the Resolve project and export folder before retrying.
 
+The editing PC does not need an AI Office browser login. Its private
+`subscription.env` token authenticates the channel and the worker updater.
 For automatic startup, double-click `install-ai-office-autostart.cmd` **once**
 from the worker folder that contains your private `subscription.env`. It creates
 a shortcut in your Windows Startup folder and opens the AI Office Claude session
@@ -58,13 +60,22 @@ additional editing work and must be checked on the exported video.
 
 ### Updating this Windows worker
 
-To install automatic updates on an existing Windows worker, sign in to AI
-Office as Super Admin on the editing PC, open **Video editing**, and use
-**Download Windows worker update** once. Exit the current Claude Code session,
-extract the ZIP over the existing worker folder, keep the private
-`subscription.env` in place, and start `run-ai-office-subscription.cmd` again.
-The ZIP never contains the private settings. The launcher detects a previously
-rejected MCP server and tells you how to reset Claude's saved choice.
+To update an existing Windows worker without signing in to AI Office there,
+close the old Claude Code window and run these commands in Command Prompt:
+
+```cmd
+cd /d "C:\path\to\your\video-worker"
+py -3 update_worker.py
+install-ai-office-autostart.cmd
+```
+
+The updater uses the existing token in `subscription.env`, verifies the package
+checksum, and keeps the private settings. The final command is a one-time setup
+for startup at Windows sign-in; it also opens the editor now. If the older
+worker folder does not contain `update_worker.py`, download the ZIP while signed
+in to AI Office on another device and transfer it to this PC. The ZIP never
+contains the private settings. The launcher detects a previously rejected MCP
+server and tells you how to reset Claude's saved choice.
 
 After this one-time update, the running channel checks AI Office every five
 minutes for a newer worker package over HTTPS. It verifies the package checksum
