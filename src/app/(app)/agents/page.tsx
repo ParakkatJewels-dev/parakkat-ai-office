@@ -30,30 +30,29 @@ export default async function Agents({ searchParams }: { searchParams: Promise<R
       <section className="tiles" aria-label="Summary">
         <AgentActivitySummary />
         <Tile icon="doc" tone="blue" label="Reports forwarded" value={sum(c => c.forwarded)} sub={`${sum(c => c.accepted)} accepted`} />
-        <Tile icon="rocket" tone="amber" label="Live campaigns" value={totals.live} sub={totals.spend ? `${inr(totals.spend)} spent on them` : 'By the agents below'} />
-        <Tile icon="rupee" tone="violet" label="Campaign revenue" value={inr(totals.revenue)} sub={totals.spend ? `${(totals.revenue / totals.spend).toFixed(1)}x return, Meta results` : 'Meta results, last 30 days'} />
+        <Tile icon="rocket" tone="amber" label="Live campaigns" value={totals.live} />
+        <Tile icon="rupee" tone="violet" label="Campaign revenue" value={inr(totals.revenue)} sub={totals.spend ? `${(totals.revenue / totals.spend).toFixed(1)}x return` : undefined} />
       </section>
       <section className={`card ${styles.filterBar}`} aria-label="Find an agent">
         <form className={styles.filters} role="search" action="/agents">
-          <label className={`field ${styles.search}`}>Search agents<input type="search" name="q" defaultValue={query} placeholder="Name, role or department…" /></label>
-          <label className="field">Department<select name="dept" defaultValue={department}><option value="">All departments</option>{depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
-          <label className="field">Role<select name="leads" defaultValue={leadsOnly ? '1' : ''}><option value="">All agents</option><option value="1">Team leads</option></select></label>
-          <button className="btn" type="submit"><Icon name="search" size={16}/>Apply filters</button>
+          <label className={`field ${styles.search}`}><span className="sr-only">Search agents</span><input type="search" name="q" defaultValue={query} placeholder="Name, role or department…" /></label>
+          <label className="field"><span className="sr-only">Department</span><select name="dept" defaultValue={department}><option value="">All departments</option>{depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
+          <label className="field"><span className="sr-only">Role</span><select name="leads" defaultValue={leadsOnly ? '1' : ''}><option value="">All agents</option><option value="1">Team leads</option></select></label>
+          <button className="btn ghost" type="submit"><Icon name="search" size={16}/>Search</button>
           {(query || department || leadsOnly) && <Link href="/agents" className="btn ghost">Clear</Link>}
         </form>
       </section>
       <section className={styles.directory} aria-label="Agent reports">
-        <div className={styles.directoryHeading}><div><h2 className="section-title">Team directory</h2><p className="sub">{filtered.length} agent{filtered.length === 1 ? '' : 's'}{query || department || leadsOnly ? ' match your filters' : ' in your departments'} · Open a workspace to talk or review work.</p></div><span className="pill">Last 30 days</span></div>
+        <div className={styles.directoryHeading}><div><h2 className="sr-only">Team directory</h2></div><span className="pill">Last 30 days</span></div>
         {visible.length ? <ul className={styles.grid}>{visible.map(a => {
           const c = cards[a.id];
           return <li key={a.id}><Link href={`/agents/${a.id}`} className={styles.agentCard}>
             <div className={styles.identity}>
               <div className={styles.agentTop}><Avatar name={a.name} dept={a.department_id} size={36}/><div className={styles.agentName}><b>{a.name}</b><span>{names[a.department_id]}</span></div><AgentActivityBadge id={a.id}/></div>
               <p className={styles.role}>{a.role_desc}</p>
-              <div className={styles.agentMeta}>{a.is_lead ? <span className="pill acc">Team lead</span> : <span className="pill">Specialist</span>}<span>Open workspace <Icon name="arrow" size={14}/></span></div>
+              <div className={styles.agentMeta}>{a.is_lead ? <span className="pill acc">Team lead</span> : <span className="pill">Specialist</span>}<Icon name="next" size={16}/></div>
             </div>
-            <div className={styles.latest}><span className={styles.metaLabel}>Latest activity</span><p>{c.last ? c.last.text : 'No activity in the last 30 days.'}</p>{c.last && <time dateTime={c.last.at}>{ago(c.last.at)}</time>}</div>
-            <dl className={styles.metrics}><div><dt>Actions</dt><dd>{c.actions}</dd></div><div><dt>Reports</dt><dd>{c.forwarded}</dd></div><div><dt>Accepted</dt><dd>{c.forwarded ? `${Math.round((c.accepted / c.forwarded) * 100)}%` : '–'}</dd></div><div><dt>{c.designs ? 'Designs' : 'Campaigns'}</dt><dd>{c.designs || c.runs}</dd></div></dl>
+            <div className={styles.latest}><p>{c.last ? c.last.text : 'No activity in the last 30 days.'}</p>{c.last && <time dateTime={c.last.at}>{ago(c.last.at)}</time>}</div>
           </Link></li>;
         })}</ul> : <div className="empty"><Icon name="users" size={28}/><b>{list.length ? 'No matching agents' : 'No departments assigned'}</b><p>{list.length ? 'Try another name or clear your filters.' : 'Ask the Super Admin to assign you as a department head.'}</p>{list.length > 0 && <Link href="/agents" className="btn ghost sm-btn">Clear filters</Link>}</div>}
         <Pager sp={sp} page={page} size={size} total={filtered.length} shown={visible.length}/>

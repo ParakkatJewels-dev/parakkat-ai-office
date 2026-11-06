@@ -44,3 +44,8 @@
 .actions { display: flex; gap: 9px; flex-wrap: wrap; }
 @media (max-width: 850px) { .layout { grid-template-columns: minmax(0, 1fr); } .inbox ol { max-height: 300px; } .inbox, .detail { padding: 16px; } }
 @media (max-width: 520px) { .path { grid-template-columns: repeat(5, minmax(48px, 1fr)); overflow-x: auto; } .path span { font-size: 11px; } }
+
+/* Simple layout: the request, the answer and the AI head's check, without section labels. */
+.brief { color: var(--muted); font-size: 14px; }
+.check { margin: 0; color: var(--muted); font-size: 14px; }
+.check b { color: var(--ink); font-weight: 600; }

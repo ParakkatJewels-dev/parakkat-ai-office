@@ -3,14 +3,8 @@ import { Icon, type IconName } from './Icon';
 import { DEPT_COLOR } from '@/office/engine.mjs';
 import { pageNumbers } from './pagination-core.mjs';
 
-export function PageHead({ title, sub, children }: { title: string; sub?: React.ReactNode; children?: React.ReactNode }) {
-  return (
-    <header className="page-head">
-      <div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>
-      {children && <div className="page-actions">{children}</div>}
-    </header>
-  );
-}
+// The page header lives in its own file so client pages can use it without loading the office engine.
+export { PageHead } from './PageHead';
 
 export function Tile({ icon, label, value, sub, tone = 'teal' }: { icon: IconName; label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: 'teal' | 'blue' | 'amber' | 'rose' | 'violet' }) {
   return (

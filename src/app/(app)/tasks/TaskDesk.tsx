@@ -7,6 +7,7 @@ import AgentConversation from '@/components/AgentConversation';
 import { Icon } from '@/components/Icon';
 import { Markdown } from '@/components/Markdown';
 import { NewTaskButton } from '@/components/NewTaskPanel';
+import { PageHead } from '@/components/PageHead';
 import styles from './TaskDesk.module.css';
 
 type Head={id:string;name:string;department_id:string;role_desc?:string};
@@ -58,27 +59,26 @@ export default function TaskDesk() {
   const names=Object.fromEntries(snapshot.heads.map(head=>[head.id,head.name]));
   const waitingOnYou=items.filter(item=>['review','blocked'].includes(item.status)).length;
   return <div className={`page ${styles.page}`}>
-    <header className={styles.header}>
-      <div><h1>Tasks</h1><p>Everything you’ve asked the team for. A team head plans each one, a specialist does it, the head checks it, then it comes back to you.</p></div>
-      <div className="page-actions">{snapshot.heads.some(head=>head.department_id==='reels')&&<Link className="btn ghost" href="/video"><Icon name="film" size={16}/>Edit a video</Link>}<NewTaskButton><Icon name="plus" size={16}/>New task</NewTaskButton></div>
-    </header>
+    <PageHead title="Tasks" sub="Everything you’ve asked the team for. A team head plans each one, a specialist does it, the head checks it, then it comes back to you.">
+      {snapshot.heads.some(head=>head.department_id==='reels')&&<Link className="btn ghost" href="/video"><Icon name="film" size={16}/>Edit a video</Link>}<NewTaskButton><Icon name="plus" size={16}/>New task</NewTaskButton>
+    </PageHead>
     {error&&<p className="flash" role="alert">{error}</p>}
-    {!loading&&!snapshot.canSend&&!error&&<p className="banner" role="status">No AI team head is set up for your account yet, so you can read tasks but not send new ones.</p>}
+    {!loading&&!snapshot.canSend&&!error&&<p className="banner" role="status">You can read tasks, but no team head is set up for you to send new ones.</p>}
     <div className={styles.layout}>
       <aside className={`card ${styles.inbox}`} aria-label="Your tasks">
-        <div className={styles.sectionHead}><h2>Your tasks</h2><span>{waitingOnYou?`${waitingOnYou} need${waitingOnYou===1?'s':''} you`:`${items.length} recent`}</span></div>
+        <div className={styles.sectionHead}><h2>Your tasks</h2>{waitingOnYou>0&&<span className="pill needs">{waitingOnYou}</span>}</div>
         {loading?<ul className={styles.skeleton} aria-label="Loading your tasks">{[0,1,2,3].map(i=><li key={i}/>)}</ul>
           :items.length?<ol>{items.map(item=>{const [text,tone]=word(item.status);return <li key={`${item.kind}:${item.id}`}><button type="button" className={active?.id===item.id&&active.kind===item.kind?styles.active:''} aria-current={active?.id===item.id&&active.kind===item.kind?'true':undefined} onClick={()=>setSelected({kind:item.kind,id:item.id})}>
             <span className={styles.itemTop}><b>{item.title}</b></span>
             <span className={styles.itemMeta}><span>{names[item.agentId]||'AI team'} · {ago(item.updatedAt)}</span><span className={`pill ${tone}`}>{text}</span></span></button></li>;})}</ol>
-          :<div className="empty"><Icon name="tasks" size={24}/><p>Nothing yet. Ask the team for anything: a report, a post, a campaign plan.</p><NewTaskButton className="btn ghost sm-btn"><Icon name="plus" size={14}/>New task</NewTaskButton></div>}
+          :<div className="empty"><Icon name="tasks" size={20}/><p>No tasks yet.</p><NewTaskButton className="btn ghost sm-btn"><Icon name="plus" size={14}/>New task</NewTaskButton></div>}
       </aside>
       <section className={`card ${styles.detail}`} aria-label="The selected task">
         {active?<>
-          <div className={styles.sectionHead}><div><small className={styles.kind}>{active.kind==='conversation'?'Question':'Task'} · led by {names[active.agentId]||'the AI team'}</small><h2>{active.title}</h2></div><span className={`pill ${word(active.status)[1]}`}>{word(active.status)[0]}</span></div>
+          <div className={styles.sectionHead}><div><small className={styles.kind}>{names[active.agentId]||'AI team'}</small><h2>{active.title}</h2></div><span className={`pill ${word(active.status)[1]}`}>{word(active.status)[0]}</span></div>
           {active.kind==='conversation'&&<AgentConversation key={`${active.agentId}:${active.id}`} agentId={active.agentId} agentName={names[active.agentId]||active.agentId} initialThreadId={active.id}/>}
           {active.kind==='task'&&active.task&&<TaskReport task={active.task} names={names}/>}
-        </>:!loading&&<div className="empty"><Icon name="send" size={24}/><p>Pick a task from the list, or start a new one.</p></div>}
+        </>:!loading&&<div className="empty"><Icon name="send" size={20}/><p>Pick a task.</p></div>}
       </section>
     </div>
   </div>;
@@ -89,15 +89,15 @@ function TaskReport({task,names}:{task:Work;names:Record<string,string>}) {
   const flow=task.state?.headWorkflow,assignments=flow?.plan?.assignments||[];
   return <div className={styles.report}>
     <ol className={styles.path} aria-label="Progress">{progress(task).map(step=><li key={step.label} data-state={step.state}><i aria-hidden="true">{step.state==='done'?<Icon name="check" size={12}/>:null}</i><span>{step.label}</span></li>)}</ol>
-    <section><h3>What you asked</h3><p className={styles.brief}>{task.brief}</p></section>
-    {task.result?.summary&&<section className={styles.answer}><h3>The answer</h3><p>{task.result.summary}</p></section>}
-    {task.result?.markdown&&<section><h3>The full result</h3><Markdown text={task.result.markdown} className={`md ${styles.output}`}/></section>}
-    {flow?.review?.note&&<section><h3>The AI head’s check</h3><p>{flow.review.note}</p></section>}
+    <p className={styles.brief}>{task.brief}</p>
+    {task.result?.summary&&<p className={styles.answer}>{task.result.summary}</p>}
+    {task.result?.markdown&&<Markdown text={task.result.markdown} className={`md ${styles.output}`}/>}
+    {flow?.review?.note&&<p className={styles.check}><b>AI head:</b> {flow.review.note}</p>}
     {(flow?.blockReason||task.error)&&<p className="flash" role="alert">{flow?.blockReason||task.error}</p>}
-    {(flow?.plan?.understanding||assignments.length>0)&&<details className={styles.more}><summary>How the team worked on it</summary>
+    {(flow?.plan?.understanding||assignments.length>0)&&<details className={styles.more}><summary>Who worked on it</summary>
       {flow?.plan?.understanding&&<p>{flow.plan.understanding}</p>}
       {assignments.length>0&&<ol>{assignments.map((assignment,index)=><li key={`${assignment.agentId}:${index}`}><b>{names[assignment.agentId]||assignment.agentId}</b><p>{assignment.task}</p>{assignment.deliverable&&<small>Hands over: {assignment.deliverable}</small>}</li>)}</ol>}
     </details>}
-    <div className={styles.actions}>{task.status==='review'&&<Link className="btn" href={`/automations?task=${encodeURIComponent(task.id)}`}>Review and decide<Icon name="arrow" size={15}/></Link>}<Link className="btn ghost" href={`/automations?task=${encodeURIComponent(task.id)}`}>Open the full task<Icon name="arrow" size={15}/></Link></div>
+    <div className={styles.actions}>{task.status==='review'&&<Link className="btn" href={`/automations?task=${encodeURIComponent(task.id)}`}>Review and decide<Icon name="arrow" size={15}/></Link>}<Link className="btn ghost" href={`/automations?task=${encodeURIComponent(task.id)}`}>Full task<Icon name="arrow" size={15}/></Link></div>
   </div>;
 }

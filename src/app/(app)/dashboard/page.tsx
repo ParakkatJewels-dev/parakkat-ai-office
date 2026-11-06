@@ -38,7 +38,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { db, name, role } = await requireUser();
   const sp = await searchParams, P = period(sp);
   const platform = sp.platform === 'meta' || sp.platform === 'google' ? sp.platform : null, account = sp.account && /^[\w-]{1,40}$/.test(sp.account) ? sp.account : null;
-  const end = `${P.to}T23:59:59.999Z`, delta = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}% vs the days before` : P.label;
+  const end = `${P.to}T23:59:59.999Z`, delta = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}% vs before` : undefined;
   // totals are summed in the database (dashboard_report), so they stay right however many order and ad rows there are
   const [{ data: summary, error: summaryError }, { data: posts, error: postsError }, { data: moves }, { data: runs }, { data: accts }, { data: branchRows, error: branchError }, inbox, { data: syncJob }] = await Promise.all([
     db.rpc('dashboard_report', { p_from: P.from, p_to: P.to, p_platform: platform, p_account: account }),
@@ -52,7 +52,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   ]);
   const live = await liveRuns(db, (runs || []).map(r => r.id));
   const accounts = ((accts || []) as { platform: string; account_id: string }[]).map(a => ({ platform: a.platform, id: a.account_id, label: a.platform === 'google' ? googleId(a.account_id) : metaId(a.account_id) }));
-  const adScope = [platform ? PLATFORM[platform].label : 'Meta and Google', account ? `account ${accounts.find(a => a.id === account)?.label || account}` : null].filter(Boolean).join(', ');
   const S = (summary || { revenue: 0, prev_revenue: 0, units: 0, prev_units: 0, spend: 0, ad_revenue: 0, prev_spend: 0, prev_ad_revenue: 0, days: [], platforms: [], top: [] }) as Summary;
   const revenue = Number(S.revenue), units = Number(S.units), spend = Number(S.spend), adRev = Number(S.ad_revenue);
   const prevSpend = Number(S.prev_spend), prevRoas = prevSpend ? Number(S.prev_ad_revenue) / prevSpend : 0;
@@ -75,15 +74,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const first = name.includes('@') ? '' : name.split(' ')[0];
   const greeting = `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}${first ? `, ${first}` : ''}`;
   const waiting = inbox.waiting, plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-  // A plain-words summary built from the numbers on this page: nothing here is guessed by a model.
-  const prevRevenue = Number(S.prev_revenue), salesMove = prevRevenue ? Math.round(((revenue - prevRevenue) / prevRevenue) * 100) : null;
-  const briefing = [
-    summaryError ? 'Sales figures couldn’t load just now.' : revenue ? `Online sales were ${inr(revenue)} over ${P.label}${salesMove === null ? '' : salesMove === 0 ? ', the same as the days before' : `, ${salesMove > 0 ? 'up' : 'down'} ${Math.abs(salesMove)}% on the days before`}.` : `No online sales were recorded over ${P.label}.`,
-    !summaryError && spend ? `Ads returned ${roas.toFixed(1)}x their cost (${inr(spend)} spent).` : '',
-    top[0]?.title ? `Best seller: ${top[0].title}.` : '',
-    inbox.failed ? '' : waiting ? [inbox.plans && `${plural(inbox.plans, 'plan waits', 'plans wait')} for your sign-off`, inbox.reports && `${plural(inbox.reports, 'report waits', 'reports wait')} for your decision`].filter(Boolean).join(' and ') + '.' : 'Nothing is waiting on you.',
-    (moves || []).length ? `${plural(moves!.length, 'competitor move', 'competitor moves')} spotted.` : '',
-  ].filter(Boolean);
   // every showroom and the online store, from Odoo
   const branches = ((branchRows || []) as { branch: string; kind: string; orders: number; revenue: number; prev_revenue: number }[]).map(b => ({ ...b, revenue: Number(b.revenue), prev: Number(b.prev_revenue) }));
   const branchPage = Math.min(pageOf(sp, 'bp'), Math.max(1, Math.ceil(branches.length / 5)));
@@ -91,50 +81,48 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const branchTotal = branches.reduce((t, b) => t + b.revenue, 0), branchMax = branches[0]?.revenue || 1;
   const change = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}%` : 'new';
 
+  const view = ['ads', 'social', 'branches', 'campaigns'].includes(sp.view || '') ? sp.view! : 'sales';
+  const viewHref = (v: string) => { const q = new URLSearchParams(); for (const [k, val] of Object.entries(sp)) if (val && !['view', 'bp'].includes(k)) q.set(k, val); if (v !== 'sales') q.set('view', v); return `/dashboard${q.size ? `?${q}` : ''}`; };
+  const VIEWS: [string, string][] = [['sales', 'Sales'], ['ads', 'Ads'], ['social', 'Social'], ['branches', 'Branches'], ['campaigns', 'Campaigns']];
+
   return (
     <div className={`page ${styles.dashboard}`}>
       <header className={styles.hello}>
         <div><span className={styles.date}>{greeting} · {dateLabel}</span><h1>{inbox.failed ? 'Your day at a glance' : waiting ? `${plural(waiting, 'thing needs', 'things need')} you` : 'You’re all caught up'}</h1></div>
-        <div className="page-actions"><Link href="/office" className="btn ghost"><Icon name="cube" size={17} />Walk the office</Link></div>
+        <div className="page-actions"><Filters accounts={accounts} from={P.from} to={P.to} ads={view === 'ads'} /><Link href="/office" className="btn ghost"><Icon name="cube" size={17} />Office</Link></div>
       </header>
-      {(summaryError || branchError || postsError) && <div className="flash" role="alert"><b>Some numbers couldn’t load.</b> Refresh to try again. A blank number below means “not loaded”, not zero.</div>}
+      {(summaryError || branchError || postsError) && <div className="flash" role="alert">Some numbers couldn’t load. Refresh to try again; a dash means “not loaded”, not zero.</div>}
+      {syncJob?.last_result?.startsWith('failed') && <div className="banner" role="status"><Icon name="sync" size={18} /><span>The last data update failed, so some numbers may be old.</span></div>}
+
+      <section className="tiles" aria-label="Key numbers">
+        <Tile icon="rupee" label="Online sales" value={summaryError ? '—' : inr(revenue)} sub={summaryError ? undefined : delta(revenue, Number(S.prev_revenue))} />
+        <Tile icon="bag" tone="amber" label="Items sold" value={summaryError ? '—' : units.toLocaleString('en-IN')} sub={summaryError ? undefined : delta(units, Number(S.prev_units))} />
+        <Tile icon="megaphone" tone="blue" label="Ad spend" value={summaryError ? '—' : inr(spend)} sub={summaryError ? undefined : delta(spend, prevSpend)} />
+        <Tile icon="trend" tone="violet" label="Ad return" value={!summaryError && spend ? `${roas.toFixed(1)}x` : '–'} sub={prevRoas ? `was ${prevRoas.toFixed(1)}x` : undefined} />
+      </section>
 
       <div className={styles.top}>
         <section className={`card ${styles.needs}`} aria-labelledby="needs-title">
-          <div className="card-head"><div><h2 id="needs-title">Needs you</h2><p className="sub">Decide here or open the Inbox for everything</p></div>{waiting > 0 && <span className="pill needs">{waiting}</span>}</div>
-          {inbox.failed ? <div className="empty"><Icon name="inbox" size={24} /><p>Your Inbox couldn’t load. Refresh to try again.</p></div>
+          <div className="card-head"><h2 id="needs-title">Needs you</h2>{waiting > 0 && <span className="pill needs">{waiting}</span>}</div>
+          {inbox.failed ? <div className="empty"><Icon name="inbox" size={20} /><p>Your Inbox couldn’t load. Refresh to try again.</p></div>
             : inbox.items.length ? <ul className={styles.needList}>{inbox.items.map(n => <li key={n.id}><Link href={n.href}>
               <span className={`kind ${n.kind}`} aria-hidden="true">{KIND[n.kind]}</span>
-              <span className={styles.needText}><b>{n.title}</b><small>{KIND_WORD[n.kind]}{n.agent ? ` from ${n.agent}` : ''} · {when(n.at)}</small></span>
-              <span className={styles.open}>Open<Icon name="next" size={15} /></span></Link></li>)}</ul>
-            : <div className="empty"><Icon name="check" size={24} /><p>Nothing waits on you. When the team sends a report or a plan, it shows up here first.</p></div>}
-          {waiting > inbox.items.length && <Link href="/approvals" className={styles.all}>See all {waiting} in the Inbox<Icon name="arrow" size={15} /></Link>}
+              <span className={styles.needText}><b>{n.title}</b><small>{KIND_WORD[n.kind]}{n.agent ? ` · ${n.agent}` : ''} · {when(n.at)}</small></span>
+              <Icon name="next" size={16} /></Link></li>)}</ul>
+            : <div className="empty"><Icon name="check" size={20} /><p>Nothing waits on you.</p></div>}
+          {waiting > inbox.items.length && <Link href="/approvals" className={styles.all}>All {waiting} in the Inbox<Icon name="arrow" size={15} /></Link>}
         </section>
-        <div className={styles.stack}>
-          <section className={`card ${styles.brief}`} aria-labelledby="brief-title">
-            <h2 id="brief-title"><Icon name="spark" size={16} />Today’s briefing</h2>
-            <p>{briefing.join(' ')}</p>
-            <small>{syncJob?.last_run_at ? `From your shop, ads and store data · updated ${when(syncJob.last_run_at)}` : 'From your shop, ads and store data'}{syncJob?.last_result?.startsWith('failed') ? ' · the last update failed, so some numbers may be old' : ''}</small>
-          </section>
-          <section className="card" aria-labelledby="team-title">
-            <div className="card-head"><div><h2 id="team-title">Team at work</h2><p className="sub">Live from the office</p></div><Link href="/office" className={styles.link}>Office<Icon name="arrow" size={14} /></Link></div>
-            <WorkingNow observedAt={new Date().toISOString()} />
-          </section>
-        </div>
+        <section className="card" aria-labelledby="team-title">
+          <div className="card-head"><h2 id="team-title">Team at work</h2><Link href="/office" className={styles.link}>Office<Icon name="arrow" size={14} /></Link></div>
+          <WorkingNow observedAt={new Date().toISOString()} />
+        </section>
       </div>
 
-      <Filters accounts={accounts} from={P.from} to={P.to} />
-
-      <section className="tiles" aria-label="Key numbers">
-        <Tile icon="rupee" label="Online sales" value={summaryError ? '—' : inr(revenue)} sub={summaryError ? 'Temporarily unavailable' : delta(revenue, Number(S.prev_revenue))} />
-        <Tile icon="bag" tone="amber" label="Items sold" value={summaryError ? '—' : units.toLocaleString('en-IN')} sub={summaryError ? 'Temporarily unavailable' : delta(units, Number(S.prev_units))} />
-        <Tile icon="megaphone" tone="blue" label="Ad spend" value={summaryError ? '—' : inr(spend)} sub={summaryError ? 'Temporarily unavailable' : delta(spend, prevSpend)} />
-        <Tile icon="trend" tone="violet" label="Return on ad spend" value={!summaryError && spend ? `${roas.toFixed(1)}x` : '–'} sub={prevRoas ? `${roas >= prevRoas ? 'Up' : 'Down'} from ${prevRoas.toFixed(1)}x` : adScope} />
-      </section>
-
+      <nav className="tabs" aria-label="Business">{VIEWS.map(([v, label]) => <Link key={v} href={viewHref(v)} scroll={false} className={view === v ? 'on' : ''} aria-current={view === v ? 'page' : undefined}>{label}</Link>)}</nav>
       <div className="bento">
+        {view === 'sales' && <>
         <section className="card s8">
-          <div className="card-head"><div><h3>Online sales by day</h3><p className="sub">Shopify orders, {P.label}</p></div><b className="card-num">{summaryError ? '—' : inr(revenue)}</b></div>
+          <div className="card-head"><div><h3>Online sales by day</h3></div><b className="card-num">{summaryError ? '—' : inr(revenue)}</b></div>
           {days.length > 1 ? (
             <svg viewBox={`0 0 ${W} ${H + 22}`} className="chart" role="img" aria-label={`Daily revenue for ${P.label}, peaking at ${inr(max)}`}>
               <defs><linearGradient id="rev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--accent)" stopOpacity=".32" /><stop offset="1" stopColor="var(--accent)" stopOpacity="0" /></linearGradient></defs>
@@ -146,9 +134,20 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </svg>
           ) : <div className="empty"><Icon name="chart" size={26} /><p>{summaryError ? 'Revenue could not load. Refresh this page to try again.' : 'Connect Shopify in Settings to see daily sales.'}</p></div>}
         </section>
-
         <section className="card s4">
-          <div className="card-head"><div><h3>Ad spend by platform</h3><p className="sub">{adScope}, {P.label}</p></div></div>
+          <div className="card-head"><div><h3>Top products</h3></div></div>
+          {top.length ? <ul className="rows">{top.map((t, i) => (
+            <li key={t.id}>
+              {t.image_url ? <img src={t.image_url} alt="" className="thumb" loading="lazy" decoding="async" /> : <span className="thumb rank">{i + 1}</span>}
+              <div className="grow"><b className="clip">{t.title || `Product ${t.id}`}</b><span className="meter"><i style={{ width: `${(t.revenue / topMax) * 100}%` }} /></span></div>
+              <span className="num">{inr(t.revenue)}</span>
+            </li>
+          ))}</ul> : <div className="empty"><Icon name="bag" size={26} /><p>{summaryError ? 'Product results could not load.' : 'No orders synced yet.'}</p></div>}
+        </section>
+        </>}
+        {view === 'ads' && <>
+        <section className="card s5">
+          <div className="card-head"><div><h3>Ad spend</h3></div></div>
           {split.length ? (
             <div className="donut">
               <svg viewBox="0 0 100 100" role="img" aria-label={split.map(([p, v]) => `${PLATFORM[p]?.label || p} ${inr(v)}`).join(', ')}>
@@ -162,50 +161,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </div>
           ) : <div className="empty"><Icon name="megaphone" size={26} /><p>{summaryError ? 'Ad spend could not load. Refresh this page to try again.' : platform || account ? 'No ad spend for these filters.' : 'No ad spend yet. Connect Meta or Google Ads in Settings.'}</p></div>}
         </section>
-
-        <section className="card s4">
-          <div className="card-head"><div><h3>Top products</h3><p className="sub">By revenue, {P.label}</p></div></div>
-          {top.length ? <ul className="rows">{top.map((t, i) => (
-            <li key={t.id}>
-              {t.image_url ? <img src={t.image_url} alt="" className="thumb" loading="lazy" decoding="async" /> : <span className="thumb rank">{i + 1}</span>}
-              <div className="grow"><b className="clip">{t.title || `Product ${t.id}`}</b><span className="meter"><i style={{ width: `${(t.revenue / topMax) * 100}%` }} /></span></div>
-              <span className="num">{inr(t.revenue)}</span>
-            </li>
-          ))}</ul> : <div className="empty"><Icon name="bag" size={26} /><p>{summaryError ? 'Product results could not load.' : 'No orders synced yet.'}</p></div>}
-        </section>
-
-        <section className="card s4">
-          <div className="card-head"><div><h3>Posts people saved</h3><p className="sub">Instagram posts from {P.label}, most saved first</p></div></div>
-          {(posts || []).length ? <ul className="rows">{posts!.map(p => (
-            <li key={p.id}>
-              {p.media_url && p.media_type !== 'VIDEO' ? <img src={p.media_url} alt="" className="thumb" loading="lazy" decoding="async" /> : <span className="thumb"><Icon name="heart" size={18} /></span>}
-              <div className="grow"><a href={p.permalink || '#'} target="_blank" rel="noreferrer" className="clip"><b>{(p.caption || p.media_type || 'Post').slice(0, 70)}</b></a><span className="sm">{(p.media_type || '').toLowerCase().replace('_', ' ')} · reach {p.reach?.toLocaleString('en-IN') ?? '?'}</span></div>
-              <span className="num">{p.saves ?? 0}<small> saves</small></span>
-            </li>
-          ))}</ul> : <div className="empty"><Icon name="heart" size={26} /><p>{postsError ? 'Instagram posts could not load.' : 'No Instagram posts synced yet.'}</p></div>}
-        </section>
-
-        <section className="card s4">
-          <div className="card-head"><div><h3>Competitor moves</h3><p className="sub">Spotted by the competitor watch</p></div></div>
-          {(moves || []).length ? <ol className="timeline">{moves!.map(m => (
-            <li key={m.id}><i /><div><b>{(m.competitors as any)?.name}</b> <span className="pill acc">{m.kind}</span><p>{m.summary}</p><time>{when(m.seen_at)}</time></div></li>
-          ))}</ol> : <div className="empty"><Icon name="eye" size={26} /><p>Add competitors in Settings and the team will watch them for you.</p></div>}
-        </section>
-
-        <section className="card s8" id="branch-sales">
-          <div className="card-head"><div><h3>Sales by branch</h3><p className="sub">Every showroom and the online store, {P.label}</p></div>{branches.length > 0 && <b className="card-num">{inr(branchTotal)}</b>}</div>
-          {branches.length ? <><ul className="rows">{shownBranches.map(b => (
-            <li key={b.branch}>
-              <span className="thumb"><Icon name={b.kind === 'online' ? 'bag' : 'map'} size={18} /></span>
-              <div className="grow"><b className="clip">{b.branch}</b><span className="meter"><i style={{ width: `${(b.revenue / branchMax) * 100}%` }} /></span>
-                <span className="sm">{b.kind === 'showroom' ? 'Showroom' : b.kind === 'online' ? 'Online' : 'Other sales'} · {Number(b.orders).toLocaleString('en-IN')} orders · {change(b.revenue, b.prev)} vs the days before</span></div>
-              <span className="num">{inr(b.revenue)}</span>
-            </li>
-          ))}</ul><Pager sp={sp} param="bp" page={branchPage} size={5} total={branches.length} shown={shownBranches.length} anchor="branch-sales"/></> : <div className="empty"><Icon name="chart" size={26} /><p>{branchError ? 'Branch results could not load. Refresh to try again.' : 'Connect your billing system in Settings to see every branch.'}</p></div>}
-        </section>
-
-        <section className="card s12">
-          <div className="card-head"><div><h3>Recent campaigns</h3><p className="sub">Each one moves through the team, then waits for sign-off</p></div></div>
+        <section className="card s7">
+          <div className="card-head"><div><h3>Recent campaigns</h3></div></div>
           {(runs || []).length ? <ul className="runs">{runs!.map(r => {
             const v = runSteps(r, live.has(r.id));
             return (
@@ -217,6 +174,53 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             );
           })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No campaigns have run in this period. <Link href="/campaigns">Start one</Link>.</p></div>}
         </section>
+        </>}
+        {view === 'social' && <>
+        <section className="card s6">
+          <div className="card-head"><div><h3>Most saved posts</h3></div></div>
+          {(posts || []).length ? <ul className="rows">{posts!.map(p => (
+            <li key={p.id}>
+              {p.media_url && p.media_type !== 'VIDEO' ? <img src={p.media_url} alt="" className="thumb" loading="lazy" decoding="async" /> : <span className="thumb"><Icon name="heart" size={18} /></span>}
+              <div className="grow"><a href={p.permalink || '#'} target="_blank" rel="noreferrer" className="clip"><b>{(p.caption || p.media_type || 'Post').slice(0, 70)}</b></a><span className="sm">{(p.media_type || '').toLowerCase().replace('_', ' ')} · reach {p.reach?.toLocaleString('en-IN') ?? '?'}</span></div>
+              <span className="num">{p.saves ?? 0}<small> saves</small></span>
+            </li>
+          ))}</ul> : <div className="empty"><Icon name="heart" size={26} /><p>{postsError ? 'Instagram posts could not load.' : 'No Instagram posts synced yet.'}</p></div>}
+        </section>
+        <section className="card s6">
+          <div className="card-head"><div><h3>Competitor moves</h3></div></div>
+          {(moves || []).length ? <ol className="timeline">{moves!.map(m => (
+            <li key={m.id}><i /><div><b>{(m.competitors as any)?.name}</b> <span className="pill acc">{m.kind}</span><p>{m.summary}</p><time>{when(m.seen_at)}</time></div></li>
+          ))}</ol> : <div className="empty"><Icon name="eye" size={26} /><p>Add competitors in Settings and the team will watch them for you.</p></div>}
+        </section>
+        </>}
+        {view === 'branches' && <>
+        <section className="card s12" id="branch-sales">
+          <div className="card-head"><div><h3>Branches</h3></div>{branches.length > 0 && <b className="card-num">{inr(branchTotal)}</b>}</div>
+          {branches.length ? <><ul className="rows">{shownBranches.map(b => (
+            <li key={b.branch}>
+              <span className="thumb"><Icon name={b.kind === 'online' ? 'bag' : 'map'} size={18} /></span>
+              <div className="grow"><b className="clip">{b.branch}</b><span className="meter"><i style={{ width: `${(b.revenue / branchMax) * 100}%` }} /></span>
+                <span className="sm">{b.kind === 'showroom' ? 'Showroom' : b.kind === 'online' ? 'Online' : 'Other sales'} · {Number(b.orders).toLocaleString('en-IN')} orders · {change(b.revenue, b.prev)} vs the days before</span></div>
+              <span className="num">{inr(b.revenue)}</span>
+            </li>
+          ))}</ul><Pager sp={sp} param="bp" page={branchPage} size={5} total={branches.length} shown={shownBranches.length} anchor="branch-sales"/></> : <div className="empty"><Icon name="chart" size={26} /><p>{branchError ? 'Branch results could not load. Refresh to try again.' : 'Connect your billing system in Settings to see every branch.'}</p></div>}
+        </section>
+        </>}
+        {view === 'campaigns' && <>
+        <section className="card s12">
+          <div className="card-head"><div><h3>Recent campaigns</h3></div></div>
+          {(runs || []).length ? <ul className="runs">{runs!.map(r => {
+            const v = runSteps(r, live.has(r.id));
+            return (
+              <li key={r.id}>
+                <div className="run-name"><b>{r.occasion || 'Campaign run'}</b><span className="sm">Started {when(r.started_at)}</span></div>
+                <Stepper steps={v.steps} />
+                <span className={`pill ${v.pill[1]}`}>{v.pill[0]}</span>
+              </li>
+            );
+          })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No campaigns have run in this period. <Link href="/campaigns">Start one</Link>.</p></div>}
+        </section>
+        </>}
       </div>
     </div>
   );

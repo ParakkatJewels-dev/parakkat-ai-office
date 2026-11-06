@@ -26,7 +26,7 @@ test('actual pagination controls preserve boundaries and reset on page-size chan
 });
 
 test('server pager keeps independent filters and repeated parameters while dropping stale flash messages',()=>{
-  const {Pager}=load('../src/components/ui.tsx',{'react/jsx-runtime':jsx,'./Icon':{Icon:'Icon'},'@/office/engine.mjs':{DEPT_COLOR:{}},'./pagination-core.mjs':{pageNumbers}});
+  const {Pager}=load('../src/components/ui.tsx',{'react/jsx-runtime':jsx,'./Icon':{Icon:'Icon'},'./PageHead':{PageHead:'PageHead'},'@/office/engine.mjs':{DEPT_COLOR:{}},'./pagination-core.mjs':{pageNumbers}});
   const tree=Pager({sp:{tab:'history',filter:['meta','google'],msg:'Saved',error:'old',hp:'2'},param:'hp',page:2,size:10,total:95,shown:10,anchor:'history'});
   for(const a of nodes(tree,n=>n.type==='a')){const u=new URL(a.props.href,'https://office.example/usage');assert.equal(u.searchParams.get('tab'),'history');assert.deepEqual(u.searchParams.getAll('filter'),['meta','google']);assert.equal(u.searchParams.has('error'),false);assert.equal(u.searchParams.has('msg'),false);assert.equal(u.hash,'#history');}
   assert.equal(nodes(tree,n=>n.props?.['aria-current']==='page').length,1);

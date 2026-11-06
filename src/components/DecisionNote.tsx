@@ -8,7 +8,7 @@ const ASK = 'Add a short note so the team knows what to change or why.';
  * The note box in a decision form. What you type is kept in this tab, so a failed save or a reload
  * never wipes it, and Send back, Request changes and Reject are stopped until there is a note.
  */
-export function DecisionNote({ storageKey, id, placeholder }: { storageKey: string; id: string; placeholder?: string }) {
+export function DecisionNote({ storageKey, id, placeholder, label }: { storageKey: string; id: string; placeholder?: string; label?: string }) {
   const box = useRef<HTMLTextAreaElement>(null);
   const key = `pk-note:${storageKey}`;
   useEffect(() => {
@@ -26,6 +26,6 @@ export function DecisionNote({ storageKey, id, placeholder }: { storageKey: stri
     form?.addEventListener('click', pick, true);
     return () => form?.removeEventListener('click', pick, true);
   }, [key]);
-  return <textarea ref={box} id={id} className="in" name="note" rows={3} maxLength={2000} placeholder={placeholder}
+  return <textarea ref={box} id={id} className="in" name="note" rows={2} maxLength={2000} placeholder={placeholder} aria-label={label}
     onChange={e => { e.currentTarget.setCustomValidity(''); try { if (e.currentTarget.value.trim()) sessionStorage.setItem(key, e.currentTarget.value); else sessionStorage.removeItem(key); } catch {} }} />;
 }

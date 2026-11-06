@@ -88,8 +88,8 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
       {handoff && <p className={studioStyles.handoffNotice}><b>Human review required.</b> {automaticChatGPT ? 'ChatGPT generates using your plan and saves artwork here. Plan usage limits apply.' : 'Higgsfield generates with account credits. ChatGPT artwork is created externally and imported.'}</p>}
 
       <nav className="tabs" aria-label="Design Studio">
-        <a href={qs({ tab: null })} className={tab === 'gallery' ? 'on' : ''} aria-current={tab === 'gallery' ? 'page' : undefined}><Icon name="spark" size={16} />Gallery and reviews</a>
-        <a href="/studio?tab=order" className={tab === 'order' ? 'on' : ''} aria-current={tab === 'order' ? 'page' : undefined}><Icon name="plus" size={16} />Order a design</a>
+        <a href={qs({ tab: null })} className={tab === 'gallery' ? 'on' : ''} aria-current={tab === 'gallery' ? 'page' : undefined}><Icon name="spark" size={16} />Gallery</a>
+        <a href="/studio?tab=order" className={tab === 'order' ? 'on' : ''} aria-current={tab === 'order' ? 'page' : undefined}><Icon name="plus" size={16} />Order</a>
         {creativeAccess && <a href="/studio?tab=library" className={tab === 'library' ? 'on' : ''} aria-current={tab === 'library' ? 'page' : undefined}><Icon name="eye" size={16} />Design library</a>}
       </nav>
 
@@ -100,7 +100,7 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
             <div className="card-head"><div><h3>Five-card best-seller carousel</h3><p className="sub">Uses the latest complete 30-day Shopify category ranking, positive preferred stock and official product photos. {handoff ? automaticChatGPT ? 'ChatGPT generates five separate 4:5 images in sales order. Each finished card is saved for human review.' : 'Generate five separate 4:5 images in sales order using the connected Higgsfield account and its credits. Each finished card is saved for human review.' : 'Five separate 4:5 cards arrive in the gallery for review.'}</p></div></div>
             <label className="field">Shopify product category<select name="category" defaultValue="Ring"><option value="Ring">Rings</option><option value="Earrings">Earrings</option><option value="Necklace">Necklaces</option><option value="Pendant">Pendants</option><option value="Bangle">Bangles</option><option value="Bracelet">Bracelets</option><option value="Chain">Chains</option><option value="Anklet">Anklets</option></select></label>
             <label className="field">Design reference (optional)<input name="reference" placeholder="Paste a Design Library image’s Drive file link" /></label>
-            <p className="sub">Leave this empty to use the best matching library design. {handoff ? 'The reference pack includes the style reference and official product photos. Check product identity and consistency when reviewing each imported card.' : 'The reference guides the style. Each product is newly rendered and checked against its Shopify photo.'}</p>
+            
             <Submit icon="spark" pending="Preparing five cards…">{handoff ? 'Generate five artwork cards' : 'Create five cards'}</Submit>
           </form>
         </div>

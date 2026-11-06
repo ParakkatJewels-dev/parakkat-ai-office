@@ -77,12 +77,11 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
       </nav>
 
       {section==='reports' && <section id="reports" className="section">
-        <div className={presentation.queueHeading}><h2 className="section-title">{focusedReport&&focusedReport.status!=='with_head'?'The report you opened':'Reports waiting on you'}</h2><p>Pick a report from the list. The AI lead’s view comes first, the full report below it.</p></div>
+        <h2 className="sr-only">Reports waiting on you</h2>
         {requestedReport&&!focusedReport&&<p className="sub">That report isn’t available: it may belong to another team.</p>}
         {(myCount || 0) > REPORTS && <Pager sp={{...sp,report:undefined}} param="rp" page={rp} size={REPORTS} total={myCount} shown={(myReports || []).length} anchor="reports" />}
         {selectedReport ? <div className={presentation.reviewLayout}>
           <nav className={presentation.reportList} aria-label="Choose a report to review">
-            <h3>{displayReports.length} {displayReports.length===1?'report':'reports'}</h3>
             {displayReports.map(report=><Link key={report.id} href={`/approvals?tab=reports&report=${report.id}${rp>1?`&rp=${rp}`:''}#report-${report.id}`} aria-current={selectedReport.id===report.id?'true':undefined}>
               <b>{report.title}</b><span>{D[report.department_id]} · {when(report.updated_at)}</span>
             </Link>)}
@@ -95,16 +94,14 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
                 <p className="sub">From <b>{A[r.author_agent]}</b> · {D[r.department_id]} · {when(r.updated_at)}{r.revision > 1 ? ` · revision ${r.revision}` : ''}</p></div>
               <span className={`pill ${r.status==='accepted'?'good':r.status==='with_head'?'needs':r.status==='rejected'?'bad':'warn'}`}>{REPORT_WORD[r.status]||r.status.replaceAll('_',' ')}</span>
             </header>
-            {r.lead_note && <section className={presentation.leadReview}><h4>The AI lead’s view</h4><blockquote className="lead-note"><Avatar name={A[r.lead_agent!] || 'Lead'} dept={r.department_id} size={28} /><div><b>{A[r.lead_agent!]}</b><p>{r.lead_note}</p></div></blockquote></section>}
-            <section className={presentation.readPanel} aria-label={`Report: ${r.title}`}><h4>The report</h4><Markdown text={r.body} className={`md ${presentation.reportText}`} /></section>
+            {r.lead_note && <p className={presentation.leadView}><b>{A[r.lead_agent!] || 'The AI lead'}:</b> {r.lead_note}</p>}
+            <section className={presentation.readPanel} aria-label={`Report: ${r.title}`}><Markdown text={r.body} className={`md ${presentation.reportText}`} /></section>
             {r.automation_task_id&&<p className="sub"><Link href={`/automations?task=${encodeURIComponent(r.automation_task_id)}`} className="btn ghost sm-btn"><Icon name="users" size={14}/>See who worked on it</Link></p>}
             {r.status!=='with_head'&&r.head_note&&<p className="note-line"><b>Your team’s note:</b> {r.head_note}</p>}
             {r.status==='with_head'&&<form action={decideReport} className="decide">
               <input type="hidden" name="id" value={r.id} />
               <input type="hidden" name="revision" value={r.revision} />
-              <div className={presentation.decisionHeading}><h4>Your decision</h4><p>Accept if it’s ready. Send back if it needs changes. Reject closes it.</p></div>
-              <label className={presentation.feedbackLabel} htmlFor={`report-note-${r.id}`}>Note to the team <span>Needed to send back or reject</span></label>
-              <DecisionNote id={`report-note-${r.id}`} storageKey={`report:${r.id}:${r.revision}`} placeholder="What should change, or why you’re rejecting it." />
+              <DecisionNote id={`report-note-${r.id}`} storageKey={`report:${r.id}:${r.revision}`} label="Note to the team" placeholder="Note to the team (needed to send back or reject)" />
               <div className="decide-btns"><Submit ghost danger confirm="Reject this report? The team gets your note and the report is closed." confirmTitle="Reject this report?" confirmLabel="Reject report" name="decision" value="reject" pending="Rejecting…">Reject</Submit><Submit ghost name="decision" value="send_back" pending="Sending back…">Send back</Submit><Submit name="decision" value="accept" icon="check" pending="Accepting…">Accept</Submit></div>
             </form>}
           </article>
@@ -113,7 +110,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
       </section>}
 
       {section==='plans' && <section id="plans" className="section">
-        <div className={presentation.queueHeading}><h2 className="section-title">Campaign plans</h2><p>{minePlans ? `${minePlans} plan${minePlans===1?'':'s'} need${minePlans===1?'s':''} your sign-off. ` : ''}Each plan shows why, what it costs and the artwork first. The last sign-off can publish ads, and it always asks before it does.</p></div>
+        <h2 className="sr-only">Campaign plans</h2>
         {requestedCampaign&&!focusedPlan&&<p className="sub">The selected campaign has no approval available within your current access. Its plan may not have reached human review yet.</p>}
         {view.length ? view.map(({ p, c, steps, approved, next, mine }) => {
           const chain: AppRole[] = [...(p.required_roles as AppRole[]), 'super_admin'];
@@ -144,7 +141,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
                 <header className="report-head"><div className="grow"><span className="pill acc">{c.occasion}</span><h3 className="title">{c.name}{p.version > 1 ? ` · v${p.version}` : ''}</h3></div>
                   <span className={`pill ${p.status === 'published' ? 'live' : p.status === 'pending' ? (mine ? 'needs' : 'info') : p.status === 'approved' ? 'good' : p.status === 'changes' ? 'warn' : 'bad'}`}>{p.status === 'published' ? 'Live' : p.status === 'pending' ? (mine ? 'Needs you' : 'Waiting on others') : p.status === 'changes' ? 'Sent back' : p.status === 'approved' ? 'Approved' : p.status === 'rejected' ? 'Rejected' : p.status}</span></header>
                 <section className={presentation.planOverview}>
-                  <h4>What you’re approving</h4>
+                  
                   {c.plan.report ? <><p><b>Why now:</b> {c.plan.report.why}</p><p><b>Goal:</b> {c.plan.report.goal}</p></>
                     : (c.plan.reasons || []).length > 0 ? <ul>{c.plan.reasons.map((r: string) => <li key={r}>{r}</li>)}</ul>
                     : <p>Review the artwork, copy and budget below.</p>}
@@ -155,11 +152,10 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
                   <div><small>Total</small><b>{inr(Number(c.budget_daily) * Number(c.plan.days || 0))}</b></div>
                   <div><small>Channels</small><b>{c.channels.join(', ')}</b></div>
                 </div>
-                {c.plan.split && <p className="sub">{c.plan.split}</p>}
-                {c.creatives?.length > 0 && <section className={presentation.copySection}><h4>Ad copy</h4><div className="copy">{c.creatives.map((x: any) => <p key={x.id}><span className="pill">{x.language.toUpperCase()}</span> <b>{x.headline}</b> {x.body}</p>)}</div></section>}
-                {c.plan.ai_review && <section className={presentation.leadReview}><h4>The AI CMO’s view</h4><blockquote className="lead-note"><Avatar name="CMO AI" dept="board" size={28} /><div><p>{c.plan.ai_review}</p></div></blockquote></section>}
+                {c.plan.ai_review && <p className={presentation.leadView}><b>AI CMO:</b> {c.plan.ai_review}</p>}
+                {c.creatives?.length > 0 && <details className={presentation.signoff}><summary>Ad copy</summary><div className="copy">{c.creatives.map((x: any) => <p key={x.id}><span className="pill">{x.language.toUpperCase()}</span> <b>{x.headline}</b> {x.body}</p>)}</div></details>}
                 {c.plan.report && <ProposalReport r={c.plan.report} />}
-                <details className={presentation.signoff}><summary>Who has signed off?</summary><Stepper steps={[{ label: 'AI CMO', state: 'done' }, ...chain.map(r => ({
+                <details className={presentation.signoff}><summary>Sign-offs</summary><Stepper steps={[{ label: 'AI CMO', state: 'done' }, ...chain.map(r => ({
                   label: ROLE_LABEL[r],
                   state: (r === 'super_admin' ? ['approved', 'published'].includes(p.status) : approved.has(r)) ? 'done' as const
                     : bad.some(s => s.role === r) ? 'bad' as const : next.includes(r) ? 'now' as const : 'todo' as const,
@@ -170,9 +166,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
                 {mine ? (
                   <form action={decideApproval} className="decide">
                     <input type="hidden" name="id" value={p.id} />
-                    <div className={presentation.decisionHeading}><h4>Your decision</h4><p>{role==='super_admin'&&!manual?'Approving publishes this campaign to Meta. You’ll be asked to confirm first.':'Approving sends the plan to the next sign-off.'} Request changes to get a revised plan, or reject to close it.</p></div>
-                    <label className={presentation.feedbackLabel} htmlFor={`plan-note-${p.id}`}>Note to the team <span>Needed to request changes or reject</span></label>
-                    <DecisionNote id={`plan-note-${p.id}`} storageKey={`plan:${p.id}`} placeholder="What should change, or why you’re rejecting it." />
+                    <DecisionNote id={`plan-note-${p.id}`} storageKey={`plan:${p.id}`} label="Note to the team" placeholder="Note to the team (needed to request changes or reject)" />
                     <div className="decide-btns"> <Submit ghost danger confirm="Reject this campaign plan? It closes without publishing anything." confirmTitle="Reject this plan?" confirmLabel="Reject plan" name="decision" value="reject" pending="Rejecting…">Reject</Submit><Submit ghost name="decision" value="changes" pending="Sending…">Request changes</Submit><Submit name="decision" value="approve" confirm={role==='super_admin' && !manual ? `Publish ${c.name} to Meta with a daily budget of ${inr(Number(c.budget_daily))}? This creates live ads using the reviewed plan.` : undefined} confirmTitle="Publish this campaign?" confirmLabel="Approve and publish" disabled={!quality.current} icon={role === 'super_admin' && !manual ? 'rocket' : 'check'} pending={role === 'super_admin' && !manual ? 'Approving and publishing…' : 'Approving…'}>{role === 'super_admin' ? manual ? 'Approve for manual launch' : 'Approve and publish' : 'Approve plan'}</Submit></div>
                   </form>
                 ) : p.status === 'pending' && <p className="sub">Waiting on {next.map(r => ROLE_LABEL[r]).join(', ')}. Nothing for you to do yet.</p>}
@@ -201,7 +195,7 @@ function ProposalReport({ r }: { r: Proposal }) {
   const m = r.impact;
   return (
     <details className="proposal">
-      <summary>See expected results, evidence and full plan</summary>
+      <summary>Expected results and evidence</summary>
       <div className="facts impact">
         <div><small>Budget</small><b>{inr(m.budget_total)}</b></div>
         <div><small>Expected sales</small><b>{m.revenue_low != null ? `${inr(m.revenue_low)} to ${inr(m.revenue_high!)}` : 'Not enough data'}</b></div>

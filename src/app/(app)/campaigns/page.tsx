@@ -34,25 +34,21 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
     <div className={`page ${styles.page}`}>
       {sp.error && <p className="flash" role="alert">{sp.error}</p>}
       {sp.msg && <p className="flash ok" role="status">{sp.msg}</p>}
-      <PageHead title="Campaigns" sub="Start a campaign, follow it through the team, and see what runs on a schedule. Nothing is published or spent until it’s signed off." >
+      <PageHead title="Campaigns" sub="Start a campaign and follow it: the team plans it, the AI CMO checks it, each head signs it off in their Inbox, and the last sign-off publishes it after asking you. Nothing is published or spent before that.">
         <Link href="/approvals?tab=plans" className="btn ghost"><Icon name="inbox" size={16} />Plans to sign off</Link>
       </PageHead>
 
-      <div className={styles.top}>
+      <div>
         {admin ? <section className={`card ${styles.start}`} aria-labelledby="start-title">
-          <div className="card-head"><div><h2 id="start-title">Start a campaign</h2><p className="sub">Tell the team the occasion or goal. They plan it, make the posts and send the plan to you.</p></div><Icon name="rocket" size={22} /></div>
+          <div className="card-head"><h2 id="start-title">Start a campaign</h2></div>
           <form action={runCampaign} className={styles.form}>
-            <label className="field" htmlFor="occasion">Occasion or goal<input id="occasion" name="occasion" required maxLength={200} placeholder="Diwali gold edit, wedding season, new kids range…" /></label>
-            <div className={styles.formFoot}><p>{paused ? 'The office is paused, so new campaigns wait until it resumes.' : 'Starting is free. Ads only go live after the last sign-off.'}</p><Submit icon="rocket" pending="Starting the team…" disabled={paused}>Start campaign</Submit></div>
+            <label className="field" htmlFor="occasion"><span className="sr-only">Occasion or goal</span><input id="occasion" name="occasion" required maxLength={200} placeholder="Occasion or goal, e.g. Diwali gold edit" /></label>
+            <div className={styles.formFoot}><p>{paused ? 'The office is paused.' : 'Nothing goes live until it’s signed off.'}</p><Submit icon="rocket" pending="Starting the team…" disabled={paused}>Start campaign</Submit></div>
           </form>
         </section> : <section className={`card ${styles.start}`}>
-          <div className="card-head"><div><h2>Ask for a campaign</h2><p className="sub">The Super Admin starts campaigns. You can ask the team to plan one; the plan comes to your Inbox.</p></div><Icon name="rocket" size={22} /></div>
+          <div className="card-head"><h2>Ask for a campaign</h2></div><p className="sub">The Super Admin starts campaigns. Ask the team to plan one in Tasks.</p>
           <Link href="/tasks" className="btn ghost">Go to Tasks<Icon name="arrow" size={15} /></Link>
         </section>}
-        <section className={`card ${styles.how}`} aria-label="How a campaign moves">
-          <h2>How a campaign moves</h2>
-          <ol><li><b>The team plans it</b><span>Why now, the goal, budget and the posts.</span></li><li><b>AI review</b><span>The AI CMO checks the plan and the artwork.</span></li><li><b>Heads sign off</b><span>Each department head decides in their Inbox.</span></li><li><b>Live</b><span>The last sign-off publishes it, after asking you to confirm.</span></li></ol>
-        </section>
       </div>
 
       {waiting.length > 0 && <section className="section" aria-labelledby="ready-title">
@@ -64,7 +60,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
       </section>}
 
       <section className="card" aria-labelledby="runs-title">
-        <div className="card-head"><div><h2 id="runs-title">Recent campaigns</h2><p className="sub">The latest twelve, newest first</p></div></div>
+        <div className="card-head"><h2 id="runs-title">Recent campaigns</h2></div>
         {runsError ? <div className="empty"><Icon name="rocket" size={26} /><p>Campaigns couldn’t load. Refresh to try again.</p></div>
           : (runs || []).length ? <ul className="runs">{runs!.map(r => {
             const v = runSteps(r, live.has(r.id)), state = r.state as { origin?: { why?: string }; retry?: { at: string; n: number } } | null;
@@ -80,7 +76,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
       </section>
 
       <section className="section" aria-labelledby="schedules-title">
-        <div><h2 id="schedules-title" className="section-title">Schedules and rules</h2><p className="sub">Work the team repeats on its own, and the stock rules it follows.</p></div>
+        <h2 id="schedules-title" className="section-title">Schedules and rules</h2>
         <Automations isAdmin={admin} only="recurring" />
       </section>
     </div>

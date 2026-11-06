@@ -1,25 +1,19 @@
 /* Home: what needs you first, then the team, then the business. */
 .dashboard { gap: 18px; }
 .hello { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; }
-.hello h1 { margin: 4px 0 0; font-size: clamp(28px, 3vw, 38px); }
+.hello h1 { margin: 2px 0 0; font-size: clamp(26px, 2.6vw, 34px); }
 .date { color: var(--dim); font-size: 13.5px; font-weight: 500; }
 .top { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 18px; align-items: start; }
-.stack { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-.needs h2, .stack h2 { margin: 0; font-size: 18px; }
+.needs h2 { margin: 0; }
 .needList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .needList li + li { border-top: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
-.needList a { display: flex; align-items: center; gap: 12px; padding: 12px 6px; border-radius: 12px; color: var(--ink); text-decoration: none; }
+.needList a { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-radius: 12px; color: var(--ink); text-decoration: none; }
 .needList a:hover { background: color-mix(in srgb, var(--accent-2) 12%, transparent); }
 .needText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .needText b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .needText small { color: var(--dim); font-size: 12.5px; }
-.open { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-weight: 600; font-size: 13px; }
 .all, .link { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--accent); font-weight: 600; font-size: 13.5px; text-decoration: none; }
 .link { margin: 0; }
-.brief { border-color: color-mix(in srgb, var(--accent-2) 45%, transparent) !important; background: linear-gradient(160deg, color-mix(in srgb, var(--accent-2) 22%, transparent), var(--glass-card)) !important; display: flex; flex-direction: column; gap: 10px; }
-.brief h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--champ, var(--accent)); }
-.brief p { margin: 0; font-size: 15px; line-height: 1.6; }
-.brief small { color: var(--dim); font-size: 12.5px; }
 .dashboard :global(.chart) { margin-top: 12px; max-height: 245px; }
 .dashboard :global(.card-head) { flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
 .dashboard :global(.filters) { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px 14px; }
@@ -28,3 +22,6 @@
 .dashboard :is(a, button, input, select):focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
 @media (max-width: 1100px) { .top { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 640px) { .dashboard :global(.filters-ic) { display: none; } .dashboard :global(.fl) { flex-basis: calc(50% - 12px); } .needList a { min-height: 56px; } .hello .date { display: block; } }
+
+.needList a > svg { color: var(--dim); flex: none; }
+.top { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }

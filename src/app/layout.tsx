@@ -2,6 +2,7 @@ import './globals.css';
 import './workspace.css';
 import './office.css';
 import './aurora.css';
+import './simple.css';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = { title: 'Parakkat AI Office', description: 'Creative, digital and performance marketing team for Parakkat Jewels' };

@@ -42,7 +42,7 @@ export default async function Usage({ searchParams }: { searchParams: Promise<Re
     db.from('departments').select('id, name'),
   ]);
   const R = (rep || {}) as Report, M = (month || {}) as Report;
-  const fx = Number(settings?.usd_inr || 88), rs = (usd: number) => inr(Number(usd) * fx), usd = (n: number) => `$${Number(n).toFixed(Number(n) < 1 ? 3 : 2)}`;
+  const fx = Number(settings?.usd_inr || 88), rs = (usd: number) => inr(Number(usd) * fx);
   const D = Object.fromEntries((depts || []).map(d => [d.id, d.name]));
   const fixedUsd = (fixed || []).reduce((s, f) => s + Number(f.monthly_usd), 0);
   const dim = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getDate(), dom = now.getUTCDate();
@@ -58,20 +58,19 @@ export default async function Usage({ searchParams }: { searchParams: Promise<Re
     <div className={`page ${styles.page}`}>
       {sp.msg && <p className="flash ok" role="status">{sp.msg}</p>}
       {sp.error && <p className="flash" role="alert">{sp.error}</p>}
-      <PageHead title="Usage & billing" sub={`Understand spending, control AI usage, and review every call. Estimates use ₹${fx} per US dollar.`}>
+      <PageHead title="Usage & billing" sub={<>What the AI team costs, your limits, and every call. Estimates use ₹{fx} per US dollar. ChatGPT calls are counted without a cost estimate: check <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noreferrer">ChatGPT usage</a>, and add your ChatGPT plan under Plans to include it.</>}>
         <div className="seg" role="group" aria-label="Period">{Object.entries(RANGES).map(([k, l]) => <a key={k} href={qs({ range: k, lp: null })} className={range === k ? 'on' : ''}>{l}</a>)}</div>
       </PageHead>
 
-      <p className="note">ChatGPT calls are counted here without an API cost estimate. Review plan usage, limits, and any credit charges in <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noreferrer">ChatGPT Settings → Usage</a>. Add your ChatGPT subscription under Monthly plans if you want to include its fixed cost.</p>
 
 
       {budget && (warn || over) && <p className="flash" role="alert">{over ? `At this pace the month ends near ${inr(projInr)}, over your ${inr(budget)} budget.` : `You have used ${Math.round(spentInr / budget * 100)}% of this month's ${inr(budget)} budget.`}</p>}
 
       <section className="tiles" aria-label="Summary">
-        <Tile icon="rupee" label={`AI and API, ${RANGES[range].toLowerCase()}`} value={rs(R.cost_usd || 0)} sub={`${usd(R.cost_usd || 0)} · ${(R.calls || 0).toLocaleString('en-IN')} calls${R.failed ? `, ${R.failed} failed` : ''}`} />
-        <Tile icon="clock" tone="amber" label="This month so far" value={inr(spentInr)} sub={`${rs(mtdUsage)} usage + ${rs(fixedUsd * dom / dim)} of plans`} />
-        <Tile icon="trend" tone="blue" label="Month, projected" value={inr(projInr)} sub={budget ? `Budget ${inr(budget)}` : 'Set a budget below'} />
-        <Tile icon="spark" tone="violet" label="Tokens and images" value={`${((Number(R.input_tokens || 0) + Number(R.output_tokens || 0)) / 1e6).toFixed(2)}M`} sub={`${Number(R.images || 0)} images made`} />
+        <Tile icon="rupee" label="AI cost" value={rs(R.cost_usd || 0)} sub={`${(R.calls || 0).toLocaleString('en-IN')} calls${R.failed ? ` · ${R.failed} failed` : ''}`} />
+        <Tile icon="clock" tone="amber" label="This month so far" value={inr(spentInr)} />
+        <Tile icon="trend" tone="blue" label="Month forecast" value={inr(projInr)} sub={budget ? `of ${inr(budget)}` : undefined} />
+        <Tile icon="spark" tone="violet" label="Tokens" value={`${((Number(R.input_tokens || 0) + Number(R.output_tokens || 0)) / 1e6).toFixed(2)}M`} sub={Number(R.images || 0) ? `${Number(R.images || 0)} images` : undefined} />
       </section>
 
       {budget && <div className="budget"><span className="progress"><i style={{ width: `${Math.min(100, spentInr / budget * 100)}%` }} className={over ? 'bad' : warn ? 'warn' : ''} /><b style={{ left: `${Math.min(100, projInr / budget * 100)}%` }} title="Projected" /></span>

@@ -53,10 +53,10 @@ export default async function Seo({ searchParams }: { searchParams: Promise<Reco
       </PageHead>
 
       <section className="tiles" aria-label="Summary">
-        <Tile icon="search" label="Search terms tracked" value={total || 0} sub={last ? `Checked ${when(last)}` : 'Not checked yet'} />
-        <Tile icon="trend" tone="amber" label="Rising searches" value={risingCount || 0} sub="From Google Trends" />
-        <Tile icon="users" tone="blue" label="Biggest term" value={top ? `${(top.avg_monthly_searches! / 1000).toFixed(top.avg_monthly_searches! < 10000 ? 1 : 0)}k` : '–'} sub={top?.keyword || 'Needs Keyword Planner'} />
-        <Tile icon="spark" tone="violet" label="Winnable terms" value={easy || 0} sub="Real volume, low or medium competition" />
+        <Tile icon="search" label="Terms tracked" value={total || 0} sub={last ? `Checked ${when(last)}` : 'Not checked yet'} />
+        <Tile icon="trend" tone="amber" label="Rising searches" value={risingCount || 0} />
+        <Tile icon="users" tone="blue" label="Biggest term" value={top ? `${(top.avg_monthly_searches! / 1000).toFixed(top.avg_monthly_searches! < 10000 ? 1 : 0)}k` : '–'} sub={top?.keyword} />
+        <Tile icon="spark" tone="violet" label="Easy wins" value={easy || 0} />
       </section>
 
       {(conns || []).some(c => c.status === 'error') && <div className="banner bad-banner" role="alert"><Icon name="plug" size={20} /><span>{(conns || []).filter(c => c.status === 'error').map(c => `${c.provider === 'google_trends' ? 'Google Trends' : 'Keyword Planner'}: ${c.last_error}`).join(' · ')}</span></div>}
@@ -74,7 +74,7 @@ export default async function Seo({ searchParams }: { searchParams: Promise<Reco
               <td className="r num">{k.bid_high ? `${inr(k.bid_low || 0)}–${inr(k.bid_high)}` : '–'}</td>
               <td><Spark pts={k.trend_series as Pt[] | null} /></td>
             </tr>)}</tbody>
-          </table></div> : <div className="empty"><Icon name="search" size={26} /><p>{q ? `No keywords match "${q}".` : 'No Keyword Planner data yet. It needs Google connected and Basic access on the Google Cloud project; Google Trends still works without it.'}</p></div>}
+          </table></div> : <div className="empty"><Icon name="search" size={26} /><p>{q ? `No keywords match "${q}".` : 'No keyword data yet. Connect Google Ads in Settings.'}</p></div>}
           <Pager sp={sp} param="kp" page={kp} size={KW} total={volCount} shown={(byVolume || []).length} />
         </section>
 
@@ -93,7 +93,7 @@ export default async function Seo({ searchParams }: { searchParams: Promise<Reco
         </div>
 
         <section className="card s12">
-          <div className="card-head"><div><h3>Reports from the SEO Desk</h3><p className="sub">Checked by the SEO Lead before they reach you. Accept or send them back on the Approvals page.</p></div></div>
+          <div className="card-head"><div><h3>SEO reports</h3><p className="sub">Checked by the SEO Lead before they reach you. Accept or send them back on the Approvals page.</p></div></div>
           {(reports || []).length ? <ul className="rows">{reports!.map(r => <li key={r.id}>
             <Avatar name={A[r.author_agent] || r.author_agent} dept="seo" />
             <div className="grow"><b className="clip">{r.title}</b><details className="report-body"><summary>{A[r.author_agent]} · {when(r.updated_at)}</summary><p>{r.body}</p></details></div>
