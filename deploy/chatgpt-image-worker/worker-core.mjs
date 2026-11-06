@@ -64,7 +64,7 @@ export function pngInfo(bytes) {
 export function validateJob(job) {
   if (!job || !['jobId','holder','itemId','requestId'].every(key=>typeof job[key]==='string'&&UUID.test(job[key])) || !['design','creative'].includes(job.source)) throw new Error('Invalid job identity.');
   if (!job.packet || typeof job.packet.prompt!=='string' || !job.packet.prompt.trim() || Buffer.byteLength(job.packet.prompt)>100_000 || job.packet.requestId!==job.requestId) throw new Error('Invalid frozen artwork prompt.');
-  if (!Array.isArray(job.files)||job.files.length>14) throw new Error('Invalid reference bundle.');
+  if (!Array.isArray(job.files)||job.files.length>5) throw new Error('The image tool accepts at most five reference images. Prepare a new artwork brief.');
   const names=new Set();let total=0;
   const files=job.files.map(file=>{
     if (!file || !/^(?:product-[1-9][0-9]?|style-[1-9][0-9]?|previous-artwork)\.png$/.test(file.name)||names.has(file.name)||!HASH.test(file.sha256))throw new Error('Invalid reference filename or hash.');

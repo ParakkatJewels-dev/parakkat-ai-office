@@ -63,7 +63,10 @@ async function packetFor(access:Access):Promise<any> {
   const format = row.format || (row.kind==='story'?'story':'post');
   const f=FORMATS[format as keyof typeof FORMATS] || FORMATS.post;
   const direction=[row.brief||row.body,row.headline,row.redo_note].filter(Boolean).join('\n');
-  const refs=explicit.length ? explicit : rankDesignReferences(candidates,[direction],{productTitles:products.map(p=>p.title),direction:row.redo_note||direction,format,previousIds:priorIds,limit:series?1:3});
+  // The built-in ChatGPT image tool accepts at most five reference paths. Keep
+  // every authoritative product photo and the previous artwork before styles.
+  const styleSlots=Math.max(0,Math.min(series?1:3,5-products.length-(row.image_path?1:0)));
+  const refs=(explicit.length ? explicit : styleSlots ? rankDesignReferences(candidates,[direction],{productTitles:products.map(p=>p.title),direction:row.redo_note||direction,format,previousIds:priorIds,limit:styleSlots}) : []).slice(0,styleSlots);
   const prices=await Promise.all(products.map(async p=>{try{return await shopifyArtworkPrice(Number(p.id));}catch{return null;}}));
   const money=(amount:number,currency:string)=>new Intl.NumberFormat(currency==='INR'?'en-IN':'en',{style:'currency',currency,maximumFractionDigits:amount%1?2:0}).format(amount);
   const priceCopy=prices.map((price,i)=>price?`${products[i].title}: ${price.min===price.max?money(price.min,price.currency):`from ${money(price.min,price.currency)}`} (live Shopify base-store price checked ${price.checkedAt}; verify market-specific pricing before publication)`:'').filter(Boolean);

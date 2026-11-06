@@ -81,6 +81,7 @@ test('reference bundles reject path traversal, altered bytes, duplicate names an
   const traversal=job();traversal.files[0].name='../../auth.json';assert.throws(()=>validateJob(traversal),/filename/);
   const altered=job();altered.files[0].sha256='0'.repeat(64);assert.throws(()=>validateJob(altered),/integrity/);
   const duplicate=job();duplicate.files.push({...duplicate.files[0]});assert.throws(()=>validateJob(duplicate),/filename/);
+  const tooMany=job();tooMany.files=Array.from({length:6},(_,i)=>({...tooMany.files[0],name:`style-${i+1}.png`}));assert.throws(()=>validateJob(tooMany),/at most five/);
   const stale=job();stale.packet.requestId=ids.holder;assert.throws(()=>validateJob(stale),/prompt/);
   const checked=validateJob(job());assert.equal(checked.files[0].bytes.length,png.length);assert.match(checked.manifestHash,/^[a-f0-9]{64}$/);
 });

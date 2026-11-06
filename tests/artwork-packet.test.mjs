@@ -133,6 +133,21 @@ test('normal revisions rerank prior irrelevant references using product category
   assert.equal(styles.length,3); assert.match(packet.prompt,/REQUESTED REVISION.*No ceremonial props/s);
 });
 
+test('packets keep all product photos while fitting the image tool reference limit', async () => {
+  const options={row:{product_ids:[1,2,3]},products:[product(1),product(2),product(3)],refs:[
+    reference('a','Fine chain design A'),reference('b','Fine chain design B'),reference('c','Fine chain design C'),
+  ]};
+  const fresh=harness(options),packet=await fresh.packet();
+  assert.equal(packet.assets.length,5);
+  assert.deepEqual(packet.assets.filter(asset=>asset.kind==='product').map(asset=>asset.name),['product-1.png','product-2.png','product-3.png']);
+  assert.deepEqual(packet.assets.filter(asset=>asset.kind==='style').map(asset=>asset.name),['style-1.png','style-2.png']);
+  assert.doesNotMatch(packet.prompt,/style-3\.png/);
+  const revision=harness({...options,row:{...options.row,image_path:'previous-v1.png'}}),revisionPacket=await revision.packet();
+  assert.equal(revisionPacket.assets.length,5);
+  assert.equal(revisionPacket.assets.filter(asset=>asset.kind==='style').length,1);
+  assert.equal(revisionPacket.assets.at(-1).name,'previous-artwork.png');
+});
+
 test('explicit carousel references outside the general bound are preserved and missing chosen references reject', async () => {
   const chosen = reference('zz-selected','Chosen ring design', { tags: ['ring'] });
   const refs = Array.from({ length: 1000 }, (_,i) => reference(`candidate-${String(i).padStart(4,'0')}`,'Chain design'));
