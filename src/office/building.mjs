@@ -54,7 +54,9 @@ export function createBuilding({ THREE, scene, rnd, seats, people, rooms }) {
 
   /* ---------- soft pools of lamplight ---------- */
   const pools = [];
-  function pool(x, z, r, strength = 1, y = .03) { pools.push({ x, z, r, y, strength }); }
+  // Decorative mats top out at y=.03. Keep light overlays clearly above them so
+  // the depth buffer does not alternate between the mat and the light quad.
+  function pool(x, z, r, strength = 1, y = .06) { pools.push({ x, z, r, y, strength }); }
   const LAMPS = [];
   const lampAt = (x, z, r = 5.2, strength = 1) => { LAMPS.push({ x, z, y: WH - .35 }); pool(x, z, r, strength); };
 
@@ -492,7 +494,7 @@ export function createBuilding({ THREE, scene, rnd, seats, people, rooms }) {
     // tables
     post(3.6, .06, 1.4, '#4a3323', -32.5, .72, 11); for (const k of [-1, 1]) post(.08, .72, 1, C.woodDark, -32.5 + k * 1.5, 0, 11); for (const dx of [-1, 0, 1]) { chair(-32.5 + dx, 9.9, 0, '#6d4a2c'); chair(-32.5 + dx, 12.1, Math.PI, '#6d4a2c'); }
     cyl(.9, .9, .06, '#4a3323', -33, .72, 3.6, { seg: 12 }); cyl(.05, .05, .72, C.woodDark, -33, .36, 3.6, { seg: 6 }); chair(-34.3, 3.4, Math.PI / 2, '#6d4a2c'); chair(-31.8, 3.6, -Math.PI / 2, '#6d4a2c');
-    pool(-33, 11, 4, .55, .05); pool(-33, 3.6, 3, .4, .05); LAMPS.push({ x: -33, z: 7, y: 2.5 });
+    pool(-33, 11, 4, .55, .07); pool(-33, 3.6, 3, .4, .07); LAMPS.push({ x: -33, z: 7, y: 2.5 });
     for (const [x, z] of [[-33, 11], [-33, 3.6]]) { cyl(.012, .012, .4, C.black, x, 2.5, z, { seg: 5 }); cyl(.2, .24, .16, C.bulb, x, 2.26, z, { seg: 8, bucket: 'glow' }); }
 
     // plaza and street
@@ -504,7 +506,7 @@ export function createBuilding({ THREE, scene, rnd, seats, people, rooms }) {
     // canopy with the office name on it
     const cx = -22, o = { bucket: 'ceiling' }; post(11, .36, 5, '#30343a', cx, 2.9, 23.3, o); post(11.2, .08, 5.2, '#22252a', cx, 3.26, 23.3, o); post(6.5, .36, .03, '#26292e', cx, 2.9, 25.82, o); canopySign = () => sign(P.canopy, 6.2, .34, cx, 3.08, 25.86, 0, true);
     for (const x of [cx - 4.6, cx + 4.6]) { post(.42, 1, .42, '#2a5a8a', x, 0, 25.2); post(.42, 1.95, .42, '#cfc8b8', x, 1, 25.2); }
-    pool(cx, 23, 6, .95, .04); LAMPS.push({ x: cx, z: 23.5, y: 2.7 }); for (const x of [cx - 2, cx + 2]) { cyl(.18, .2, .05, C.bulb, x, 2.87, 23.5, { bucket: 'glow', seg: 8 }); }
+    pool(cx, 23, 6, .95, .07); LAMPS.push({ x: cx, z: 23.5, y: 2.7 }); for (const x of [cx - 2, cx + 2]) { cyl(.18, .2, .05, C.bulb, x, 2.87, 23.5, { bucket: 'glow', seg: 8 }); }
     // planters, bench, bike racks
     for (const x of [-26, -18]) plant(x, 21.8, 1.25, true);
     post(2.2, .08, .5, '#6b4a2c', -8, .42, 26); for (const k of [-1, 1]) post(.1, .42, .46, C.metal, -8 + k * .95, 0, 26); post(2.2, .4, .06, '#6b4a2c', -8, .62, 26.26); post(.5, .9, .5, '#2a2622', -5.6, 0, 26);
@@ -512,9 +514,9 @@ export function createBuilding({ THREE, scene, rnd, seats, people, rooms }) {
     // street lamps
     for (const x of [-34, -10, 6, 22, 38]) for (const z of [27.4]) {
       post(.14, 4.6, .14, C.metal, x, 0, z); post(.9, .06, .12, C.metal, x, 4.6, z - .4, { ry: Math.PI / 2 });
-      ico(.2, '#fff0cc', x, 4.5, z - .8, { detail: 1, bucket: 'glow' }); pool(x, z - .6, 7, .85, .04); LAMPS.push({ x, z: z - .8, y: 4.4 });
+      ico(.2, '#fff0cc', x, 4.5, z - .8, { detail: 1, bucket: 'glow' }); pool(x, z - .6, 7, .85, .07); LAMPS.push({ x, z: z - .8, y: 4.4 });
     }
-    for (const [x, z] of [[-40, 8], [-40, -14], [33, 8], [33, -14], [-10, -26], [12, -26]]) { post(.14, 4.2, .14, C.metal, x, 0, z); ico(.2, '#fff0cc', x, 4.25, z, { detail: 1, bucket: 'glow' }); pool(x, z, 6.4, .7, .03); }
+    for (const [x, z] of [[-40, 8], [-40, -14], [33, 8], [33, -14], [-10, -26], [12, -26]]) { post(.14, 4.2, .14, C.metal, x, 0, z); ico(.2, '#fff0cc', x, 4.25, z, { detail: 1, bucket: 'glow' }); pool(x, z, 6.4, .7, .06); }
     // industrial units behind the building
     for (let i = 0; i < 3; i++) { post(2.2, 1.3, 2.2, '#3a3a3c', 32 + i * 2.8, 0, 16); box(1.6, .05, 1.6, '#25252a', 32 + i * 2.8, 1.33, 16); }
     box(9, .36, .36, '#47494d', 36, 1, 12.6); box(.36, .36, 5, '#47494d', 32.6, 1, 14);
