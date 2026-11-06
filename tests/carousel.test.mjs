@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import { carouselIntent, carouselSelection, salesPosterIntent, productArtworkIntent, carouselRedesignIntent, carouselIdFromConversation } from '../src/lib/agents/carousel-core.mjs';
+import { carouselIntent, carouselSelection, salesPosterIntent, productArtworkIntent, carouselRedesignIntent, carouselIdFromConversation, posterGenderMatches } from '../src/lib/agents/carousel-core.mjs';
 import { imageReferencePart, renderCarouselCard, shopifyPhotoUrl } from '../src/lib/agents/carousel-card.mjs';
 
 const photo = 'https://cdn.shopify.com/s/files/1/1234/files/ring.webp';
@@ -20,6 +20,10 @@ test('a top-seller ad poster is one image while a later carousel redesign resolv
   assert.deepEqual(salesPosterIntent('find the top selling chain in Shopify and create 3 posters'),{category:'Chain',format:'portrait',count:3,productCount:1,cohesiveSeries:false});
   assert.deepEqual(salesPosterIntent('select 3 top selling men chain and create 3 poster for carsoul ads'),{category:'Chain',format:'portrait',count:3,productCount:3,cohesiveSeries:true});
   assert.deepEqual(salesPosterIntent('find the top selling idols and create a poster for diwali sale ads. generate for 5 products'),{category:'Idol',format:'portrait',count:5,productCount:5,cohesiveSeries:false});
+  assert.deepEqual(salesPosterIntent('find top selling 10 mens chains from shopify and create a promotional poster for ads. i need 10 poster of each product'),{category:'Chain',format:'portrait',count:10,productCount:10,cohesiveSeries:false});
+  assert.deepEqual(salesPosterIntent('Find the top 10 best selling men chains and create 10 posters total, one per chain'),{category:'Chain',format:'portrait',count:10,productCount:10,cohesiveSeries:false});
+  assert.equal(posterGenderMatches(['gender:Women','Unisex'], 'top selling mens chains'),false);
+  assert.equal(posterGenderMatches(['gender:Men','gender:Women'], 'top selling mens chains'),true);
   assert.equal(carouselIntent('select 3 top selling men chain and create 3 poster for carsoul ads'),null);
   assert.equal(salesPosterIntent('make a five-card carousel poster of top selling rings'),null);
   assert.equal(salesPosterIntent('draft a brief only for a top selling poster'),null);

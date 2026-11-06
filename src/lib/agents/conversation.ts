@@ -15,7 +15,7 @@ import { compactConversationEvidence, conversationColleagues, compactConversatio
 import { conversationRoutingCandidates, deterministicConversationRoute, conversationRoutingQuestion, acceptedConversationRoute, routedConversationPlan } from './conversation-routing.mjs';
 import { conversationAnswerFingerprint, reusableConversationAnswer } from './conversation-reuse.mjs';
 import { matchDeterministicConversation, deterministicPreferencesSupported, deterministicStatusAnswer, deterministicMetricsAnswer } from './conversation-deterministic.mjs';
-import { carouselIntent, salesPosterIntent, productArtworkIntent, carouselRedesignIntent, carouselIdFromConversation } from './carousel-core.mjs';
+import { carouselIntent, salesPosterIntent, productArtworkIntent, carouselRedesignIntent, carouselIdFromConversation, posterGenderMatches } from './carousel-core.mjs';
 import { shopifyPhotoUrl } from './carousel-url.mjs';
 import { readOdooDay } from './odoo-day.mjs';
 import { excludedOdooBranches } from '@/lib/connectors/odoo-scope';
@@ -97,7 +97,7 @@ async function agentEvidence(reader: SupabaseClient, agent: ConversationAgent, s
   return { activity, reports };
 }
 
-async function topSellingPosterProducts(reader: SupabaseClient, signal: AbortSignal, category: string | null, count: number) {
+async function topSellingPosterProducts(reader: SupabaseClient, signal: AbortSignal, category: string | null, count: number, request: string) {
   const window = conversationSalesWindows().completeThirtyDays;
   const observedAt = new Date().toISOString();
   const sales = category
@@ -106,14 +106,14 @@ async function topSellingPosterProducts(reader: SupabaseClient, signal: AbortSig
   if (!sales.available || !Array.isArray(sales.data) || !sales.data.length) return [];
   const ranked = sales.data.filter((row: any) => Number(row.units) > 0 && /^\d+$/.test(String(row.product_id || '')));
   if (!ranked.length) return [];
-  const { data: products, error } = await reader.from('product_stock').select('id,title,status,stock,stock_source,image_url')
+  const { data: products, error } = await reader.from('product_stock').select('id,title,tags,status,stock,stock_source,image_url')
     .in('id', ranked.map((row: any) => row.product_id)).abortSignal(signal);
   if (error || !Array.isArray(products)) return [];
   const byProduct = new Map(products.map(row => [String(row.id), row]));
   const selected = [];
   for (const sale of ranked) {
     const product: any = byProduct.get(String(sale.product_id));
-    if (product && /^active$/i.test(String(product.status)) && Number(product.stock) > 0 && shopifyPhotoUrl(product.image_url))
+    if (product && posterGenderMatches(product.tags, request) && /^active$/i.test(String(product.status)) && Number(product.stock) > 0 && shopifyPhotoUrl(product.image_url))
       selected.push({ id: Number(sale.product_id), title: product.title, units: sale.units, stock: product.stock,
         stockSource: product.stock_source, from: window.from, to: window.to, category });
     if (selected.length === count) break;
@@ -299,7 +299,7 @@ export async function runConversationTask(admin: SupabaseClient, reader: Supabas
         await saveMessage({role:'handoff',agentId:host.id,recipientAgentId:sales.id,
           content:`Find ${intent.productCount} highest-selling eligible ${intent.category || 'product'} item${intent.productCount === 1 ? '' : 's'} in the latest complete 30-day recorded Shopify window that are active, in stock and have official product photos.`,
           metadata:{phase:'assignment',interaction_mode:'direct',dialogue_phase:'request'}});
-        const products = await topSellingPosterProducts(reader, deadline, intent.category, intent.productCount);
+        const products = await topSellingPosterProducts(reader, deadline, intent.category, intent.productCount, task.prompt);
         if (products.length < intent.productCount) {
           await saveMessage({role:'assistant',agentId:sales.id,recipientAgentId:host.id,
             content:`I could verify only ${products.length} of ${intent.productCount} requested eligible products with positive preferred stock and official Shopify photos in the recorded complete 30-day window. Missing source rows are unknown, not zero.`,

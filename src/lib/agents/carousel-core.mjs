@@ -3,19 +3,25 @@ import { shopifyPhotoUrl } from './carousel-url.mjs';
 
 export function requestedPosterCount(request) {
   const text = String(request || '');
-  const quantity = '(?:[1-5]|one|two|three|four|five)';
+  const quantity = '(?:10|[1-9]|one|two|three|four|five|six|seven|eight|nine|ten)';
   const nearPoster = text.match(new RegExp(`\\b(${quantity})\\s+(?:separate\\s+|individual\\s+)?(?:portrait\\s+|ad\\s+)?posters?\\b`, 'i'));
-  const nearRanking = text.match(new RegExp(`\\b(?:top|best[ -]?selling)\\s+(${quantity})\\b|\\b(${quantity})\\s+top[ -]?selling\\b`, 'i'));
+  const nearRanking = text.match(new RegExp(`\\b(?:top(?:[ -]?selling)?|best[ -]?selling)\\s+(${quantity})\\b|\\b(${quantity})\\s+top[ -]?selling\\b`, 'i'));
   const perProduct = text.match(new RegExp(`\\b(?:generate|create|make|produce|design)(?:\\s+\\w+){0,6}\\s+for\\s+(${quantity})\\s+(?:different\\s+|separate\\s+)?products?\\b`, 'i'));
   const value = (nearPoster?.[1] || nearRanking?.[1] || nearRanking?.[2] || perProduct?.[1] || 'one').toLowerCase();
-  return {one:1,two:2,three:3,four:4,five:5}[value] || Number(value);
+  return {one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10}[value] || Number(value);
 }
 
 export function requestedPosterProductCount(request) {
-  const match = String(request || '').match(/\b(?:top|best[ -]?selling)\s+([1-5]|one|two|three|four|five)\b|\b([1-5]|one|two|three|four|five)\s+top[ -]?selling\b|\bfor\s+([1-5]|one|two|three|four|five)\s+(?:different\s+|separate\s+)?products?\b/i);
+  const match = String(request || '').match(/\b(?:top(?:[ -]?selling)?|best[ -]?selling)\s+(10|[1-9]|one|two|three|four|five|six|seven|eight|nine|ten)\b|\b(10|[1-9]|one|two|three|four|five|six|seven|eight|nine|ten)\s+top[ -]?selling\b|\bfor\s+(10|[1-9]|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:different\s+|separate\s+)?products?\b/i);
   if (!match) return 1;
   const value = (match[1] || match[2] || match[3]).toLowerCase();
-  return {one:1,two:2,three:3,four:4,five:5}[value] || Number(value);
+  return {one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10}[value] || Number(value);
+}
+
+export function posterGenderMatches(tags, request) {
+  const gender = /\b(?:men|mens|men's|gents)\b/i.test(request) ? 'men'
+    : /\b(?:women|womens|women's|ladies)\b/i.test(request) ? 'women' : null;
+  return !gender || (Array.isArray(tags) && tags.some(tag => String(tag).toLowerCase() === `gender:${gender}`));
 }
 
 export function carouselIntent(request) {
