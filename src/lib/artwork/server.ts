@@ -34,7 +34,8 @@ export async function accessArtwork(context:ArtworkContext,options:{pendingOnly?
   if (source === 'design' && (!['super_admin','creative_head','ecom_manager','perf_marketer'].includes(session.role) || (!head && item.requested_by !== session.user.id))) throw new ArtworkError('You cannot import this artwork.',403);
   if (source === 'creative' && session.role === 'viewer') throw new ArtworkError('You cannot import this artwork.',403);
   if (source === 'creative' && frozen.includes(item.campaigns?.status)) throw new ArtworkError('This campaign is approved. Its artwork is frozen.',409);
-  if (options.pendingOnly!==false && ((item.status || item.art_status) !== 'awaiting_import' || !validId(item.artwork_request_id))) throw new ArtworkError('Prepare a revision in Studio before importing another image.',409);
+  const artworkStatus = source === 'creative' ? item.art_status : item.status;
+  if (options.pendingOnly!==false && (artworkStatus !== 'awaiting_import' || !validId(item.artwork_request_id))) throw new ArtworkError('Prepare a revision in Studio before importing another image.',409);
   return {session,source:source as Source,id,row:item};
 }
 type Access = Awaited<ReturnType<typeof accessArtwork>>;
@@ -134,7 +135,8 @@ export async function generationArtwork(job:{source:string;item_id:string;reques
   const admin=supabaseAdmin();
   if(!['design','creative'].includes(job.source)||!validId(job.item_id)||!validId(job.request_id))throw new ArtworkError('Invalid generation request.');
   const {data:row,error}=await admin.from(job.source==='design'?'designs':'creatives').select('*').eq('id',job.item_id).eq('artwork_request_id',job.request_id).maybeSingle();
-  if(error||!row||!['generating','awaiting_import'].includes(row.status||row.art_status))throw new ArtworkError('The artwork request changed. Its generation was stopped.',409);
+  const artworkStatus=job.source==='creative'?row?.art_status:row?.status;
+  if(error||!row||!['generating','awaiting_import'].includes(artworkStatus))throw new ArtworkError('The artwork request changed. Its generation was stopped.',409);
   const access={source:job.source,id:job.item_id,row} as Access;
   const bundle=await packetFor(access);
   return {...bundle,files:includeFiles?await sourceFiles(access,bundle):[]};

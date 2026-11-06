@@ -74,7 +74,8 @@ function harness(options = {}) {
   const api = {};
   new Function('exports','require',code)(api,name => { assert.ok(name in modules, `Unexpected import ${name}`); return modules[name]; });
   const context = { params: Promise.resolve({ source: options.source || 'design', id }) };
-  return { state, packet: provider => api.artworkPacket(context,provider), pack: provider => api.artworkPack(context,provider) };
+  return { state, packet: provider => api.artworkPacket(context,provider), pack: provider => api.artworkPack(context,provider),
+    access: () => api.accessArtwork(context), generation: () => api.generationArtwork({ source: options.source || 'design', item_id: id, request_id: requestId }) };
 }
 
 function unzip(bytes) {
@@ -206,9 +207,14 @@ test('a valid empty library remains usable while a library read error stops pack
 });
 
 test('campaign packets preserve the saved canvas format', async () => {
-  const h = harness({ source: 'creative', row: { kind: 'banner', format: 'web_banner', status: undefined, art_status: 'awaiting_import', campaigns: { status: 'draft' } } });
+  const h = harness({ source: 'creative', row: { kind: 'banner', format: 'web_banner', status: 'draft', art_status: 'awaiting_import', campaigns: { status: 'draft' } } });
   const packet = await h.packet();
   assert.equal(packet.format,'web_banner'); assert.match(packet.prompt,/Canvas: 16:9 aspect ratio/);
+  assert.equal((await h.access()).row.art_status,'awaiting_import');
+  assert.equal((await h.generation()).packet.requestId,requestId);
+  h.state.row.art_status='ready';
+  await assert.rejects(h.access(),/Prepare a revision/);
+  await assert.rejects(h.generation(),/artwork request changed/);
 });
 
 test('switching to Higgsfield reuses the exact frozen brief and sources with website-specific pack instructions',async()=>{
