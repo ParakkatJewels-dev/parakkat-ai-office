@@ -6,6 +6,7 @@ import ts from 'typescript';
 import * as quality from '../src/lib/agents/quality-core.mjs';
 import * as checkpoints from '../src/lib/agents/campaign-checkpoint-core.mjs';
 import * as forecast from '../src/lib/agents/forecast-core.mjs';
+import * as autoArtwork from '../src/lib/agents/campaign-auto-artwork.mjs';
 import {AiBudgetError,isAiBudgetError} from '../src/lib/ai-budget-core.mjs';
 
 const compile=file=>ts.transpileModule(readFileSync(new URL(`../src/lib/agents/${file}.ts`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -14,7 +15,7 @@ const load=(code,modules)=>{const out={};new Function('exports','require',code)(
 const proposed={name:'Recorded demand',occasion:'Season',headline:'Everyday jewellery',sub:'Explore the collection',product_ids:[1],budget_daily:100,days:7,channels:['meta'],split:'Meta',audiences:'Recorded regional audience',reasons:['Product 1 has recorded demand'],report:{why:'Recorded interest.',goal:'Test response without inventing a target.',data_used:[{source:'Shopify',finding:'Recorded product sales'}],how:['Use approved creative'],risks:['Incomplete coverage'],measure:'Recorded purchases and spend',impact:{budget_total:999999}}};
 
 function harness(stage='create') {
-  const h={tables:{agent_runs:[{id:'run',occasion:'Season',stage,status:'running',state:{plan:structuredClone(proposed)}}],campaigns:[],creatives:[],reports:[],product_stock:[{id:1,status:'ACTIVE',title:'Real product',product_type:'Necklace',price:1000,stock:5,stock_source:'shopify',image_url:'photo'}],products:[{id:1,title:'Real product',price:1000,image_url:'photo'}],job_locks:[],social_posts:[],competitors:[],competitor_moves:[]},calls:[],draws:0,events:[],deletes:0,instructions:'current',failWrite:null,answer:null,drawError:null,crashAfterImage:false,gemini:true,reportData:{spend:100,ad_revenue:300,revenue:1000,units:2},reuses:0};
+  const h={tables:{agent_runs:[{id:'run',occasion:'Season',stage,status:'running',state:{plan:structuredClone(proposed)}}],campaigns:[],creatives:[],reports:[],product_stock:[{id:1,status:'ACTIVE',title:'Real product',product_type:'Necklace',price:1000,stock:5,stock_source:'shopify',image_url:'photo'}],products:[{id:1,title:'Real product',price:1000,image_url:'photo'}],job_locks:[],social_posts:[],competitors:[],competitor_moves:[]},calls:[],draws:0,autoJobs:[],events:[],deletes:0,instructions:'current',failWrite:null,answer:null,drawError:null,crashAfterImage:false,gemini:true,reportData:{spend:100,ad_revenue:300,revenue:1000,units:2},reuses:0};
   h.runRow=()=>h.tables.agent_runs[0];
   h.db={rpc:async(name,args)=>{
     if(name==='acquire_job_lock'){h.tables.job_locks=[{name:args.p_name,holder:args.p_holder,until:new Date(Date.now()+900000).toISOString()}];return {data:true,error:null};}
@@ -27,7 +28,7 @@ function harness(stage='create') {
         h.tables[table] ||= [];const rows=h.tables[table];
         if(action && h.failWrite?.({table,action,payload}))return {data:null,error:new Error('Simulated write failure')};
         let found=rows.filter(r=>filters.every(fn=>fn(r))).slice(0,limit);
-        if(action==='insert') {const duplicate=payload.id&&rows.find(r=>r.id===payload.id);if(duplicate&&ignore)found=[];else{const row={id:payload.id||crypto.randomUUID(),...(table==='reports'?{status:'lead_review',revision:1}:{}),...(table==='campaigns'?{status:'draft'}:{}),...structuredClone(payload)};rows.push(row);found=[row];}}
+        if(action==='insert') {const duplicate=payload.id&&rows.find(r=>r.id===payload.id);if(duplicate&&ignore)found=[];else{const row={id:payload.id||crypto.randomUUID(),...(table==='reports'?{status:'lead_review',revision:1}:{}),...(table==='campaigns'?{status:'draft'}:{}),...(table==='creatives'?{created_at:new Date().toISOString()}:{}),...structuredClone(payload)};rows.push(row);found=[row];}}
         if(action==='update')found.forEach(r=>Object.assign(r,structuredClone(payload)));
         if(action==='delete')h.tables[table]=rows.filter(r=>!found.includes(r));
         return {data:structuredClone(one?found[0]||null:found),error:null};
@@ -35,7 +36,7 @@ function harness(stage='create') {
     };return q;
   }};
   const people={persona:async(_db,agent,text)=>`${agent} ${h.instructions}: ${text}`,byId:{sales:{name:'Sales',room:'insights'},igScout:{name:'Scout',room:'insights'},analyticsLead:{name:'Analytics Lead'},human:{name:'Human'}},teamLead:()=> 'analyticsLead',HUMAN_HEAD:{insights:'human'}};
-  const modules={'@/lib/artwork-mode.mjs':{isChatGPTHandoff:()=>!!h.handoff},'node:crypto':crypto,'./quality-core.mjs':quality,'./campaign-checkpoint-core.mjs':checkpoints,'./forecast-core.mjs':forecast,'./people':people,'./events':{emit:async(...e)=>h.events.push(e)},'./memory':{loadMemory:async()=>{},pastResults:async()=>[]},'./branches':{branchBrief:async()=>[]},'./seo':{seoBrief:async()=>[]},'@/lib/usage':{withUsage:(_scope,fn)=>fn(),recordTaskUsageEvent:async()=>{h.reuses++;}},'@/lib/ai-budget':{isAiBudgetError},'@/lib/pause':{Paused:class extends Error{}},'./agent-instructions-core.mjs':{isAgentRuntimeError:()=>false},
+  const modules={'@/lib/artwork-mode.mjs':{isChatGPTHandoff:()=>!!h.handoff},'./campaign-auto-artwork.mjs':autoArtwork,'@/lib/artwork/chatgpt-worker':{startChatGPTArtwork:async input=>{h.autoJobs.push(input);const row=h.tables.creatives.find(r=>r.id===input.id);row.art_status='generating';return{started:true};}},'node:crypto':crypto,'./quality-core.mjs':quality,'./campaign-checkpoint-core.mjs':checkpoints,'./forecast-core.mjs':forecast,'./people':people,'./events':{emit:async(...e)=>h.events.push(e)},'./memory':{loadMemory:async()=>{},pastResults:async()=>[]},'./branches':{branchBrief:async()=>[]},'./seo':{seoBrief:async()=>[]},'@/lib/usage':{withUsage:(_scope,fn)=>fn(),recordTaskUsageEvent:async()=>{h.reuses++;}},'@/lib/ai-budget':{isAiBudgetError},'@/lib/pause':{Paused:class extends Error{}},'./agent-instructions-core.mjs':{isAgentRuntimeError:()=>false},
     '@/lib/connectors/meta':{metaConfig:async()=>({ig:'account'}),competitorInstagram:async handle=>({followers_count:100,media:{data:[{timestamp:'2026-10-27',caption:`Recorded ${handle} post`,media_type:'IMAGE'}]}})},
     '@/lib/llm/gemini-config':{geminiConfigured:async()=>{h.configReads=(h.configReads||0)+1;return h.gemini;}},'@/lib/llm/openai':{chatJSON:async(tier,system,input)=>{h.calls.push({tier,system,input});if(h.answer)return h.answer({tier,system,input});return system.startsWith('strategist')?structuredClone(proposed):system.startsWith('copywriter')?{en:{headline:'Saved English',body:'English copy'},ml:{headline:'Saved Malayalam',body:'Malayalam copy'}}:system.startsWith('analyticsLead')?{decision:'forward',note:'Evidence checked'}:{title:'Sales finding',body:'Source-backed report'};}},
     './design':{prepareArtworkImport:async(_db,_source,id)=>{const row=h.tables.creatives.find(r=>r.id===id);if(row&&['queued','failed'].includes(row.art_status)){Object.assign(row,{art_status:'awaiting_import',queued_at:null,artwork_request_id:crypto.randomUUID()});return true;}return false;},drawItem:async(_db,_source,id)=>{h.draws++;if(h.drawError)throw h.drawError;const row=h.tables.creatives.find(r=>r.id===id);Object.assign(row,{image_path:'immutable.png',art_status:'ready',queued_at:null});if(h.crashAfterImage)throw new Error('Response lost after artifact saved');return true;}},
@@ -168,6 +169,23 @@ for (const provider of ['chatgpt','higgsfield','higgsfield_oauth']) test(`${prov
   h.tables.image_reviews[0].updated_at=new Date().toISOString();
   await h.run();assert.equal(h.runRow().stage,'review');assert.equal(h.runRow().state.artworkWait,undefined);assert.equal(h.calls.length,1);assert.equal(h.draws,0);
   assert.equal(h.runRow().state.checkpoints.entries['create.artwork'].value.image_path,'imported.png');
+});
+
+test('a newly created campaign queues one ChatGPT image and waits for human review',async()=>{
+  const keys=['CHATGPT_IMAGE_WORKER_ENABLED','CHATGPT_IMAGE_AUTOMATION_USER_ID','CHATGPT_IMAGE_AUTO_CAMPAIGN_AFTER'];
+  const prior=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  process.env.CHATGPT_IMAGE_WORKER_ENABLED='true';
+  process.env.CHATGPT_IMAGE_AUTOMATION_USER_ID=crypto.randomUUID();
+  process.env.CHATGPT_IMAGE_AUTO_CAMPAIGN_AFTER=new Date(Date.now()-60_000).toISOString();
+  try {
+    const h=harness();h.handoff=true;h.gemini=false;
+    await h.run();
+    assert.equal(h.autoJobs.length,1);
+    assert.equal(h.runRow().state.artworkWait.phase,'generation');
+    assert.equal(h.tables.creatives.find(row=>row.language==='en').art_status,'generating');
+    await h.run();
+    assert.equal(h.autoJobs.length,1,'resuming the campaign must not submit a second image');
+  } finally {for(const key of keys)prior[key]===undefined?delete process.env[key]:process.env[key]=prior[key];}
 });
 
 for (const provider of ['chatgpt','higgsfield','higgsfield_oauth']) test(`a campaign review cannot call compliance or the CMO while a ${provider} replacement is pending`,async()=>{

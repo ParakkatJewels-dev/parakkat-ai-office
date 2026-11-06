@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { chatJSON } from '@/lib/llm/openai';
 import { drawItem, prepareArtworkImport } from './design';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
+import { automaticCampaignArtworkUser } from './campaign-auto-artwork.mjs';
 import { classify } from '@/lib/llm/jev';
 import { competitorInstagram, metaConfig } from '@/lib/connectors/meta';
 import { geminiConfigured } from '@/lib/llm/gemini-config';
@@ -65,8 +66,8 @@ type Run = { id: string; occasion: string | null; stage: Stage; state: RunState;
 
 const inr = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN');
 const artworkWaiting = (creativeId: string, phase: 'import' | 'generation' | 'review') => Object.assign(new Error(phase === 'generation'
-  ? 'Higgsfield generation is in progress. This campaign is waiting for the saved image and human review.'
-  : phase === 'import' ? 'The campaign is waiting for artwork. The Super Admin can start automatic Higgsfield generation or import a finished image in Design Studio while this draft awaits approval.'
+  ? 'Image generation is in progress. This campaign is waiting for the saved image and human review.'
+  : phase === 'import' ? 'The campaign is waiting for artwork. The Super Admin can start generation or import a finished image in Design Studio while this draft awaits approval.'
   : 'The Super Admin or an authorized head with access must mark the finished artwork Good in Design Studio before this campaign can continue.'), {code:'artwork_wait',creativeId,phase});
 
 async function requireCampaignArtwork(db: SupabaseClient, creative: { id: string; image_path?: string | null; art_status?: string | null; artwork_origin?: string | null; imported_at?: string | null }) {
@@ -396,7 +397,7 @@ Shape: {"name":"...","occasion":"...","headline":"max 5 words","sub":"max 8 word
     const had = previous.data;
     if (had && !['draft','changes'].includes(had.status)) throw qualityBlocked('This campaign has entered approval or publishing. Use its explicit revision workflow; saved creatives were preserved.');
     const id = had?.id || await checkpoint.memo('create.campaign.id',{runId:run.id},randomUUID);
-    const existing = await db.from('creatives').select('id,kind,language,headline,body,image_path,art_status,queued_at,product_ids,artwork_origin,imported_at').eq('campaign_id',id).order('created_at');
+    const existing = await db.from('creatives').select('id,kind,language,headline,body,image_path,art_status,queued_at,product_ids,artwork_origin,imported_at,created_at,artwork_request_id').eq('campaign_id',id).order('created_at');
     if (existing.error) throw existing.error;
     const assets = existing.data || [];
     if (had && assets.length && campaignCheckpointFingerprint(had.plan) !== campaignCheckpointFingerprint(p)) throw qualityBlocked('The plan changed after creatives were saved. Use the campaign revision workflow to request a new artifact; existing work was preserved.');
@@ -428,7 +429,7 @@ Shape: {"name":"...","occasion":"...","headline":"max 5 words","sub":"max 8 word
           ...(language==='en'?{format:'post',art_status:handoff?'awaiting_import':'queued',queued_at:handoff?null:new Date().toISOString(),artwork_request_id:handoff?randomUUID():null,artwork_handoff:null}:{})};
         const result = await db.from('creatives').upsert(fields,{onConflict:'id',ignoreDuplicates:true});
         if (result.error) throw result.error;
-        const row = await db.from('creatives').select('id,kind,language,headline,body,image_path,art_status,queued_at,product_ids,artwork_origin,imported_at').eq('id',creativeId).single();
+        const row = await db.from('creatives').select('id,kind,language,headline,body,image_path,art_status,queued_at,product_ids,artwork_origin,imported_at,created_at,artwork_request_id').eq('id',creativeId).single();
         if (row.error || !row.data) throw row.error || new Error('The saved creative could not be read.');
         assets.push(row.data);
         return row.data;
@@ -442,6 +443,18 @@ Shape: {"name":"...","occasion":"...","headline":"max 5 words","sub":"max 8 word
       if (en.art_status === 'generating') throw artworkWaiting(en.id,'generation');
       if (handoff && (!en.image_path || ['queued','making'].includes(en.art_status || ''))) {
         await prepareArtworkImport(db,'creative',en.id,{includeFailed:true});
+        const automationUser = automaticCampaignArtworkUser(en);
+        if (automationUser) {
+          try {
+            const { startChatGPTArtwork } = await import('@/lib/artwork/chatgpt-worker');
+            const result = await startChatGPTArtwork({source:'creative',id:en.id,userId:automationUser,requestId:en.artwork_request_id});
+            if (result.started) throw artworkWaiting(en.id,'generation');
+            if (result.reason) await emit(db,run.id,'feedback','designer',`Automatic image preparation needs attention: ${result.reason}`,'creativeHead');
+          } catch (error) {
+            if ((error as any)?.code === 'artwork_wait') throw error;
+            await emit(db,run.id,'feedback','designer',`Automatic image preparation needs attention: ${error instanceof Error ? error.message : 'Check Studio generation status.'}`,'creativeHead');
+          }
+        }
         throw artworkWaiting(en.id,'import');
       }
       await requireCampaignArtwork(db,en);

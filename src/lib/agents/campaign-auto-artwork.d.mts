@@ -1,0 +1,1 @@
+export function automaticCampaignArtworkUser(creative: { created_at?: string | null; art_status?: string | null; image_path?: string | null; artwork_request_id?: string | null } | null | undefined, env?: Record<string, string | undefined>): string | null;
