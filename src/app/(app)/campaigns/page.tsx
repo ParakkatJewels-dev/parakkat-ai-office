@@ -4,7 +4,7 @@ import { liveRuns, runSteps } from '@/lib/agents/campaign';
 import { publicationBlock, hasConfirmedPublication } from '@/lib/agents/publish-core.mjs';
 import { Icon } from '@/components/Icon';
 import { Submit } from '@/components/forms';
-import { PageHead, Stepper, when } from '@/components/ui';
+import { PageHead, when } from '@/components/ui';
 import { runCampaign, nextStep, publishAgain } from '../admin/actions';
 import Automations from '../automations/Automations';
 import styles from './Campaigns.module.css';
@@ -35,50 +35,44 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
       {sp.error && <p className="flash" role="alert">{sp.error}</p>}
       {sp.msg && <p className="flash ok" role="status">{sp.msg}</p>}
       <PageHead title="Campaigns" sub="Start a campaign and follow it: the team plans it, the AI CMO checks it, each head signs it off in their Inbox, and the last sign-off publishes it after asking you. Nothing is published or spent before that.">
+        {admin ? <form action={runCampaign} className={styles.start} aria-label="Start a campaign">
+          <label className="sr-only" htmlFor="occasion">Occasion or goal</label>
+          <input id="occasion" name="occasion" required maxLength={200} placeholder={paused ? 'The office is paused' : 'Start a campaign: occasion or goal'} disabled={paused} />
+          <Submit icon="rocket" pending="Starting…" disabled={paused}>Start</Submit>
+        </form> : <Link href="/tasks" className="btn ghost">Ask the team in Tasks</Link>}
         <Link href="/approvals?tab=plans" className="btn ghost"><Icon name="inbox" size={16} />Plans to sign off</Link>
       </PageHead>
 
-      <div>
-        {admin ? <section className={`card ${styles.start}`} aria-labelledby="start-title">
-          <div className="card-head"><h2 id="start-title">Start a campaign</h2></div>
-          <form action={runCampaign} className={styles.form}>
-            <label className="field" htmlFor="occasion"><span className="sr-only">Occasion or goal</span><input id="occasion" name="occasion" required maxLength={200} placeholder="Occasion or goal, e.g. Diwali gold edit" /></label>
-            <div className={styles.formFoot}><p>{paused ? 'The office is paused.' : 'Nothing goes live until it’s signed off.'}</p><Submit icon="rocket" pending="Starting the team…" disabled={paused}>Start campaign</Submit></div>
-          </form>
-        </section> : <section className={`card ${styles.start}`}>
-          <div className="card-head"><h2>Ask for a campaign</h2></div><p className="sub">The Super Admin starts campaigns. Ask the team to plan one in Tasks.</p>
-          <Link href="/tasks" className="btn ghost">Go to Tasks<Icon name="arrow" size={15} /></Link>
-        </section>}
-      </div>
-
-      {waiting.length > 0 && <section className="section" aria-labelledby="ready-title">
-        <h2 id="ready-title" className="section-title">Ready to publish</h2>
+      {waiting.length > 0 && <section className={styles.ready} aria-label="Ready to publish">
         {waiting.map(w => <form key={w.id} action={publishAgain} className="banner"><input type="hidden" name="id" value={w.id} />
-          <Icon name="rocket" size={20} /><span><b>{w.c?.name}</b> · {w.finish ? 'Meta confirmed the launch. Save its status to finish; this creates no new ads.' : w.block || 'Signed off and ready to publish.'}</span>
-          {(w.launch || w.finish) && <Submit confirm={w.launch ? `Publish ${w.c?.name || 'this campaign'} to Meta now? This creates live ads with the approved budget.` : undefined} confirmTitle="Publish this campaign?" confirmLabel="Publish now" pending={w.finish ? 'Saving…' : 'Publishing…'}>{w.finish ? 'Finish saving' : 'Publish now'}</Submit>}
+          <Icon name="rocket" size={18} /><span><b>{w.c?.name}</b> · {w.finish ? 'Meta confirmed the launch. Save its status to finish; this creates no new ads.' : w.block || 'Signed off and ready to publish.'}</span>
+          {(w.launch || w.finish) && <Submit small confirm={w.launch ? `Publish ${w.c?.name || 'this campaign'} to Meta now? This creates live ads with the approved budget.` : undefined} confirmTitle="Publish this campaign?" confirmLabel="Publish now" pending={w.finish ? 'Saving…' : 'Publishing…'}>{w.finish ? 'Finish saving' : 'Publish now'}</Submit>}
         </form>)}
       </section>}
 
-      <section className="card" aria-labelledby="runs-title">
-        <div className="card-head"><h2 id="runs-title">Recent campaigns</h2></div>
-        {runsError ? <div className="empty"><Icon name="rocket" size={26} /><p>Campaigns couldn’t load. Refresh to try again.</p></div>
-          : (runs || []).length ? <ul className="runs">{runs!.map(r => {
-            const v = runSteps(r, live.has(r.id)), state = r.state as { origin?: { why?: string }; retry?: { at: string; n: number } } | null;
-            return <li key={r.id}>
-              <div className="run-name"><b>{r.occasion || 'Campaign'}</b>{state?.origin && <span className="pill info" title={state.origin.why}>Suggested by the AI CMO</span>}
-                <span className={`sm ${r.error ? 'err' : ''}`}>{r.error ? `${state?.retry?.at && r.status === 'running' ? `Trying again at ${when(state.retry.at)}: ` : ''}${r.error.slice(0, 140)}` : state?.origin?.why || `Started ${when(r.started_at)}`}</span></div>
-              <Stepper steps={v.steps} />
-              {admin && ['running', 'failed'].includes(r.status) && r.stage !== 'done'
-                ? <form action={nextStep}><input type="hidden" name="id" value={r.id} />{r.status === 'failed' && <input type="hidden" name="retry" value="1" />}<Submit ghost small icon="arrow" pending="Working…">{r.status === 'failed' ? 'Try again' : 'Next step'}</Submit></form>
-                : <span className={`pill ${v.pill[1]}`}>{v.pill[0]}</span>}
-            </li>;
-          })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No campaigns yet.{admin ? ' Start one above.' : ''}</p></div>}
+      <section className={`card ${styles.table}`} aria-label="Recent campaigns">
+        {runsError ? <div className="empty"><Icon name="rocket" size={20} /><p>Campaigns couldn’t load. Refresh to try again.</p></div>
+          : (runs || []).length ? <div className={styles.scroll}><table>
+            <thead><tr><th>Campaign</th><th>Step</th><th>Status</th><th>Issue</th><th aria-label="Action" /></tr></thead>
+            <tbody>{runs!.map(r => {
+              const v = runSteps(r, live.has(r.id)), state = r.state as { origin?: { why?: string }; retry?: { at: string; n: number } } | null;
+              const at = v.steps.findIndex(step => step.state === 'now' || step.state === 'bad'), stage = at >= 0 ? v.steps[at] : v.steps[v.steps.length - 1];
+              const issue = r.error ? `${state?.retry?.at && r.status === 'running' ? `Trying again at ${when(state.retry.at)}: ` : ''}${r.error}` : '';
+              return <tr key={r.id}>
+                <td><b className={styles.name}>{r.occasion || 'Campaign'}</b><small className={styles.meta}>{state?.origin ? 'Suggested by the AI CMO' : `Started ${when(r.started_at)}`}</small></td>
+                <td><span className={styles.dots} aria-hidden="true">{v.steps.map(step => <i key={step.label} data-state={step.state} />)}</span><span className={styles.stage}>{stage?.label}</span></td>
+                <td><span className={`pill ${v.pill[1]}`}>{v.pill[0]}</span></td>
+                <td><span className={styles.issue} title={issue || undefined}>{issue || (state?.origin?.why ?? '–')}</span></td>
+                <td className={styles.act}>{admin && ['running', 'failed'].includes(r.status) && r.stage !== 'done' && <form action={nextStep}><input type="hidden" name="id" value={r.id} />{r.status === 'failed' && <input type="hidden" name="retry" value="1" />}<Submit ghost small pending="Working…">{r.status === 'failed' ? 'Try again' : 'Next step'}</Submit></form>}</td>
+              </tr>;
+            })}</tbody>
+          </table></div> : <div className="empty"><Icon name="rocket" size={20} /><p>No campaigns yet.{admin ? ' Start one above.' : ''}</p></div>}
       </section>
 
-      <section className="section" aria-labelledby="schedules-title">
-        <h2 id="schedules-title" className="section-title">Schedules and rules</h2>
+      <details className={`card ${styles.more}`}>
+        <summary>Schedules and stock rules</summary>
         <Automations isAdmin={admin} only="recurring" />
-      </section>
+      </details>
     </div>
   );
 }

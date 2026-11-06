@@ -1,4 +1,5 @@
 import studioStyles from './Studio.module.css';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
 import { FORMATS, LANGS, canDesign, canUseStudio } from '@/lib/agents/design';
@@ -6,7 +7,7 @@ import { Icon } from '@/components/Icon';
 import { PageHead, Pager, pageOf, rangeOf, when } from '@/components/ui';
 import { PRODUCT_PAGE as PAGE } from '@/lib/limits';
 import { StudioForm } from './StudioForm';
-import { reviewImage, redesign, redesignCarousel, scanNow, removeFolder, markRef, orderCarousel, retryCarousel } from './actions';
+import { reviewImage, redesign, redesignCarousel, scanNow, removeFolder, markRef, orderCarousel, retryCarousel, requestDesignApproval } from './actions';
 import { FolderPicker } from './FolderPicker';
 import { Refresher } from '@/components/Refresher';
 import { Locked, Submit } from '@/components/forms';
@@ -28,6 +29,9 @@ const FROM = { all: 'Everything', design: 'Studio orders', creative: 'Campaign b
 const KIND: Record<string, string> = { banner: 'Campaign banner', story: 'Story', catalogue_page: 'Catalogue page', email: 'Email' };
 const REFS = { all: 'In use', pinned: 'Pinned', hidden: 'Hidden', waiting: 'Waiting', failed: 'Failed', skipped: 'Skipped' } as const;
 const BUSY = ['queued', 'making', 'generating'];
+/** The latest Super Admin sign-off request for a design. */
+type Ask = { id: string; source: string; item_id: string; status: 'pending' | 'approved' | 'changes' | 'rejected'; image_path: string; request_note: string | null; decision_note: string | null; created_at: string; decided_at: string | null };
+const ASKED = { approved: 'Approved', changes: 'Sent back', rejected: 'Rejected' } as const;
 
 export default async function Studio({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { db, role } = await requireUser();
@@ -64,13 +68,24 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
   const { data: usedRefs } = refIds.length ? await db.from('design_refs').select('id, name, occasion, fingerprint, style, palette, layout, typography').in('id', refIds) : { data: [] };
   const R = new Map((usedRefs || []).map(r => [r.id, r]));
   const paths = (items || []).map(d => d.image_path).filter(Boolean) as string[];
-  const [views, downloads] = paths.length ? await Promise.all([
-    db.storage.from('creatives').createSignedUrls(paths, 3600),
-    Promise.all(paths.map(p => db.storage.from('creatives').createSignedUrl(p, 3600, { download: `parakkat-${p.split('/').pop()}` }))),
-  ]) : [{ data: [] }, []];
+  const ids = (items || []).map(d => d.id as string);
+  const [[views, downloads], asked] = await Promise.all([
+    paths.length ? Promise.all([
+      db.storage.from('creatives').createSignedUrls(paths, 3600),
+      Promise.all(paths.map(p => db.storage.from('creatives').createSignedUrl(p, 3600, { download: `parakkat-${p.split('/').pop()}` }))),
+    ]) : Promise.resolve([{ data: [] }, []] as const),
+    // sign-off requests; this errors until the design-approval database update is applied, and the panel says so
+    ids.length ? db.from('design_approvals').select('id, source, item_id, status, image_path, request_note, decision_note, created_at, decided_at').in('item_id', ids).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+  ]);
   const view = (p: string) => views.data?.find(s => s.path === p)?.signedUrl ?? undefined;
   const dl = (p: string) => downloads[paths.indexOf(p)]?.data?.signedUrl;
-  const back = qs({ gp: gp > 1 ? String(gp) : null });
+  const ask = new Map<string, Ask>();
+  for (const a of (asked.data || []) as Ask[]) if (!ask.has(`${a.source}:${a.item_id}`)) ask.set(`${a.source}:${a.item_id}`, a);
+  // the open design shows in a side panel; its key is source:id
+  const openKey = sp.open && /^(design|creative):[0-9a-f-]{36}$/i.test(sp.open) ? sp.open : null;
+  const keep = gp > 1 ? String(gp) : null;
+  const back = qs({ gp: keep, open: openKey });
+  const toggle = (key: string) => qs({ gp: keep, open: openKey === key ? null : key });
 
   return (
     <div className={`page ${studioStyles.studioPage}`}>
@@ -115,8 +130,11 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
           </div>
           {(items || []).length ? <ul className={`gallery ${studioStyles.galleryGrid}`}>{items!.map(d => {
             const f = FORMATS[d.kind as keyof typeof FORMATS], awaitingImport = d.status === 'awaiting_import', generating = d.status === 'generating', generated = d.artwork_origin === 'higgsfield_oauth', importProvider = d.artwork_origin === 'higgsfield_import' ? 'Higgsfield' : ['chatgpt','chatgpt_import'].includes(d.artwork_origin || '') ? 'ChatGPT' : null;
+            const key = `${d.source}:${d.id}`, isOpen = openKey === key, a = ask.get(key), signed = a?.status === 'approved' && a.image_path === d.image_path;
+            const title = d.headline || (d.brief ? `${d.brief.slice(0,100)}${d.brief.length > 100 ? '…' : ''}` : `${f?.label || KIND[d.kind] || 'Studio'} artwork`);
             return (
-              <li key={`${d.source}-${d.id}`} id={`d-${d.id}`} className={`${sp.made === d.id ? 'new' : ''} ${d.verdict ? `rv-${d.verdict}` : ''} ${studioStyles.galleryItem} ${awaitingImport || generating ? studioStyles.awaitingItem : ''}`} aria-busy={BUSY.includes(d.status)}>
+              <li key={`${d.source}-${d.id}`} id={`d-${d.id}`} className={`${sp.made === d.id ? 'new' : ''} ${d.verdict ? `rv-${d.verdict}` : ''} ${studioStyles.galleryItem} ${awaitingImport || generating ? studioStyles.awaitingItem : ''} ${isOpen ? studioStyles.open : ''}`} aria-busy={BUSY.includes(d.status)}>
+                <Link href={toggle(key)} scroll={false} className={studioStyles.openLink} aria-label={isOpen ? 'Close this design' : `Open ${title}`} />
                 <div className={`art ${BUSY.includes(d.status) ? studioStyles.artBusy : ''}`} style={{ aspectRatio: f?.ratio.replace(':', '/') || '1' }}>
                   {d.image_path && view(d.image_path) ? <img src={view(d.image_path)} alt={d.headline || d.brief} loading="lazy" /> : BUSY.includes(d.status) ? <div className={studioStyles.skeleton} aria-hidden="true"><i /><i /><i /></div> : <span className="sub">{awaitingImport ? 'Awaiting artwork' : d.status === 'failed' ? 'Artwork needs attention' : 'Image unavailable'}</span>}
                   {awaitingImport && d.image_path && <span className={studioStyles.progressOverlay}>Previous image · awaiting revision</span>}
@@ -124,15 +142,18 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
                   {d.kind === 'carousel_card' && d.status === 'needs_fix' && !BUSY.includes(d.status) && <span className="verdict bad">Product match needs correction</span>}
                   {BUSY.includes(d.status) && <span className={studioStyles.progressOverlay} role="status"><span className="spin" aria-hidden="true" />{generating ? automaticChatGPT ? 'Generating artwork' : 'Generating with Higgsfield' : handoff ? 'Preparing artwork request' : d.image_path ? `New version in progress · v${(d.versions || 0) + 2}` : d.status === 'making' ? 'Generating image' : 'Queued for image generation'}</span>}
                   {!BUSY.includes(d.status) && d.versions > 0 && <span className="ver">v{d.versions + 1}</span>}
+                  {(a?.status === 'pending' || signed) && <span className={`${studioStyles.askPill} ${signed ? studioStyles.askDone : ''}`}>{signed ? 'Approved' : 'With Super Admin'}</span>}
                 </div>
                 <div className="meta">
+                  {isOpen && <div className={studioStyles.panelHead}><span>Design</span><Link href={toggle(key)} scroll={false} className="btn ghost sm-btn" aria-label="Close this design"><Icon name="x" size={16} />Close</Link></div>}
+                  {isOpen && d.image_path && view(d.image_path) && <div className={studioStyles.panelArt} style={{ aspectRatio: f?.ratio.replace(':', '/') || '1' }}><img src={view(d.image_path)} alt={d.headline || d.brief} /></div>}
                   <div className={studioStyles.cardMeta}><b>{d.carousel_index ? `Carousel card ${d.carousel_index}/5` : f?.label || KIND[d.kind] || d.kind}</b><span className="sm">{d.source === 'design' ? 'Studio order' : 'Campaign'}</span></div>
                   {importProvider && <p className={studioStyles.importLabel}><span>{importProvider} artwork</span>{d.verdict ? 'Human review recorded' : 'Human review required'}{d.imported_at ? ` · Imported ${when(d.imported_at)}` : ''}</p>}
                   {generated && <p className={studioStyles.importLabel}><span>Generated with Higgsfield</span>{d.verdict ? 'Human review recorded' : 'Human review required'}</p>}
                   {d.carousel_id && !carousel && <a className="sm" href={`/studio?carousel=${d.carousel_id}`}>View all five cards</a>}
                   {d.campaign_name && <span className="sm clip">{d.campaign_name}</span>}
                   {BUSY.includes(d.status) && <p className={studioStyles.agentProgress} role="status"><span className="spin" aria-hidden="true" />{generating ? automaticChatGPT ? 'Artwork generation is in progress; the image will be saved for human review.' : 'Higgsfield is generating this image; it will be saved for human review.' : handoff ? 'Preparing the artwork brief and references' : `${byId[f?.maker || 'designer']?.name || 'Designer'} ${d.status === 'making' ? 'is generating this image' : 'is next to generate this image'}`}</p>}
-                  <h4 className={studioStyles.artworkTitle}>{d.headline || (d.brief ? `${d.brief.slice(0,100)}${d.brief.length > 100 ? '…' : ''}` : `${f?.label || KIND[d.kind] || 'Studio'} artwork`)}</h4>
+                  <h4 className={studioStyles.artworkTitle}>{title}</h4>
                   <details className={studioStyles.briefDetails}><summary>Brief and requirements</summary><p>{d.brief}</p></details>
                   {(d.error || (!importProvider && !generated && !awaitingImport && !generating && d.lead_note)) && <p className={`sm ${d.error ? 'err' : ''}`}>{d.error ? `${d.image_path ? 'The last revision needs attention: ' : ''}${d.error}` : `${d.kind === 'carousel_card' ? d.concept?.includes('Product identity was checked') ? 'Product check' : 'Earlier method' : 'AI lead'}: ${d.lead_note}`}</p>}
                   {(awaitingImport || generating) && <ChatGPTArtwork key={d.artwork_request_id || d.id} source={d.source as 'design' | 'creative'} id={d.id} requestId={d.artwork_request_id} status={d.status} initialProvider={automaticChatGPT || importProvider === 'ChatGPT' ? 'chatgpt' : 'higgsfield'} {...(automaticChatGPT ? {automaticChatGPT:true} : {})} title={d.headline || d.brief} />}
@@ -140,6 +161,20 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
                   <div className={studioStyles.fileActions}><span className="sm">{LANGS[d.language as keyof typeof LANGS] || d.language} · {when(d.created_at)}</span>
                     {d.image_path && view(d.image_path) && <ImageViewer src={view(d.image_path)!} title={d.headline || d.brief} download={dl(d.image_path)} />}
                     {d.image_path && dl(d.image_path) && <a className="btn ghost sm-btn" href={dl(d.image_path)}><Icon name="arrow" size={16} />Download</a>}</div>
+                  {isOpen && d.image_path && !awaitingImport && !BUSY.includes(d.status) && (asked.error || a || role !== 'super_admin') && (
+                    <section className={studioStyles.approval} aria-label="Super Admin approval">
+                      <h5>Super Admin approval</h5>
+                      {asked.error ? <p className="sm">Send for approval turns on once the latest database update is applied.</p> : <>
+                        {a?.status === 'pending' && <p className="sm">Waiting for the Super Admin since {when(a.created_at)}.{a.request_note ? ` Note: ${a.request_note}` : ''}{role === 'super_admin' && <> <Link href={`/approvals?tab=designs&design=${a.id}`}>Decide in Inbox</Link></>}</p>}
+                        {a && a.status !== 'pending' && <p className={`sm ${a.status === 'approved' ? '' : 'err'}`}>{signed ? `Approved ${when(a.decided_at || a.created_at)}.` : a.status === 'approved' ? 'An earlier version was approved. This version has not been sent yet.' : `${ASKED[a.status]} ${when(a.decided_at || a.created_at)}: ${a.decision_note || ''}`}{signed && a.decision_note ? ` ${a.decision_note}` : ''}</p>}
+                        {a?.status !== 'pending' && !signed && role !== 'super_admin' && <form action={requestDesignApproval} className={studioStyles.askForm}>
+                          <input type="hidden" name="source" value={d.source} /><input type="hidden" name="id" value={d.id} /><input type="hidden" name="back" value={back} />
+                          <textarea name="note" className="in" rows={2} maxLength={600} placeholder="What it is for (optional)" aria-label="Note for the Super Admin" />
+                          <Submit small icon="send" pending="Sending…">Send for approval</Submit>
+                        </form>}
+                      </>}
+                    </section>
+                  )}
                   {d.image_path && !awaitingImport && !BUSY.includes(d.status) && (
                     <details className={studioStyles.reviewDisclosure} open={sp.made===d.id}><summary>{d.verdict ? 'View or update review' : 'Review this design'}</summary><Locked key={`${d.verdict}-${d.reviewed_at}`} action={reviewImage} saved={!!d.verdict} className="review" label="Save review"
                       savedNote={d.verdict ? `${d.reviewer_role ? ROLE_LABEL[d.reviewer_role as AppRole] : 'Reviewed'}${d.review ? `: ${d.review}` : ''}` : undefined}>

@@ -35,7 +35,7 @@ function actions(result={data:id,error:null}) {
   const db={rpc:async(name,args)=>{calls.push({name,args});return result;}};
   const modules={'next/cache':{revalidatePath:path=>paths.push(path)},'next/navigation':{redirect:path=>{redirects.push(path);throw Object.assign(Error('Redirect'),{isRedirect:true});}},'@/lib/supabase/server':{supabaseServer:async()=>db},'@/lib/supabase/admin':{supabaseAdmin:()=>{immediate++;}},'@/lib/agents/publish':{publishApproved:async()=>{immediate++;}},'@/lib/auth/session':{requireUser:async()=>({db})},'@/lib/automation/core.mjs':{UUID}};
   const exports={};new Function('exports','require',code)(exports,name=>{assert.ok(name in modules,`Unmocked import ${name}`);return modules[name];});
-  return {request:exports.requestCampaignReview,calls,paths,redirects,get immediate(){return immediate;}};
+  return {request:exports.requestCampaignReview,decideDesign:exports.decideDesign,calls,paths,redirects,get immediate(){return immediate;}};
 }
 
 test('fresh-review action queues the authenticated RPC and revalidates without advancing or publishing',async()=>{
@@ -51,4 +51,15 @@ test('invalid, unauthorized or busy rereview requests cannot claim success',asyn
     const h=actions({data:null,error:{code,message:'Internal detail must not leak'}}),form=new FormData();form.set('id',id);await assert.rejects(h.request(form));
     assert.match(h.redirects[0],/error=/);assert.doesNotMatch(decodeURIComponent(h.redirects[0]),/Internal detail|review queued/);assert.equal(h.paths.length,0);assert.equal(h.immediate,0);
   }
+});
+
+test('the Super Admin decides a Studio design through the authenticated RPC, and refusals stay on that design',async()=>{
+  const h=actions({data:'approved',error:null}),form=new FormData();form.set('id',id);form.set('decision','approved');form.set('note','  ');
+  await assert.rejects(h.decideDesign(form),error=>error.isRedirect===true);
+  assert.deepEqual(h.calls,[{name:'decide_design_approval',args:{p_id:id,p_decision:'approved',p_note:null}}]);
+  assert.ok(h.paths.includes('/studio'));assert.equal(h.immediate,0,'nothing is published');
+  assert.match(decodeURIComponent(h.redirects[0]),/tab=designs&msg=Design approved/);
+  const noted=actions({data:null,error:{message:'Add a note so the team knows why'}}),f2=new FormData();f2.set('id',id);f2.set('decision','changes');
+  await assert.rejects(noted.decideDesign(f2));assert.match(decodeURIComponent(noted.redirects[0]),new RegExp(`tab=designs&design=${id}&error=Add a short note`));
+  const invalid=actions(),f3=new FormData();f3.set('id','nope');await assert.rejects(invalid.decideDesign(f3));assert.equal(invalid.calls.length,0);
 });

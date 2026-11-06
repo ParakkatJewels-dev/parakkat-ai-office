@@ -70,3 +70,22 @@ export async function decideApproval(form: FormData) {
   revalidatePath('/approvals'); revalidatePath('/dashboard');
   done(decision === 'approve' ? 'Approved. It now waits on the next sign-off.' : decision === 'changes' ? 'Changes requested. The team will revise the plan and send it back to you.' : 'Plan rejected. The team has your note.', 'plans');
 }
+
+const DESIGN_DONE: Record<string, string> = { approved: 'Design approved. The team can use it.', changes: 'Sent back with your note. The team will make a new version and send it again.', rejected: 'Design rejected. The team has your note.' };
+
+/** The Super Admin signs off a design a head sent from Studio. The database checks who decides and keeps the exact image. */
+export async function decideDesign(form: FormData) {
+  const id = String(form.get('id') || ''), decision = String(form.get('decision') || '');
+  if (!UUID.test(id)) back('Choose a design to decide.', 'designs');
+  const db = await supabaseServer();
+  const { error } = await db.rpc('decide_design_approval', { p_id: id, p_decision: decision, p_note: String(form.get('note') || '').trim() || null });
+  if (error) {
+    const m = error.message || '';
+    back(error.code === '42501' || /Only the Super Admin/.test(m) ? 'Only the Super Admin signs off designs.'
+      : /not waiting on anyone/.test(m) ? 'This design was already decided. Refresh to see where it stands.'
+      : /Add a note/.test(m) ? 'Add a short note so the team knows what to change or why.'
+      : 'Your decision wasn’t saved. Your note is kept; try again in a moment.', 'designs', `&design=${id}`);
+  }
+  revalidatePath('/approvals'); revalidatePath('/studio'); revalidatePath('/dashboard');
+  done(DESIGN_DONE[decision] || 'Decision saved.', 'designs');
+}

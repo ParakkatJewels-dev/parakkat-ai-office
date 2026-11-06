@@ -57,6 +57,8 @@ export function TopBar({ name, role, waiting, needs = [], admin = false, seo = f
       { id: 'page-admin', label: 'Settings', sub: 'People, brand, AI and connections', href: '/admin', icon: 'settings' as const },
     ] : []),
   ], [admin, seo, studio, video]);
+  // On a phone the top bar names the page instead of showing the brand.
+  const here = pages.filter(p => p.href && (path === p.href || path.startsWith(`${p.href}/`))).sort((a, b) => b.href!.length - a.href!.length)[0]?.label || 'Parakkat';
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return pages.slice(0, 6);
@@ -110,6 +112,7 @@ export function TopBar({ name, role, waiting, needs = [], admin = false, seo = f
     <header className="topbar">
       <button type="button" className="iconbtn mobile-menu-trigger" aria-label="Open workspace navigation" aria-haspopup="dialog" onClick={() => window.dispatchEvent(new Event('workspace:navigation'))}><Icon name="menu" /></button>
       <Link href="/dashboard" className="wordmark mobile-wordmark" aria-label="Parakkat AI Office home"><b>Parakkat</b><small>AI Office</small></Link>
+      <p className="top-title" aria-hidden="true">{here}</p>
       <div className="search" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
         <Icon name="search" size={19} />
         <input ref={box} value={q} placeholder="Search pages, agents, teams…" aria-label="Search pages, agents, people or departments" role="combobox" aria-expanded={open} aria-controls="search-hits" aria-autocomplete="list" aria-activedescendant={open && hits[cur] ? `search-${hits[cur].id}` : undefined} autoComplete="off"

@@ -302,3 +302,30 @@ export async function reviewImage(form: FormData) {
   revalidatePath('/studio');
   redirect(`${back}${back.includes('?') ? '&' : '?'}msg=${encodeURIComponent('Review saved. The designers read it from their next design.')}`);
 }
+
+/** Plain words for the approval errors people can act on. */
+function approvalError(e: unknown) {
+  const text = errText(e), code = e && typeof e === 'object' ? String((e as { code?: unknown }).code || '') : '';
+  if (code === 'PGRST202' || code === '42883' || code === '42P01' || /request_design_approval|design_approvals/.test(text)) return 'Send for approval is not switched on yet. The Super Admin needs to apply the latest database update.';
+  if (/no finished image/i.test(text)) return 'This design has no finished image yet.';
+  if (/authorized department head|not available to this account/i.test(text)) return 'Only the person who ordered this design, the Creative Head or the Super Admin can send it.';
+  return text;
+}
+
+/** A head sends one finished design to the Super Admin to sign off. The request keeps the exact image. */
+export async function requestDesignApproval(form: FormData) {
+  const { db, role } = await requireUser();
+  if (!(await canUseStudio(db, role))) redirect('/office');
+  const raw = String(form.get('back') || '/studio'), back = raw.startsWith('/studio') ? raw.split('#')[0] : '/studio';
+  const join = back.includes('?') ? '&' : '?';
+  try {
+    const source = String(form.get('source')), id = String(form.get('id')), note = String(form.get('note') || '').trim().slice(0, 600);
+    if (!['design', 'creative'].includes(source) || !/^[0-9a-f-]{36}$/.test(id)) throw new Error('Unknown image.');
+    const { error } = await db.rpc('request_design_approval', { p_source: source, p_item: id, p_note: note || null });
+    if (error) throw error;
+  } catch (e) {
+    redirect(`${back}${join}error=${encodeURIComponent(approvalError(e))}`);
+  }
+  revalidatePath('/studio'); revalidatePath('/approvals');
+  redirect(`${back}${join}msg=${encodeURIComponent('Sent to the Super Admin. It waits in their Inbox under Designs.')}`);
+}

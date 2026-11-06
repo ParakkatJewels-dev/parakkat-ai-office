@@ -28,7 +28,7 @@ const agentLinks=tree=>nodes(tree,n=>n.type===components.Link&&/^\/agents\/agent
 test('agent directory pages its rows while activity and totals retain all authorized agents',async()=>{
   const h=agentPage(),tree=await h.render({searchParams:Promise.resolve({page:'2'})});
   assert.deepEqual(h.scope,['creative','sales']);
-  assert.equal(agentLinks(tree).length,12);assert.equal(agentLinks(tree)[0].props.href,'/agents/agent-13');
+  assert.equal(agentLinks(tree).length,15);assert.equal(agentLinks(tree)[0].props.href,'/agents/agent-16');
   const provider=nodes(tree,n=>n.type===components.AgentActivityProvider)[0];assert.equal(Object.keys(provider.props.history).length,30);
   const pager=nodes(tree,n=>n.type===components.Pager)[0];assert.equal(pager.props.total,30);assert.equal(pager.props.page,2);
   const reports=nodes(tree,n=>n.type===components.Tile&&n.props.label==='Reports forwarded')[0];

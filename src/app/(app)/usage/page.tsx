@@ -69,12 +69,11 @@ export default async function Usage({ searchParams }: { searchParams: Promise<Re
       <section className="tiles" aria-label="Summary">
         <Tile icon="rupee" label="AI cost" value={rs(R.cost_usd || 0)} sub={`${(R.calls || 0).toLocaleString('en-IN')} calls${R.failed ? ` · ${R.failed} failed` : ''}`} />
         <Tile icon="clock" tone="amber" label="This month so far" value={inr(spentInr)} />
-        <Tile icon="trend" tone="blue" label="Month forecast" value={inr(projInr)} sub={budget ? `of ${inr(budget)}` : undefined} />
+        <Tile icon="trend" tone="blue" label="Month forecast" value={inr(projInr)} sub={budget ? <span className={styles.budgetLine}><span className={styles.budgetBar} role="img" aria-label={`${Math.round(spentInr / budget * 100)}% of the ${inr(budget)} budget used`}><i style={{ width: `${Math.min(100, spentInr / budget * 100)}%` }} className={over ? styles.bad : warn ? styles.warn : ''} /></span>of {inr(budget)}</span> : undefined} />
         <Tile icon="spark" tone="violet" label="Tokens" value={`${((Number(R.input_tokens || 0) + Number(R.output_tokens || 0)) / 1e6).toFixed(2)}M`} sub={Number(R.images || 0) ? `${Number(R.images || 0)} images` : undefined} />
       </section>
 
-      {budget && <div className="budget"><span className="progress"><i style={{ width: `${Math.min(100, spentInr / budget * 100)}%` }} className={over ? 'bad' : warn ? 'warn' : ''} /><b style={{ left: `${Math.min(100, projInr / budget * 100)}%` }} title="Projected" /></span>
-        <span className="sm">{inr(spentInr)} of {inr(budget)} · projected {inr(projInr)}</span></div>}
+
 
       <nav className="tabs" aria-label="Usage sections">
         <a href={qs({tab:null})} className={tab==='overview'?'on':''} aria-current={tab==='overview'?'page':undefined}><Icon name="chart" size={16}/>Overview</a>
@@ -103,27 +102,17 @@ export default async function Usage({ searchParams }: { searchParams: Promise<Re
           </tbody></table></div>
         </section>
 
-        <section className="card s4">
-          <div className="card-head"><div><h3>By agent</h3><p className="sub">Top 25</p></div></div>
-          <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Usage by agent"><table className="tbl"><thead><tr><th scope="col">Agent</th><th scope="col" className="r">Calls</th><th scope="col" className="r">Cost</th></tr></thead><tbody>{(R.by_agent || []).map(a => <tr key={a.agent_id}><td><b>{byId[a.agent_id]?.name || 'Not tied to an agent'}</b><span className="sm">{a.dept ? D[a.dept] || a.dept : ''}</span></td><td className="r">{a.calls}</td><td className="r">{rs(a.cost_usd)}</td></tr>)}
-            {!(R.by_agent || []).length && <tr><td colSpan={3} className="sm">Nothing yet</td></tr>}</tbody></table></div>
-        </section>
-        <section className="card s4">
-          <div className="card-head"><div><h3>By team</h3><p className="sub">Share of the period's cost</p></div></div>
-          <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Usage by team"><table className="tbl"><thead><tr><th scope="col">Team</th><th scope="col" className="r">Share</th><th scope="col" className="r">Cost</th></tr></thead><tbody>{(R.by_dept || []).map(a => <tr key={a.dept}><td><b>{D[a.dept] || (a.dept === 'other' ? 'Other' : a.dept)}</b></td><td className="r">{share(a.cost_usd)}</td><td className="r">{rs(a.cost_usd)}</td></tr>)}
-            {!(R.by_dept || []).length && <tr><td colSpan={3} className="sm">Nothing yet</td></tr>}</tbody></table></div>
-        </section>
-        <section className="card s4">
-          <div className="card-head"><div><h3>By job</h3><p className="sub">Campaigns, SEO, designs, autopilot</p></div></div>
-          <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Usage by job"><table className="tbl"><thead><tr><th scope="col">Job</th><th scope="col" className="r">Calls</th><th scope="col" className="r">Cost</th></tr></thead><tbody>{(R.by_feature || []).map(a => <tr key={a.feature}><td><b>{featureName(a.feature)}</b></td><td className="r">{a.calls}</td><td className="r">{rs(a.cost_usd)}</td></tr>)}
-            {!(R.by_feature || []).length && <tr><td colSpan={3} className="sm">Nothing yet</td></tr>}</tbody></table></div>
+        <section className={`card ${styles.fold}`} aria-label="More breakdowns">
+          <details><summary>By agent</summary><div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Usage by agent"><table className="tbl"><thead><tr><th scope="col">Agent</th><th scope="col" className="r">Calls</th><th scope="col" className="r">Cost</th></tr></thead><tbody>{(R.by_agent || []).map(a => <tr key={a.agent_id}><td><b>{byId[a.agent_id]?.name || 'Not tied to an agent'}</b><span className="sm">{a.dept ? D[a.dept] || a.dept : ''}</span></td><td className="r">{a.calls}</td><td className="r">{rs(a.cost_usd)}</td></tr>)}
+            {!(R.by_agent || []).length && <tr><td colSpan={3} className="sm">Nothing yet</td></tr>}</tbody></table></div></details>
+          <details><summary>By team</summary><div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Usage by team"><table className="tbl"><thead><tr><th scope="col">Team</th><th scope="col" className="r">Share</th><th scope="col" className="r">Cost</th></tr></thead><tbody>{(R.by_dept || []).map(a => <tr key={a.dept}><td><b>{D[a.dept] || (a.dept === 'other' ? 'Other' : a.dept)}</b></td><td className="r">{share(a.cost_usd)}</td><td className="r">{rs(a.cost_usd)}</td></tr>)}
+            {!(R.by_dept || []).length && <tr><td colSpan={3} className="sm">Nothing yet</td></tr>}</tbody></table></div></details>
+          <details><summary>By job</summary><div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Usage by job"><table className="tbl"><thead><tr><th scope="col">Job</th><th scope="col" className="r">Calls</th><th scope="col" className="r">Cost</th></tr></thead><tbody>{(R.by_feature || []).map(a => <tr key={a.feature}><td><b>{featureName(a.feature)}</b></td><td className="r">{a.calls}</td><td className="r">{rs(a.cost_usd)}</td></tr>)}
+            {!(R.by_feature || []).length && <tr><td colSpan={3} className="sm">Nothing yet</td></tr>}</tbody></table></div></details>
+          <details><summary>By campaign or run</summary><div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Usage by campaign or run"><table className="tbl"><thead><tr><th scope="col">Run</th><th scope="col" className="r">Calls</th><th scope="col" className="r">Cost</th></tr></thead><tbody>{(R.by_run || []).map(a => <tr key={a.run_id}><td><b>{a.occasion || 'Run'}</b><span className="sm">{a.kind === 'seo' ? 'SEO check' : a.kind === 'campaign' ? 'Campaign' : a.kind}</span></td><td className="r">{a.calls}</td><td className="r">{rs(a.cost_usd)}</td></tr>)}
+            {!(R.by_run || []).length && <tr><td colSpan={3} className="sm">Nothing yet</td></tr>}</tbody></table></div></details>
         </section>
 
-        <section className="card s12">
-          <div className="card-head"><div><h3>By campaign or run</h3><p className="sub">The 15 costliest in this period</p></div></div>
-          <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Usage by campaign or run"><table className="tbl"><thead><tr><th scope="col">Run</th><th scope="col" className="r">Calls</th><th scope="col" className="r">Cost</th></tr></thead><tbody>{(R.by_run || []).map(a => <tr key={a.run_id}><td><b>{a.occasion || 'Run'}</b><span className="sm">{a.kind === 'seo' ? 'SEO check' : a.kind === 'campaign' ? 'Campaign' : a.kind}</span></td><td className="r">{a.calls}</td><td className="r">{rs(a.cost_usd)}</td></tr>)}
-            {!(R.by_run || []).length && <tr><td colSpan={3} className="sm">Nothing yet</td></tr>}</tbody></table></div>
-        </section>
 
         </>}
         {tab==='billing' && <>

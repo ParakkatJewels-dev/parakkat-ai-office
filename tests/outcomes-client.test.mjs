@@ -98,18 +98,19 @@ test('actual attention filter matches the summary for 201 historic and 15 curren
   const open=current.map(item=>({initiative_id:item.id,status:'open'}));
   const incidents=[...open,...open.slice(0,3),...historic.map(item=>({initiative_id:item.id,status:'resolved'})),{initiative_id:'outside-snapshot',status:'open'},{initiative_id:'historic-0',status:'snoozed'},{initiative_id:'historic-1',status:'unknown'}];
   const data=snapshot([...historic,...current]);data.incidents=incidents;data.summary.needs_attention=openIncidentInitiativeIds(data.initiatives,incidents).size;
-  const h=harness();await h.respond(0,data);h.node('select').props.onChange({target:{value:'attention'}});await h.flush();
-  const cards=[];const collect=node=>{if(Array.isArray(node)){node.forEach(collect);return;}if(!node||typeof node!=='object')return;if(node.type?.name==='InitiativeCard')cards.push(node);collect(node.props?.children);};collect(h.tree);
+  const h=harness();await h.respond(0,data);await h.click('Needs attention');
+  const cards=[];const collect=node=>{if(Array.isArray(node)){node.forEach(collect);return;}if(!node||typeof node!=='object')return;if(node.type?.name==='InitiativeRow')cards.push(node);collect(node.props?.children);};collect(h.tree);
   assert.equal(cards.length,15);assert.ok(cards.every(card=>card.props.row.id.startsWith('current-')));
-  const tile=find(h.tree,node=>node.type==='Tile'&&node.props.label==='Needs attention');assert.equal(tile.props.value,cards.length);
+  // The pressed filter chip carries the same count as the rows it shows.
+  const chip=find(h.tree,node=>node.type==='button'&&textOf(node).startsWith('Needs attention'));assert.equal(chip.props['aria-pressed'],true);assert.equal(textOf(chip),`Needs attention${cards.length}`);
   assert.equal(data.incidents.filter(incident=>incident.status==='resolved').length,201);h.unmount();
 });
 
 
 test('initiative pagination bounds long snapshots, keeps selection and resets after a search',async()=>{
   const records=Array.from({length:45},(_,i)=>({...row,id:`initiative-${i}`,title:`Launch ${i}`}));
-  const h=harness();await h.respond(0,snapshot(records));h.node('select').props.onChange({target:{value:'all'}});await h.flush();
-  const collect=()=>{const cards=[];const visit=node=>{if(Array.isArray(node)){node.forEach(visit);return;}if(!node||typeof node!=='object')return;if(node.type?.name==='InitiativeCard')cards.push(node.props.row.id);visit(node.props?.children);};visit(h.tree);return cards;};
+  const h=harness();await h.respond(0,snapshot(records));await h.click('All work');
+  const collect=()=>{const cards=[];const visit=node=>{if(Array.isArray(node)){node.forEach(visit);return;}if(!node||typeof node!=='object')return;if(node.type?.name==='InitiativeRow')cards.push(node.props.row.id);visit(node.props?.children);};visit(h.tree);return cards;};
   assert.equal(collect().length,20);assert.equal(h.node('Pagination').props.total,45);
   h.node('Pagination').props.onPageChange(2);await h.flush();
   assert.equal(collect()[0],'initiative-20');assert.equal(collect().length,20);
@@ -123,7 +124,7 @@ test('initiative pagination bounds long snapshots, keeps selection and resets af
 
 test('shrinking snapshots clamp the visible page without an empty phantom page or losing a draft',async()=>{
   const records=Array.from({length:45},(_,i)=>({...row,id:`initiative-${i}`}));
-  const h=harness();await h.respond(0,snapshot(records));h.node('select').props.onChange({target:{value:'all'}});await h.flush();h.node('Pagination').props.onPageChange(3);await h.flush();
+  const h=harness();await h.respond(0,snapshot(records));await h.click('All work');h.node('Pagination').props.onPageChange(3);await h.flush();
   h.node('InitiativeDetail').props.onDialog({kind:'note',initiative:records[1]});await h.flush();
   await h.advance(30000);await h.respond(1,snapshot(records.slice(0,8)));
   assert.equal(h.node('Pagination').props.page,1);assert.equal(h.node('Pagination').props.total,8);

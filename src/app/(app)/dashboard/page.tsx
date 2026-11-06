@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { requireUser } from '@/lib/auth/session';
 import { liveRuns, runSteps } from '@/lib/agents/campaign';
 import { Icon } from '@/components/Icon';
-import { Tile, Stepper, Pager, pageOf, inr, when } from '@/components/ui';
+import { Tile, Pager, pageOf, inr, when } from '@/components/ui';
 import { googleId, metaId } from '@/lib/connectors/accounts.mjs';
 import { Filters } from './Filters';
 import styles from './Dashboard.module.css';
@@ -81,15 +81,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const branchTotal = branches.reduce((t, b) => t + b.revenue, 0), branchMax = branches[0]?.revenue || 1;
   const change = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}%` : 'new';
 
-  const view = ['ads', 'social', 'branches', 'campaigns'].includes(sp.view || '') ? sp.view! : 'sales';
-  const viewHref = (v: string) => { const q = new URLSearchParams(); for (const [k, val] of Object.entries(sp)) if (val && !['view', 'bp'].includes(k)) q.set(k, val); if (v !== 'sales') q.set('view', v); return `/dashboard${q.size ? `?${q}` : ''}`; };
-  const VIEWS: [string, string][] = [['sales', 'Sales'], ['ads', 'Ads'], ['social', 'Social'], ['branches', 'Branches'], ['campaigns', 'Campaigns']];
-
   return (
     <div className={`page ${styles.dashboard}`}>
       <header className={styles.hello}>
         <div><span className={styles.date}>{greeting} · {dateLabel}</span><h1>{inbox.failed ? 'Your day at a glance' : waiting ? `${plural(waiting, 'thing needs', 'things need')} you` : 'You’re all caught up'}</h1></div>
-        <div className="page-actions"><Filters accounts={accounts} from={P.from} to={P.to} ads={view === 'ads'} /><Link href="/office" className="btn ghost"><Icon name="cube" size={17} />Office</Link></div>
+        <div className="page-actions"><Filters accounts={accounts} from={P.from} to={P.to} ads={false} /><Link href="/office" className="btn ghost"><Icon name="cube" size={17} />Office</Link></div>
       </header>
       {(summaryError || branchError || postsError) && <div className="flash" role="alert">Some numbers couldn’t load. Refresh to try again; a dash means “not loaded”, not zero.</div>}
       {syncJob?.last_result?.startsWith('failed') && <div className="banner" role="status"><Icon name="sync" size={18} /><span>The last data update failed, so some numbers may be old.</span></div>}
@@ -101,27 +97,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <Tile icon="trend" tone="violet" label="Ad return" value={!summaryError && spend ? `${roas.toFixed(1)}x` : '–'} sub={prevRoas ? `was ${prevRoas.toFixed(1)}x` : undefined} />
       </section>
 
-      <div className={styles.top}>
-        <section className={`card ${styles.needs}`} aria-labelledby="needs-title">
-          <div className="card-head"><h2 id="needs-title">Needs you</h2>{waiting > 0 && <span className="pill needs">{waiting}</span>}</div>
-          {inbox.failed ? <div className="empty"><Icon name="inbox" size={20} /><p>Your Inbox couldn’t load. Refresh to try again.</p></div>
-            : inbox.items.length ? <ul className={styles.needList}>{inbox.items.map(n => <li key={n.id}><Link href={n.href}>
-              <span className={`kind ${n.kind}`} aria-hidden="true">{KIND[n.kind]}</span>
-              <span className={styles.needText}><b>{n.title}</b><small>{KIND_WORD[n.kind]}{n.agent ? ` · ${n.agent}` : ''} · {when(n.at)}</small></span>
-              <Icon name="next" size={16} /></Link></li>)}</ul>
-            : <div className="empty"><Icon name="check" size={20} /><p>Nothing waits on you.</p></div>}
-          {waiting > inbox.items.length && <Link href="/approvals" className={styles.all}>All {waiting} in the Inbox<Icon name="arrow" size={15} /></Link>}
-        </section>
-        <section className="card" aria-labelledby="team-title">
-          <div className="card-head"><h2 id="team-title">Team at work</h2><Link href="/office" className={styles.link}>Office<Icon name="arrow" size={14} /></Link></div>
-          <WorkingNow observedAt={new Date().toISOString()} />
-        </section>
-      </div>
-
-      <nav className="tabs" aria-label="Business">{VIEWS.map(([v, label]) => <Link key={v} href={viewHref(v)} scroll={false} className={view === v ? 'on' : ''} aria-current={view === v ? 'page' : undefined}>{label}</Link>)}</nav>
-      <div className="bento">
-        {view === 'sales' && <>
-        <section className="card s8">
+      <div className={styles.grid}>
+        <section className={`card ${styles.wide}`}>
           <div className="card-head"><div><h3>Online sales by day</h3></div><b className="card-num">{summaryError ? '—' : inr(revenue)}</b></div>
           {days.length > 1 ? (
             <svg viewBox={`0 0 ${W} ${H + 22}`} className="chart" role="img" aria-label={`Daily revenue for ${P.label}, peaking at ${inr(max)}`}>
@@ -134,7 +111,23 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </svg>
           ) : <div className="empty"><Icon name="chart" size={26} /><p>{summaryError ? 'Revenue could not load. Refresh this page to try again.' : 'Connect Shopify in Settings to see daily sales.'}</p></div>}
         </section>
-        <section className="card s4">
+        <div className={styles.stack}>
+        <section className="card" aria-labelledby="needs-title">
+          <div className="card-head"><h2 id="needs-title">Needs you</h2>{waiting > 0 && <span className="pill needs">{waiting}</span>}</div>
+          {inbox.failed ? <p className="sub">Your Inbox couldn’t load. Refresh to try again.</p>
+            : inbox.items.length ? <ul className={styles.needList}>{inbox.items.map(n => <li key={n.id}><Link href={n.href}>
+              <span className={`kind ${n.kind}`} aria-hidden="true">{KIND[n.kind]}</span>
+              <span className={styles.needText}><b>{n.title}</b><small>{KIND_WORD[n.kind]}{n.agent ? ` · ${n.agent}` : ''} · {when(n.at)}</small></span>
+              <Icon name="next" size={16} /></Link></li>)}</ul>
+            : <p className={styles.line}>Nothing needs you.{inbox.withHeads > 0 && <> <Link href="/approvals">{plural(inbox.withHeads, 'report is', 'reports are')} with team heads</Link>.</>}</p>}
+          {waiting > inbox.items.length && <Link href="/approvals" className={styles.all}>All {waiting} in the Inbox<Icon name="arrow" size={15} /></Link>}
+        </section>
+        <section className="card" aria-labelledby="team-title">
+          <div className="card-head"><h2 id="team-title">Team at work</h2><Link href="/office" className={styles.link}>Office<Icon name="arrow" size={14} /></Link></div>
+          <WorkingNow observedAt={new Date().toISOString()} limit={4} />
+        </section>
+        </div>
+        <section className="card">
           <div className="card-head"><div><h3>Top products</h3></div></div>
           {top.length ? <ul className="rows">{top.map((t, i) => (
             <li key={t.id}>
@@ -144,9 +137,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </li>
           ))}</ul> : <div className="empty"><Icon name="bag" size={26} /><p>{summaryError ? 'Product results could not load.' : 'No orders synced yet.'}</p></div>}
         </section>
-        </>}
-        {view === 'ads' && <>
-        <section className="card s5">
+        <section className="card">
           <div className="card-head"><div><h3>Ad spend</h3></div></div>
           {split.length ? (
             <div className="donut">
@@ -161,22 +152,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </div>
           ) : <div className="empty"><Icon name="megaphone" size={26} /><p>{summaryError ? 'Ad spend could not load. Refresh this page to try again.' : platform || account ? 'No ad spend for these filters.' : 'No ad spend yet. Connect Meta or Google Ads in Settings.'}</p></div>}
         </section>
-        <section className="card s7">
-          <div className="card-head"><div><h3>Recent campaigns</h3></div></div>
-          {(runs || []).length ? <ul className="runs">{runs!.map(r => {
-            const v = runSteps(r, live.has(r.id));
-            return (
-              <li key={r.id}>
-                <div className="run-name"><b>{r.occasion || 'Campaign run'}</b><span className="sm">Started {when(r.started_at)}</span></div>
-                <Stepper steps={v.steps} />
-                <span className={`pill ${v.pill[1]}`}>{v.pill[0]}</span>
-              </li>
-            );
-          })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No campaigns have run in this period. <Link href="/campaigns">Start one</Link>.</p></div>}
+        <section className="card" aria-labelledby="runs-title">
+          <div className="card-head"><h3 id="runs-title">Campaigns</h3><Link href="/campaigns" className={styles.link}>All<Icon name="arrow" size={14} /></Link></div>
+          {(runs || []).length ? <ul className={styles.rowList}>{runs!.map(r => { const v = runSteps(r, live.has(r.id)); return <li key={r.id}><span className="clip">{r.occasion || 'Campaign'}</span><span className={`pill ${v.pill[1]}`}>{v.pill[0]}</span></li>; })}</ul>
+            : <p className={styles.line}>No campaigns in this period. <Link href="/campaigns">Start one</Link>.</p>}
         </section>
-        </>}
-        {view === 'social' && <>
-        <section className="card s6">
+        <section className="card">
           <div className="card-head"><div><h3>Most saved posts</h3></div></div>
           {(posts || []).length ? <ul className="rows">{posts!.map(p => (
             <li key={p.id}>
@@ -186,15 +167,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </li>
           ))}</ul> : <div className="empty"><Icon name="heart" size={26} /><p>{postsError ? 'Instagram posts could not load.' : 'No Instagram posts synced yet.'}</p></div>}
         </section>
-        <section className="card s6">
+        <section className="card">
           <div className="card-head"><div><h3>Competitor moves</h3></div></div>
           {(moves || []).length ? <ol className="timeline">{moves!.map(m => (
             <li key={m.id}><i /><div><b>{(m.competitors as any)?.name}</b> <span className="pill acc">{m.kind}</span><p>{m.summary}</p><time>{when(m.seen_at)}</time></div></li>
           ))}</ol> : <div className="empty"><Icon name="eye" size={26} /><p>Add competitors in Settings and the team will watch them for you.</p></div>}
         </section>
-        </>}
-        {view === 'branches' && <>
-        <section className="card s12" id="branch-sales">
+        <section className="card" id="branch-sales">
           <div className="card-head"><div><h3>Branches</h3></div>{branches.length > 0 && <b className="card-num">{inr(branchTotal)}</b>}</div>
           {branches.length ? <><ul className="rows">{shownBranches.map(b => (
             <li key={b.branch}>
@@ -205,22 +184,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </li>
           ))}</ul><Pager sp={sp} param="bp" page={branchPage} size={5} total={branches.length} shown={shownBranches.length} anchor="branch-sales"/></> : <div className="empty"><Icon name="chart" size={26} /><p>{branchError ? 'Branch results could not load. Refresh to try again.' : 'Connect your billing system in Settings to see every branch.'}</p></div>}
         </section>
-        </>}
-        {view === 'campaigns' && <>
-        <section className="card s12">
-          <div className="card-head"><div><h3>Recent campaigns</h3></div></div>
-          {(runs || []).length ? <ul className="runs">{runs!.map(r => {
-            const v = runSteps(r, live.has(r.id));
-            return (
-              <li key={r.id}>
-                <div className="run-name"><b>{r.occasion || 'Campaign run'}</b><span className="sm">Started {when(r.started_at)}</span></div>
-                <Stepper steps={v.steps} />
-                <span className={`pill ${v.pill[1]}`}>{v.pill[0]}</span>
-              </li>
-            );
-          })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No campaigns have run in this period. <Link href="/campaigns">Start one</Link>.</p></div>}
-        </section>
-        </>}
       </div>
     </div>
   );

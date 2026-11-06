@@ -64,18 +64,12 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
       <SettingsAnchor />
       <PageHead title="Settings" sub="Set up people, brand, AI and connections for your office. Only the Super Admin sees this page." />
       <SettingsDraftGuard key={`${tab}:${sp.msg || ''}:${sp.error || ''}`}>
-        <div className={styles.layout}>
-          <nav className={styles.navigation} aria-label="Settings sections">
-            {['Workspace', 'Intelligence', 'System'].map(group => <div className={styles.navGroup} key={group}>
-              <p className={styles.navLabel}>{group}</p>
-              {TABS.filter(t => t.group === group).map(t => <Link key={t.id} href={href(t.id)} className={styles.navLink} aria-current={t.id === tab ? 'page' : undefined}>
-                <Icon name={t.icon} size={18} /><span><b>{t.label}</b></span>
-              </Link>)}
-            </div>)}
-            <Link href="/usage?tab=limits" className={styles.billingLink}><Icon name="rupee" size={17} />Usage & billing<Icon name="arrow" size={15} /></Link>
-          </nav>
+        <nav className="tabs" aria-label="Settings sections">
+          {TABS.map(t => <Link key={t.id} href={href(t.id)} className={t.id === tab ? 'on' : undefined} aria-current={t.id === tab ? 'page' : undefined}><Icon name={t.icon} size={16} />{t.label}</Link>)}
+        </nav>
+        <div className={styles.single}>
           <div className={styles.content}>
-            <header className={styles.sectionHead}><div><h2>{selected.label}</h2></div></header>
+            <h2 className="sr-only">{selected.label}</h2>
             {sp.msg && <p className="flash ok" role="status">{sp.msg}</p>}
             {sp.error && <p className="flash" role="alert">{sp.error}</p>}
             {paused === null && <p className="flash" role="alert">Office status is unavailable. Reload before changing office activity.</p>}

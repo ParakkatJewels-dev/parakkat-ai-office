@@ -1,9 +1,10 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
 import { headsDept } from '@/lib/auth/depts';
 import { Icon } from '@/components/Icon';
 import { Submit } from '@/components/forms';
-import { PageHead, Tile, Avatar, Pager, pageOf, rangeOf, inr, when } from '@/components/ui';
+import { PageHead, Avatar, Pager, pageOf, rangeOf, inr, when } from '@/components/ui';
 import { runSeoNow } from './actions';
 import styles from './Seo.module.css';
 
@@ -18,16 +19,24 @@ function Spark({ pts }: { pts: Pt[] | null }) {
   return <svg viewBox="0 0 96 24" className="spark" aria-hidden="true"><polyline points={line} fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinejoin="round" /></svg>;
 }
 const KW = 25;
+const SHOW = { all: 'All terms', rising: 'Rising', easy: 'Easy wins' } as const;
+const SORT = { searches: 'Searches a month', trend: 'Trend', bid: 'Bid range' } as const;
+const REPORT_WORD: Record<string, [string, string]> = { with_head: ['Waiting on you', 'needs'], accepted: ['Accepted', 'good'], sent_back: ['Sent back', 'warn'], rejected: ['Rejected', 'bad'], rejected_by_lead: ['Rejected', 'bad'] };
 const pct = (n: number | null) => n == null ? '–' : `${n > 0 ? '+' : ''}${n}%`;
 
 export default async function Seo({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { db, role } = await requireUser();
   if (!(await headsDept(db, role, 'seo'))) redirect('/office');
   const sp = await searchParams, kp = pageOf(sp, 'kp'), [k0, k1] = rangeOf(kp, KW), q = (sp.q || '').trim().slice(0, 80);
-  // the keyword table is sorted, filtered and paged in the database; the tiles are counts
+  const show = (sp.show && sp.show in SHOW ? sp.show : 'all') as keyof typeof SHOW, sort = (sp.sort && sp.sort in SORT ? sp.sort : 'searches') as keyof typeof SORT;
+  const href = (patch: Record<string, string | null>) => { const u = new URLSearchParams(); for (const [k, v] of Object.entries({ q: q || null, show: show === 'all' ? null : show, sort: sort === 'searches' ? null : sort, ...patch })) if (v) u.set(k, v); return `/seo${u.size ? `?${u}` : ''}`; };
+  // the keyword table is sorted, filtered and paged in the database; the summary line is counts
   const cols = 'keyword, avg_monthly_searches, competition, bid_low, bid_high, trend_interest, trend_change, trend_series, rising, updated_at';
   let table = db.from('seo_keywords').select(cols, { count: 'exact' }).not('avg_monthly_searches', 'is', null);
   if (q) table = table.ilike('keyword', `%${q.replace(/[%_\\]/g, '')}%`);
+  if (show === 'rising') table = table.eq('rising', true);
+  if (show === 'easy') table = table.in('competition', ['LOW', 'MEDIUM']);
+  table = sort === 'trend' ? table.order('trend_change', { ascending: false, nullsFirst: false }) : sort === 'bid' ? table.order('bid_high', { ascending: false, nullsFirst: false }) : table;
   const head = { count: 'exact' as const, head: true };
   const [{ data: byVolume, count: volCount }, { count: total }, { count: risingCount }, { count: easy }, { data: biggest }, { data: tracked }, { data: rising }, { data: latest }, { data: reports }, { data: agents }, { data: conns }] = await Promise.all([
     table.order('avg_monthly_searches', { ascending: false }).range(k0, k1),
@@ -43,6 +52,8 @@ export default async function Seo({ searchParams }: { searchParams: Promise<Reco
     db.from('connections').select('provider, status, last_synced_at, last_error').in('provider', ['google_trends', 'keyword_planner']),
   ]);
   const A = Object.fromEntries((agents || []).map(a => [a.id, a.name])), top = biggest?.[0], last = latest?.[0]?.updated_at;
+  const sortHead = (k: keyof typeof SORT, className?: string) => <th scope="col" className={className} aria-sort={sort === k ? 'descending' : undefined}>
+    <Link href={href({ sort: k === 'searches' ? null : k, kp: null })} className={sort === k ? styles.sorted : undefined}>{SORT[k]}{sort === k && <Icon name="down" size={13} />}</Link></th>;
 
   return (
     <div className={`page ${styles.page}`}>
@@ -52,55 +63,59 @@ export default async function Seo({ searchParams }: { searchParams: Promise<Reco
         <form action={runSeoNow}><Submit icon="sync" pending="Checking searches…">Run the SEO check now</Submit></form>
       </PageHead>
 
-      <section className="tiles" aria-label="Summary">
-        <Tile icon="search" label="Terms tracked" value={total || 0} sub={last ? `Checked ${when(last)}` : 'Not checked yet'} />
-        <Tile icon="trend" tone="amber" label="Rising searches" value={risingCount || 0} />
-        <Tile icon="users" tone="blue" label="Biggest term" value={top ? `${(top.avg_monthly_searches! / 1000).toFixed(top.avg_monthly_searches! < 10000 ? 1 : 0)}k` : '–'} sub={top?.keyword} />
-        <Tile icon="spark" tone="violet" label="Easy wins" value={easy || 0} />
-      </section>
+      <nav className={styles.strip} aria-label="Keyword views">
+        {Object.entries(SHOW).map(([k, label]) => <Link key={k} href={href({ show: k === 'all' ? null : k, kp: null })} className={show === k ? styles.on : undefined} aria-current={show === k ? 'page' : undefined}>
+          {label}<b>{k === 'all' ? total || 0 : k === 'rising' ? risingCount || 0 : easy || 0}</b></Link>)}
+        <span className={styles.stripNote}>{top ? <>Biggest: <b>{top.keyword}</b> · {top.avg_monthly_searches!.toLocaleString('en-IN')} a month · </> : null}{last ? `Checked ${when(last)}` : 'Not checked yet'}</span>
+      </nav>
 
       {(conns || []).some(c => c.status === 'error') && <div className="banner bad-banner" role="alert"><Icon name="plug" size={20} /><span>{(conns || []).filter(c => c.status === 'error').map(c => `${c.provider === 'google_trends' ? 'Google Trends' : 'Keyword Planner'}: ${c.last_error}`).join(' · ')}</span></div>}
 
-      <div className="bento">
-        <section className="card s8">
-          <div className="card-head"><div><h3>Keywords by monthly searches</h3><p className="sub">Keyword Planner, India. Bids are the top-of-page range in Google Ads.</p></div>
-            <form className="inline" role="search" action="/seo"><label className="find"><Icon name="search" size={16}/><input name="q" defaultValue={q} placeholder="Filter keywords" aria-label="Filter keywords"/></label><button type="submit" className="btn ghost sm-btn">Search</button>{q && <a href="/seo" className="btn ghost sm-btn">Clear</a>}</form></div>
-          {byVolume?.length ? <div className="tablewrap" tabIndex={0} role="region" aria-label="Keyword search results"><table className="table">
-            <thead><tr><th scope="col">Search term</th><th scope="col" className="r">Searches a month</th><th scope="col">Competition</th><th scope="col" className="r">Bid range</th><th scope="col">Trend</th></tr></thead>
+      <div className={styles.layout}>
+        <section className={`card ${styles.main}`} aria-labelledby="kw-title">
+          <div className={styles.toolbar}><h2 id="kw-title">Keywords</h2><span className={styles.count}>{volCount || 0}</span>
+            <form className={styles.find} role="search" action="/seo">{show !== 'all' && <input type="hidden" name="show" value={show} />}{sort !== 'searches' && <input type="hidden" name="sort" value={sort} />}<Icon name="search" size={16}/><input name="q" defaultValue={q} placeholder="Filter keywords" aria-label="Filter keywords"/>{q && <Link href={href({ q: null, kp: null })} aria-label="Clear the filter"><Icon name="x" size={14} /></Link>}</form></div>
+          {byVolume?.length ? <div className={styles.tablewrap} tabIndex={0} role="region" aria-label="Keyword search results"><table className="table">
+            <thead><tr><th scope="col">Search term</th>
+              {sortHead('searches', 'r')}<th scope="col">Competition</th>{sortHead('bid', 'r')}{sortHead('trend')}
+            </tr></thead>
             <tbody>{byVolume.map(k => <tr key={k.keyword}>
               <td><b>{k.keyword}</b>{k.rising && <span className="pill warn">rising</span>}</td>
               <td className="r num">{k.avg_monthly_searches!.toLocaleString('en-IN')}</td>
               <td><span className={`pill ${k.competition === 'LOW' ? 'good' : k.competition === 'HIGH' ? 'bad' : 'warn'}`}>{(k.competition || '?').toLowerCase()}</span></td>
               <td className="r num">{k.bid_high ? `${inr(k.bid_low || 0)}–${inr(k.bid_high)}` : '–'}</td>
-              <td><Spark pts={k.trend_series as Pt[] | null} /></td>
+              <td><span className={styles.trend}><Spark pts={k.trend_series as Pt[] | null} />{k.trend_change != null && <span className={`num ${k.trend_change >= 0 ? 'up' : 'down'}`}>{pct(k.trend_change)}</span>}</span></td>
             </tr>)}</tbody>
-          </table></div> : <div className="empty"><Icon name="search" size={26} /><p>{q ? `No keywords match "${q}".` : 'No keyword data yet. Connect Google Ads in Settings.'}</p></div>}
+          </table></div> : <div className="empty"><Icon name="search" size={26} /><p>{q ? `No keywords match "${q}".` : show !== 'all' ? 'No keywords in this view yet.' : 'No keyword data yet. Connect Google Ads in Settings.'}</p></div>}
           <Pager sp={sp} param="kp" page={kp} size={KW} total={volCount} shown={(byVolume || []).length} />
         </section>
 
-        <div className="s4 stack">
-          <section className="card">
-            <div className="card-head"><div><h3>Interest in Kerala</h3><p className="sub">Google Trends, last 3 months</p></div></div>
-            {tracked?.length ? <ul className="rows">{tracked.map(k => <li key={k.keyword}>
-              <div className="grow"><b className="clip">{k.keyword}</b><span className="sm">Interest {k.trend_interest ?? '?'} of 100</span></div>
+        <aside className={styles.side}>
+          <section className="card" aria-labelledby="trends-title">
+            <div className={styles.sideHead}><h2 id="trends-title">Interest in Kerala</h2><span>Google Trends · 3 months</span></div>
+            {tracked?.length ? <ul className={styles.trendRows}>{tracked.map(k => <li key={k.keyword}>
+              <Link href={href({ q: k.keyword, kp: null })} className="clip" title={k.keyword}>{k.keyword}</Link>
               <Spark pts={k.trend_series as Pt[]} /><span className={`num ${(k.trend_change ?? 0) >= 0 ? 'up' : 'down'}`}>{pct(k.trend_change)}</span>
-            </li>)}</ul> : <div className="empty"><Icon name="trend" size={26} /><p>Run the SEO check to read Google Trends.</p></div>}
+            </li>)}</ul> : <p className="sub">Run the SEO check to read Google Trends.</p>}
           </section>
-          <section className="card">
-            <div className="card-head"><div><h3>Rising searches</h3><p className="sub">Related searches growing fastest</p></div></div>
-            {rising?.length ? <div className="tags">{rising.map(k => <span key={k.keyword} className="pill acc">{k.keyword}</span>)}</div> : <p className="sub">None found yet.</p>}
+          <section className="card" aria-labelledby="rising-title">
+            <div className={styles.sideHead}><h2 id="rising-title">Rising searches</h2><span>Growing fastest</span></div>
+            {rising?.length ? <div className={styles.tags}>{rising.map(k => <Link key={k.keyword} href={href({ q: k.keyword, kp: null })} className="pill acc">{k.keyword}</Link>)}</div> : <p className="sub">None found yet.</p>}
           </section>
-        </div>
-
-        <section className="card s12">
-          <div className="card-head"><div><h3>SEO reports</h3><p className="sub">Checked by the SEO Lead before they reach you. Accept or send them back on the Approvals page.</p></div></div>
-          {(reports || []).length ? <ul className="rows">{reports!.map(r => <li key={r.id}>
-            <Avatar name={A[r.author_agent] || r.author_agent} dept="seo" />
-            <div className="grow"><b className="clip">{r.title}</b><details className="report-body"><summary>{A[r.author_agent]} · {when(r.updated_at)}</summary><p>{r.body}</p></details></div>
-            <span className={`pill ${r.status === 'accepted' ? 'good' : r.status === 'with_head' ? 'warn' : r.status.includes('reject') ? 'bad' : ''}`}>{r.status === 'with_head' ? 'Waiting on you' : r.status.replace(/_/g, ' ')}</span>
-          </li>)}</ul> : <div className="empty"><Icon name="doc" size={26} /><p>No SEO reports yet.</p></div>}
-        </section>
+        </aside>
       </div>
+
+      <section className={`card ${styles.reports}`} aria-labelledby="seo-reports-title">
+        <div className={styles.toolbar}><h2 id="seo-reports-title">SEO reports</h2><span className={styles.count}>Checked by the SEO Lead · decide them in the Inbox</span></div>
+        {(reports || []).length ? <ul className={styles.reportRows}>{reports!.map(r => { const word = REPORT_WORD[r.status] || [r.status.replace(/_/g, ' '), '']; return <li key={r.id}>
+          <Link href={`/approvals?report=${r.id}`} className={styles.reportRow}>
+            <Avatar name={A[r.author_agent] || r.author_agent} dept="seo" size={24} />
+            <b className="clip">{r.title}</b>
+            <span className={styles.when}>{when(r.updated_at)}</span>
+            <span className={`pill ${word[1]}`}>{word[0]}</span>
+            <Icon name="next" size={16} />
+          </Link></li>; })}</ul> : <div className="empty"><Icon name="doc" size={26} /><p>No SEO reports yet.</p></div>}
+      </section>
     </div>
   );
 }

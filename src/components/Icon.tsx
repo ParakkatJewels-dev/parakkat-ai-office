@@ -11,6 +11,7 @@ const PATHS = {
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />,
   bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" /></>,
   down: <path d="m6 9 6 6 6-6" />,
+  up: <path d="m6 15 6-6 6 6" />,
   pin: <><path d="M12 22s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12z" /><circle cx="12" cy="10" r="2.5" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   minus: <path d="M5 12h14" />,

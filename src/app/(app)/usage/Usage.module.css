@@ -22,3 +22,17 @@
 .page :is(a,button,summary,input,select,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media(max-width:760px){.page :global(.fixed-row),.page :global(.price-row.add){display:flex;flex-wrap:wrap}.page :global(.fixed-row) input,.page :global(.price-row.add) input{flex:1 1 140px}.page :global(.fixed-row) :global(.lockable){flex-wrap:wrap;min-width:0}.page :global(.seg){flex-wrap:wrap;max-width:100%}.page :global(.card-num){font-size:20px}}
 @media(pointer:coarse){.page :is(button,select,input:not([type=checkbox]):not([type=radio])),.page :global(.tabs)>a{min-height:44px}}
+
+/* Compact: the budget sits under the forecast, and the breakdowns are rows that open. */
+.budgetLine { display: flex; align-items: center; gap: 8px; }
+.budgetBar { flex: 1; max-width: 120px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 10%, transparent); overflow: hidden; }
+.budgetBar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #7c5cff, #22d3a6); }
+.budgetBar i.warn { background: var(--warn); } .budgetBar i.bad { background: var(--bad); }
+.fold { grid-column: 1 / -1; padding: 0 !important; overflow: hidden; }
+.fold details + details { border-top: 1px solid color-mix(in srgb, var(--ink) 6%, transparent); }
+.fold summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 0 14px; cursor: pointer; list-style: none; font: 600 14px var(--f-display); }
+.fold summary::-webkit-details-marker { display: none; }
+.fold summary::after { content: '+'; color: var(--accent); font-size: 18px; }
+.fold details[open] summary::after { content: '−'; }
+.fold details[open] { padding: 0 14px 14px; }
+.fold details[open] summary { padding: 0; }

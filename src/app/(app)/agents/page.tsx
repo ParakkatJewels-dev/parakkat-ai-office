@@ -16,7 +16,7 @@ export default async function Agents({ searchParams }: { searchParams: Promise<R
   const all = Object.values(cards) as Card[];
   const sum = (f: (c: Card) => number) => all.reduce((s, c) => s + f(c), 0);
   const query = (sp.q || '').trim().slice(0, 100), department = depts.some(d => d.id === sp.dept) ? sp.dept! : '';
-  const leadsOnly = sp.leads === '1', size = 12;
+  const leadsOnly = sp.leads === '1', size = 15;
   const names = Object.fromEntries(depts.map(d => [d.id, d.name]));
   const filtered = list.filter(a => (!department || a.department_id === department) && (!leadsOnly || a.is_lead)
     && (!query || [a.name, a.role_desc, names[a.department_id]].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())));
@@ -25,7 +25,15 @@ export default async function Agents({ searchParams }: { searchParams: Promise<R
 
   return (
     <AgentActivityProvider history={Object.fromEntries(all.map(card => [card.id,card.last?.at||null]))} observedAt={new Date().toISOString()}><div className={`page ${styles.page}`}>
-      <PageHead title="Agents" sub={`Your AI team: who is working, what they sent and how it went.${role === 'super_admin' ? '' : ' You see the teams you head.'}`} />
+      <PageHead title="Agents" sub={`Your AI team: who is working, what they sent and how it went.${role === 'super_admin' ? '' : ' You see the teams you head.'}`}>
+        <form className={styles.filters} role="search" action="/agents">
+          <label className={styles.search}><span className="sr-only">Search agents</span><input type="search" name="q" defaultValue={query} placeholder="Name, role or team…" /></label>
+          <label><span className="sr-only">Department</span><select name="dept" defaultValue={department}><option value="">All teams</option>{depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
+          <label><span className="sr-only">Role</span><select name="leads" defaultValue={leadsOnly ? '1' : ''}><option value="">All agents</option><option value="1">Team leads</option></select></label>
+          <button className="btn ghost" type="submit"><Icon name="search" size={15}/>Search</button>
+          {(query || department || leadsOnly) && <Link href="/agents" className="btn ghost">Clear</Link>}
+        </form>
+      </PageHead>
       <nav className="tabs" aria-label="Agents"><Link href="/agents" className="on" aria-current="page"><Icon name="users" size={16}/>Directory</Link><Link href="/agents/manage"><Icon name="edit" size={16}/>Instructions</Link></nav>
       <section className="tiles" aria-label="Summary">
         <AgentActivitySummary />
@@ -33,29 +41,21 @@ export default async function Agents({ searchParams }: { searchParams: Promise<R
         <Tile icon="rocket" tone="amber" label="Live campaigns" value={totals.live} />
         <Tile icon="rupee" tone="violet" label="Campaign revenue" value={inr(totals.revenue)} sub={totals.spend ? `${(totals.revenue / totals.spend).toFixed(1)}x return` : undefined} />
       </section>
-      <section className={`card ${styles.filterBar}`} aria-label="Find an agent">
-        <form className={styles.filters} role="search" action="/agents">
-          <label className={`field ${styles.search}`}><span className="sr-only">Search agents</span><input type="search" name="q" defaultValue={query} placeholder="Name, role or department…" /></label>
-          <label className="field"><span className="sr-only">Department</span><select name="dept" defaultValue={department}><option value="">All departments</option>{depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
-          <label className="field"><span className="sr-only">Role</span><select name="leads" defaultValue={leadsOnly ? '1' : ''}><option value="">All agents</option><option value="1">Team leads</option></select></label>
-          <button className="btn ghost" type="submit"><Icon name="search" size={16}/>Search</button>
-          {(query || department || leadsOnly) && <Link href="/agents" className="btn ghost">Clear</Link>}
-        </form>
-      </section>
-      <section className={styles.directory} aria-label="Agent reports">
-        <div className={styles.directoryHeading}><div><h2 className="sr-only">Team directory</h2></div><span className="pill">Last 30 days</span></div>
-        {visible.length ? <ul className={styles.grid}>{visible.map(a => {
-          const c = cards[a.id];
-          return <li key={a.id}><Link href={`/agents/${a.id}`} className={styles.agentCard}>
-            <div className={styles.identity}>
-              <div className={styles.agentTop}><Avatar name={a.name} dept={a.department_id} size={36}/><div className={styles.agentName}><b>{a.name}</b><span>{names[a.department_id]}</span></div><AgentActivityBadge id={a.id}/></div>
-              <p className={styles.role}>{a.role_desc}</p>
-              <div className={styles.agentMeta}>{a.is_lead ? <span className="pill acc">Team lead</span> : <span className="pill">Specialist</span>}<Icon name="next" size={16}/></div>
-            </div>
-            <div className={styles.latest}><p>{c.last ? c.last.text : 'No activity in the last 30 days.'}</p>{c.last && <time dateTime={c.last.at}>{ago(c.last.at)}</time>}</div>
-          </Link></li>;
-        })}</ul> : <div className="empty"><Icon name="users" size={28}/><b>{list.length ? 'No matching agents' : 'No departments assigned'}</b><p>{list.length ? 'Try another name or clear your filters.' : 'Ask the Super Admin to assign you as a department head.'}</p>{list.length > 0 && <Link href="/agents" className="btn ghost sm-btn">Clear filters</Link>}</div>}
-        <Pager sp={sp} page={page} size={size} total={filtered.length} shown={visible.length}/>
+      <section className={`card ${styles.table}`} aria-label="Team directory">
+        {visible.length ? <div className={styles.scroll}><table>
+          <thead><tr><th>Agent</th><th>Team</th><th>Role</th><th>Latest activity <span className={styles.window}>· last 30 days</span></th><th className={styles.when}>When</th></tr></thead>
+          <tbody>{visible.map(a => {
+            const c = cards[a.id] as Card | undefined;
+            return <tr key={a.id}>
+              <td><span className={styles.who}><Avatar name={a.name} dept={a.department_id} size={24}/><Link href={`/agents/${a.id}`} className={styles.name}>{a.name}</Link><AgentActivityBadge id={a.id}/></span></td>
+              <td><span className={styles.clip}>{names[a.department_id]}</span></td>
+              <td>{a.is_lead ? <span className="pill acc">Team lead</span> : <span className="pill">Specialist</span>}</td>
+              <td><span className={styles.clip} title={c?.last?.text}>{c?.last ? c.last.text : <span className={styles.quiet}>No activity in 30 days</span>}</span></td>
+              <td className={styles.when}>{c?.last ? <time dateTime={c.last.at}>{ago(c.last.at)}</time> : '–'}</td>
+            </tr>;
+          })}</tbody>
+        </table></div> : <div className="empty"><Icon name="users" size={20}/><b>{list.length ? 'No matching agents' : 'No departments assigned'}</b><p>{list.length ? 'Try another name or clear your filters.' : 'Ask the Super Admin to assign you as a department head.'}</p>{list.length > 0 && <Link href="/agents" className="btn ghost sm-btn">Clear filters</Link>}</div>}
+        <div className={styles.foot}><Pager sp={sp} page={page} size={size} total={filtered.length} shown={visible.length}/></div>
       </section>
     </div></AgentActivityProvider>
   );

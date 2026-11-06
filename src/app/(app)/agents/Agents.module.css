@@ -2,3 +2,23 @@
 @media(max-width:1180px){.agentCard{grid-template-columns:minmax(230px,1fr) minmax(220px,1fr);gap:12px 20px}.identity{grid-row:span 2}.latest{border-left:0;padding-left:0}.metrics{padding-top:10px;border-top:1px solid var(--line)}}
 @media(max-width:680px){.filters{gap:10px}.filters>label{flex:1;min-width:calc(50% - 6px)}.filters .search{flex-basis:100%}.filters>button,.filters>a{flex:1}.filters input,.filters select,.filters :global(.btn){min-height:44px}.agentCard{grid-template-columns:minmax(0,1fr);padding:14px;gap:12px}.identity{grid-row:auto}.latest{border-top:1px solid var(--line);padding-top:10px}.metrics{gap:12px}.directoryHeading{align-items:flex-start}.directoryHeading>span{flex:none}.page :global(.page-actions .btn){min-height:44px}.agentTop{gap:8px}}
 @media(prefers-reduced-motion:reduce){.agentCard{transition:none}}
+
+/* Agents, compact: filters in the header row, the directory as a table. */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.filters select, .filters input { height: 36px; padding: 0 10px; border-radius: 10px; font-size: 13px; }
+.search input { width: 200px; }
+.table { padding: 0 !important; overflow: hidden; }
+.scroll { overflow-x: auto; }
+.scroll table { width: 100%; min-width: 760px; border-collapse: collapse; table-layout: fixed; }
+.scroll th { padding: 9px 14px; text-align: left; font: 500 var(--fs-meta, 12.5px) var(--f-body); color: var(--dim); }
+.scroll th:nth-child(1) { width: 28%; } .scroll th:nth-child(2) { width: 16%; } .scroll th:nth-child(3) { width: 12%; } .scroll th:nth-child(5) { width: 80px; }
+.scroll td { padding: 4px 14px; height: 42px; border-top: 1px solid color-mix(in srgb, var(--ink) 6%, transparent); vertical-align: middle; font-size: 13.5px; color: var(--muted); }
+.who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 600; text-decoration: none; }
+.name:hover { color: var(--accent); }
+.clip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quiet { color: var(--dim); }
+.when { text-align: right; color: var(--dim); font-size: var(--fs-meta, 12.5px); white-space: nowrap; }
+.window { color: var(--dim); font-weight: 400; }
+.foot { padding: 6px 14px; border-top: 1px solid color-mix(in srgb, var(--ink) 6%, transparent); }
+.foot :global(.pager) { border: 0; padding: 4px 0 0; margin: 0; }

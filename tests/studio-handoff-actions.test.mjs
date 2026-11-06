@@ -24,7 +24,8 @@ function harness(options = {}) {
     };
     return q;
   }
-  const db = { from: table => query(table) }, admin = { from: table => query(table, true), rpc: async (name, args) => { h.reviewed.push({ name, args }); return { error: options.rpcError || null }; } };
+  h.asked = [];
+  const db = { from: table => query(table), rpc: async (name, args) => { h.asked.push({ name, args }); return { error: options.askError || null }; } }, admin = { from: table => query(table, true), rpc: async (name, args) => { h.reviewed.push({ name, args }); return { error: options.rpcError || null }; } };
   const modules = {
     'next/cache': { revalidatePath: value => h.paths.push(value) },
     'next/navigation': { redirect: url => { const e = new Error(`Redirect: ${url}`); e.url = url; throw e; } },
@@ -179,4 +180,17 @@ test('carousel revisions and failed-card retries keep each saved provider unless
   const allChat=harness({revisionCards:cards.map(row=>({...row,artwork_origin:'chatgpt_import'}))});
   assert.match(await redirected(()=>allChat.actions.redesignCarousel(form({carousel:setId}))),/ChatGPT briefs prepared for 5 images/);
   assert.equal(allChat.generated.length,0);
+});
+
+test('Send for approval asks through the head\'s own access, keeps the panel open and explains a missing database update', async () => {
+  const h = harness();
+  const url = await redirected(() => h.actions.requestDesignApproval(form({ source: 'design', id, note: ' For Diwali ads ', back: `/studio?open=design:${id}#d-${id}` })));
+  assert.deepEqual(h.asked, [{ name: 'request_design_approval', args: { p_source: 'design', p_item: id, p_note: 'For Diwali ads' } }]);
+  assert.equal(url, `/studio?open=design:${id}&msg=Sent to the Super Admin. It waits in their Inbox under Designs.`);
+  assert.deepEqual(h.writes, [], 'nothing is written with the service key');
+  const missing = harness({ askError: { message: 'Could not find the function public.request_design_approval', code: 'PGRST202' } });
+  assert.match(await redirected(() => missing.actions.requestDesignApproval(form({ source: 'design', id, back: '/studio' }))), /error=Send for approval is not switched on yet/);
+  const outside = harness();
+  assert.match(await redirected(() => outside.actions.requestDesignApproval(form({ source: 'design', id, back: 'https://evil.test/' }))), /^\/studio\?msg=/);
+  assert.match(await redirected(() => outside.actions.requestDesignApproval(form({ source: 'poster', id, back: '/studio' }))), /error=Unknown image/);
 });

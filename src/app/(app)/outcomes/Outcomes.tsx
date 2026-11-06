@@ -5,7 +5,7 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { openIncidentInitiativeIds } from '@/lib/outcomes/attention.mjs';
 import { supabaseBrowser } from '@/lib/supabase/browser';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Avatar, PageHead, Tile, when } from '@/components/ui';
+import { PageHead, when } from '@/components/ui';
 import { Pagination } from '@/components/Pagination';
 import { Icon, type IconName } from '@/components/Icon';
 import { ROLE_LABEL, type AppRole } from '@/lib/roles';
@@ -98,6 +98,7 @@ export default function Outcomes({initialView='initiatives',initialInitiative,in
     finally{posting.current=false;setSyncingAds(false);}
   };
   function chooseView(next:View){setView(next);setSearch('');setPage(1);const url=new URL(window.location.href);url.searchParams.set('view',next);window.history.replaceState(null,'',url);}
+  function closeInitiative(){setSelectedId('');const url=new URL(window.location.href);url.searchParams.delete('initiative');window.history.replaceState(null,'',url);}
   function chooseInitiative(id:string){setSelectedId(id);setView('initiatives');const url=new URL(window.location.href);url.searchParams.set('initiative',id);url.searchParams.set('view','initiatives');url.searchParams.delete('campaign');window.history.replaceState(null,'',url);}
   const role=snapshot?.role||initialRole,names=Object.fromEntries((snapshot?.agents||[]).map(agent=>[agent.id,agent.name])),departments=Object.fromEntries((snapshot?.departments||[]).map(dept=>[dept.id,dept.name]));
   const initiatives=snapshot?.initiatives||[],selected=initiatives.find(row=>row.id===selectedId)||null;
@@ -112,18 +113,25 @@ export default function Outcomes({initialView='initiatives',initialInitiative,in
     {snapshot?.paused&&<div className={styles.notice} role="status"><Icon name="pause" size={18}/><div><b>The office is paused.</b><p>You can configure plans and review saved evidence. Agent work and scheduled monitoring wait for the office to resume.</p></div></div>}
     {error&&<div className={styles.error} role="alert">{error}{snapshot&&' The last successfully loaded data is shown.'}</div>}
     {message&&<div className={`flash ok ${styles.message}`} role="status">{message}<button type="button" aria-label="Dismiss confirmation" onClick={()=>setMessage('')}><Icon name="x" size={15}/></button></div>}
-    {summary&&<section className="tiles" aria-label="What needs attention"><Tile icon="check" label="Waiting on you" value={summary.awaiting_human}/><Tile icon="clock" tone="amber" label="Approved, not live yet" value={summary.approved_not_executed}/><Tile icon="bell" tone="rose" label="Needs attention" value={summary.needs_attention}/><Tile icon="trend" tone="blue" label="Ready to review" value={summary.due_reviews}/></section>}
-    <div className={styles.toolbar}><nav className={styles.tabs} aria-label="Outcome views">{VIEWS.map(item=><button key={item.id} type="button" aria-pressed={view===item.id} onClick={()=>chooseView(item.id)}><Icon name={item.icon} size={17}/>{item.label}</button>)}</nav><small>{loadedAt?`Board updated ${timeLabel(loadedAt)}`:'Loading saved records…'}</small></div>
-    {snapshot&&<details className={styles.refreshInfo}><summary><Icon name="clock" size={14}/>When was this checked?</summary><p className={styles.note}>Saved results are normally checked at most every five minutes. New work or fresh ad data can start an earlier check.{snapshot.monitoring?.lastRefreshedAt&&` Last check: ${timeLabel(snapshot.monitoring.lastRefreshedAt)}.`}</p></details>}
+
+    <div className={styles.toolbar}><nav className={styles.tabs} aria-label="Outcome views">{VIEWS.map(item=><button key={item.id} type="button" aria-pressed={view===item.id} onClick={()=>chooseView(item.id)}><Icon name={item.icon} size={17}/>{item.label}</button>)}</nav><div className={styles.toolbarEnd}><small>{loadedAt?`Board updated ${timeLabel(loadedAt)}`:'Loading saved records…'}</small>{snapshot&&<details className={styles.refreshInfo}><summary><Icon name="clock" size={14}/>When was this checked?</summary><p className={styles.note}>Saved results are normally checked at most every five minutes. New work or fresh ad data can start an earlier check.{snapshot.monitoring?.lastRefreshedAt&&` Last check: ${timeLabel(snapshot.monitoring.lastRefreshedAt)}.`}</p></details>}</div></div>
+
     {loading&&!snapshot?<Empty title="Loading outcomes…" text="Reading saved initiatives, coverage and reviews."/>:!snapshot?<Empty title="Outcomes are unavailable" text="Refresh this page to retry. No result has been inferred from the missing data."/>:<>
       {snapshot.monitoring?.limited&&<p className={styles.warning}>Some older records may be missing from this view. Refresh or check the source before deciding that work is complete.</p>}
       {view==='initiatives'?<>
-        <div className={styles.filters}><label className={styles.search}><Icon name="search" size={16}/><input type="search" aria-label="Search initiatives" value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}} placeholder="Find work or an owner…"/></label><label><span className="sr-only">Show</span><select value={filter} onChange={event=>{setFilter(event.target.value);setPage(1);}}><option value="attention">Needs attention</option><option value="human">Waiting for your decision</option><option value="execution">Approved, launch unconfirmed</option><option value="review">Results to review</option><option value="all">All work</option></select></label><label><span className="sr-only">Team</span><select value={department} onChange={event=>{setDepartment(event.target.value);setPage(1);}}><option value="all">All teams I can see</option>{snapshot.departments.map(dept=><option key={dept.id} value={dept.id}>{dept.name}</option>)}</select></label></div>
-        <div className={styles.boardLayout}><section className={`card ${styles.board}`} aria-label="Initiative board"><div className={styles.sectionHead}><div><h2>{filter==='attention'?'Work that needs attention':'Tracked work'}</h2></div><small>{shown.length} shown</small></div>
-          {shown.length?<div className={styles.initiativeList}>{pageInitiatives.map(row=><InitiativeCard key={row.id} row={row} names={names} department={departments[row.department_id]} selected={row.id===selectedId} now={now} onSelect={()=>chooseInitiative(row.id)}/>)}</div>:<Empty title={search?'No matching work':'Nothing needs attention in this view'} text={search?'Try a different name or filter.':'Choose All work to see saved campaigns and past tasks.'}/>}
-          <Pagination label="Initiatives" page={boardPage} total={shown.length} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size=>{setPageSize(size);setPage(1);}}/>
+        <div className={styles.chipRow}>
+          <div className={styles.chips} role="group" aria-label="Show">{([['attention','Needs attention',summary?.needs_attention],['human','Waiting on you',summary?.awaiting_human],['execution','Approved, not live',summary?.approved_not_executed],['review','Ready to review',summary?.due_reviews],['all','All work',null]] as const).map(([id,label,count])=><button key={id} type="button" className={styles.chip} aria-pressed={filter===id} onClick={()=>{setFilter(id);setPage(1);}}>{label}{count!=null&&<b>{count}</b>}</button>)}</div>
+          <label className={styles.search}><Icon name="search" size={15}/><input type="search" aria-label="Search initiatives" value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}} placeholder="Find work or an owner…"/></label>
+          <label><span className="sr-only">Team</span><select className={styles.teamSelect} value={department} onChange={event=>{setDepartment(event.target.value);setPage(1);}}><option value="all">All teams</option>{snapshot.departments.map(dept=><option key={dept.id} value={dept.id}>{dept.name}</option>)}</select></label>
+        </div>
+        <section className={`card ${styles.table}`} aria-label="Initiative board">
+          <div className={styles.thead} aria-hidden="true"><span>Work</span><span>Owner</span><span>At a glance</span><span>Review</span><span/></div>
+          {selected&&!pageInitiatives.some(row=>row.id===selected.id)&&<PinnedRow row={selected} names={names} department={departments[selected.department_id]} open now={now} onToggle={()=>closeInitiative()}><InitiativeDetail row={selected} snapshot={snapshot} names={names} departments={departments} now={now} busy={sending} onDialog={setDialog} onViewExperiments={()=>chooseView('experiments')}/></PinnedRow>}
+          {shown.length?pageInitiatives.map(row=><InitiativeRow key={row.id} row={row} names={names} department={departments[row.department_id]} open={row.id===selectedId} now={now} onToggle={()=>row.id===selectedId?closeInitiative():chooseInitiative(row.id)}>{row.id===selectedId&&<InitiativeDetail row={row} snapshot={snapshot} names={names} departments={departments} now={now} busy={sending} onDialog={setDialog} onViewExperiments={()=>chooseView('experiments')}/>}</InitiativeRow>)
+            :<Empty title={search?'No matching work':'Nothing needs attention here'} text={search?'Try a different name or filter.':'Choose All work to see saved campaigns and past tasks.'}/>}
+          <div className={styles.tableFoot}><Pagination label="Initiatives" page={boardPage} total={shown.length} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size=>{setPageSize(size);setPage(1);}}/></div>
           {initiatives.length>=snapshot.limits.initiatives&&<p className={styles.note}>Showing up to {snapshot.limits.initiatives} recent initiatives. Older records may be outside this snapshot.</p>}
-        </section>{selected?<InitiativeDetail row={selected} snapshot={snapshot} names={names} departments={departments} now={now} busy={sending} onDialog={setDialog} onViewExperiments={()=>chooseView('experiments')}/>:<section className={`card ${styles.detailEmpty}`}><Icon name="trend" size={28}/><h2>{selectedId?'This work is not in the current view':'Choose a piece of work'}</h2><p>{selectedId?'Refresh or choose work you can access.' : ''}</p></section>}</div>
+        </section>
       </>:view==='campaigns'?<CampaignHealth snapshot={snapshot} names={names} campaignId={campaignId} onCampaign={id=>{setCampaignId(id);const url=new URL(window.location.href);url.searchParams.set('campaign',id);url.searchParams.set('view','campaigns');window.history.replaceState(null,'',url);}} onInitiative={chooseInitiative}/>:view==='experiments'?<Experiments snapshot={snapshot} names={names} onInitiative={chooseInitiative} onDialog={setDialog} busy={sending}/>:<QualityInbox snapshot={snapshot} names={names} onInitiative={chooseInitiative}/>}
     </>}
     {dialog&&snapshot&&<OutcomeForm dialog={dialog} snapshot={snapshot} send={send} onClose={()=>setDialog(null)} onSaved={()=>{setDialog(null);setMessage('Saved. Source approvals and provider settings are unchanged.');}}/>}
@@ -136,9 +144,23 @@ function StatusStrip({row}:{row:OutcomeInitiative}) {
   return <dl className={styles.statusStrip}>{(['approval','execution','outcome'] as const).map(kind=>{const state=initiativeState(row,kind);return <div key={kind}><dt>{state.title}</dt><dd><span className={`pill ${state.tone}`}>{state.label}</span></dd></div>;})}</dl>;
 }
 
-function InitiativeCard({row,names,department,selected,now,onSelect}:{row:OutcomeInitiative;names:Record<string,string>;department?:string;selected:boolean;now:number;onSelect:()=>void}) {
+/** The open item when it sits on another page of the table: kept at the top so paging never closes it. */
+function PinnedRow(props:Parameters<typeof InitiativeRow>[0]) {return <InitiativeRow {...props} open/>;}
+
+/** One row of the Results table; the open row shows its detail right underneath. */
+function InitiativeRow({row,names,department,open,now,onToggle,children}:{row:OutcomeInitiative;names:Record<string,string>;department?:string;open:boolean;now:number;onToggle:()=>void;children?:React.ReactNode}) {
   const dates=initiativeDeadlines(row,now),brief=outcomeBrief(row);
-  return <article className={`${styles.initiativeCard} ${selected?styles.selected:''}`}><button type="button" className={styles.initiativeSelect} aria-pressed={selected} onClick={onSelect}><span className={styles.cardEyebrow}>{sourceLabel(row.source_kind)} · {department||row.department_id}</span><h3>{row.title}</h3><Icon name="arrow" size={16}/></button><p className={styles.cardBrief}>{brief.headline}</p><div className={styles.cardFoot}><span><Avatar name={names[row.owner_agent||'']||'Unassigned'} dept={row.department_id} size={23}/>{names[row.owner_agent||'']||'Owner not assigned'}</span><small className={dates.overdue||dates.reviewDue?styles.due:''}>{dates.overdue?'Launch check overdue':dates.reviewDue?'Review due':row.next_review_at?`Review ${timeLabel(row.next_review_at)}`:'No review date'}</small></div></article>;
+  const review=dates.overdue?'Launch check overdue':dates.reviewDue?'Review due':row.next_review_at?timeLabel(row.next_review_at):'No date';
+  return <div className={open?styles.rowOpen:undefined}>
+    <button type="button" className={styles.trow} aria-expanded={open} onClick={onToggle}>
+      <span className={styles.work}><b>{row.title}</b><small>{sourceLabel(row.source_kind)} · {department||row.department_id}</small></span>
+      <span className={styles.owner}>{names[row.owner_agent||'']||'Not assigned'}</span>
+      <span className={styles.glance}>{brief.headline}</span>
+      <span><span className={`pill ${dates.overdue||dates.reviewDue||!row.next_review_at?'warn':''}`}>{review}</span></span>
+      <Icon name={open?'up':'down'} size={16}/>
+    </button>
+    {open&&<div className={styles.expanded}>{children}</div>}
+  </div>;
 }
 
 function Evidence({items,label='Recorded evidence'}:{items:OutcomeEvidence[];label?:string}) {

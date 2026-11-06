@@ -296,23 +296,43 @@ function InventoryRules({settings,send,disabled}:{settings:Settings|null;send:Se
 
 function CustomerInbox({snapshot,canCreate,onCreate,onTask,send,busy,onDialog}:{snapshot:Snapshot;canCreate:boolean;onCreate:()=>void;onTask:(id:string)=>void;send:Send;busy:boolean;onDialog:(dialog:Dialog)=>void}) {
   const instagram=snapshot.instagram,{busy:syncing,error,submit}=useSubmission(send);
-  const [search,setSearch]=useState(''),[filter,setFilter]=useState('all'),[page,setPage]=useState(1);
-  const inquiries=snapshot.inquiries.filter(row=>(filter==='all'||filter==='open'&&!row.replied_at&&row.status!=='closed'||filter==='replied'&&(!!row.replied_at||row.status==='closed'))&&(!search.trim()||`${row.contact_name} ${row.body} ${row.contact_ref}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())));
+  const [search,setSearch]=useState(''),[filter,setFilter]=useState('all'),[page,setPage]=useState(1),[openId,setOpenId]=useState<string|null>(null);
+  const needsReply=(row:Inquiry)=>!row.replied_at&&row.status!=='closed';
+  const counts={all:snapshot.inquiries.length,open:snapshot.inquiries.filter(needsReply).length,replied:snapshot.inquiries.filter(row=>!needsReply(row)).length};
+  const inquiries=snapshot.inquiries.filter(row=>(filter==='all'||filter==='open'&&needsReply(row)||filter==='replied'&&!needsReply(row))&&(!search.trim()||`${row.contact_name} ${row.body} ${row.contact_ref}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())));
   const currentPage=Math.min(page,Math.max(1,Math.ceil(inquiries.length/10))),pageInquiries=inquiries.slice((currentPage-1)*10,currentPage*10);
   async function sync(){await submit({action:'instagram_sync'},'Instagram inbox checked. Imported enquiries appear below.');}
-  return <section className={`card ${styles.inbox}`}>
-    <div className={styles.sectionHead}><div><h2>Customer enquiries</h2></div>{canCreate&&<button type="button" className="btn" disabled={busy} onClick={onCreate}><Icon name="plus" size={16}/>Add enquiry</button>}</div>
-    <div className={styles.inboxConnection}><Icon name="plug" size={22}/><div><b>Instagram inbox</b><span className={`pill ${instagram?.canRead?'good':'warn'}`}>{instagram?.canRead?'Inbox connected':instagram?.connected?'Access needed':'Connection needed'}</span>{(instagram?.reason||!instagram?.canRead)&&<p>{instagram?.reason||'Not connected yet. You can still add enquiries by hand.'}</p>}{instagram?.accountId&&<small>Account {instagram.accountId}</small>}{(!instagram?.canRead||!instagram?.canSend)&&<div className={styles.connectionAction}>{snapshot.isAdmin?<a className="btn ghost sm-btn" href="/api/connect/meta?capability=instagram"><Icon name="plug" size={14}/>Connect messaging access</a>:<small>The Super Admin can connect Instagram in Settings.</small>}</div>}</div>{canCreate&&instagram?.canRead&&<button className="btn ghost sm-btn" type="button" disabled={busy||syncing} onClick={()=>void sync()}><Icon name="sync" size={15}/>{syncing?'Checking…':'Sync messages'}</button>}</div>
-    <p className={styles.note}>Replies stay drafts until you choose Send.</p>
+  const chips=[['all','All'],['open','Needs a reply'],['replied','Replied or closed']] as const;
+  return <section className={`card ${styles.inbox} ${styles.ci}`}>
+    <div className={styles.ciHead}>
+      <h2>Customer enquiries</h2>
+      <div className={styles.ciChips} role="group" aria-label="Status">{chips.map(([key,label])=><button key={key} type="button" aria-pressed={filter===key} onClick={()=>{setFilter(key);setPage(1);}}>{label}<b>{counts[key]}</b></button>)}</div>
+      <label className={styles.search}><Icon name="search" size={16}/><input type="search" aria-label="Search enquiries" placeholder="Find a customer or message…" value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}}/></label>
+      {canCreate&&<button type="button" className="btn sm-btn" disabled={busy} onClick={onCreate}><Icon name="plus" size={16}/>Add enquiry</button>}
+    </div>
+    <div className={styles.ciConn}>
+      <Icon name="plug" size={16}/><b>Instagram</b><span className={`pill ${instagram?.canRead?'good':'warn'}`}>{instagram?.canRead?'Inbox connected':instagram?.connected?'Access needed':'Connection needed'}</span>
+      <span className={styles.ciConnNote}>{instagram?.reason||(!instagram?.canRead?'Not connected yet. You can still add enquiries by hand.':'Replies stay drafts until you choose Send.')}{instagram?.accountId?` · Account ${instagram.accountId}`:''}</span>
+      {(!instagram?.canRead||!instagram?.canSend)&&(snapshot.isAdmin?<a className="btn ghost sm-btn" href="/api/connect/meta?capability=instagram"><Icon name="plug" size={14}/>Connect messaging access</a>:<small>The Super Admin can connect Instagram in Settings.</small>)}
+      {canCreate&&instagram?.canRead&&<button className="btn ghost sm-btn" type="button" disabled={busy||syncing} onClick={()=>void sync()}><Icon name="sync" size={15}/>{syncing?'Checking…':'Sync messages'}</button>}
+    </div>
     {error&&<p className={styles.error} role="alert">{error}</p>}
-    <div className={styles.inboxFilters}><label className={styles.search}><Icon name="search" size={16}/><input type="search" aria-label="Search enquiries" placeholder="Find a customer or message…" value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}}/></label><label className={styles.filter}><span className="sr-only">Status</span><select value={filter} onChange={event=>{setFilter(event.target.value);setPage(1);}}><option value="all">All enquiries</option><option value="open">Needs a reply</option><option value="replied">Replied or closed</option></select></label></div>
-    {inquiries.length?<ul className={styles.inquiryList}>{pageInquiries.map(inquiry=>{const replyAvailability=instagramReplyAvailability(inquiry);return <li key={inquiry.id}>
-      <div className={styles.inquiryTop}><Avatar name={inquiry.contact_name||'Customer'} size={34}/><div><b>{inquiry.contact_name||'Customer enquiry'}</b><small>{inquiry.channel} · {when(inquiry.created_at)} IST</small></div><span className="pill">{inquiry.status.replaceAll('_',' ')}</span></div><p>{inquiry.body}</p>{inquiry.contact_ref&&<span className={styles.note}>{inquiry.contact_ref}</span>}
-      {inquiry.reply_text&&<div className={styles.approvedReply}><b>{inquiry.replied_at?'Recorded reply':'Approved reply draft'}</b><p>{inquiry.reply_text}</p>{inquiry.replied_at&&<small>Replied {when(inquiry.replied_at)} IST</small>}{inquiry.channel==='instagram'&&!inquiry.replied_at&&!replyAvailability.allowed&&<small>{replyAvailability.reason}</small>}</div>}
-      <div className={styles.inquiryBottom}><small>{inquiry.consent?'Follow-up permission recorded':'No follow-up permission recorded'}</small><div className={styles.inquiryActions}>{inquiry.task_id&&<button type="button" className="btn ghost sm-btn" onClick={()=>onTask(inquiry.task_id!)}>Open reply task<Icon name="arrow" size={14}/></button>}{canCreate&&!inquiry.replied_at&&!inquiry.provider_deleted_at&&inquiry.status!=='closed'&&<>{replyAvailability.allowed&&instagram?.canSend&&<button type="button" className="btn sm-btn" disabled={busy} onClick={()=>onDialog({kind:'send_reply',inquiry})}>Send Instagram reply</button>}<button type="button" className="btn ghost sm-btn" disabled={busy} onClick={()=>onDialog({kind:'inquiry_done',inquiry})}>Mark replied manually</button></>}</div></div>
+    {inquiries.length?<ul className={styles.ciRows}>{pageInquiries.map(inquiry=>{const replyAvailability=instagramReplyAvailability(inquiry),open=openId===inquiry.id,waiting=needsReply(inquiry);return <li key={inquiry.id} className={open?styles.ciOpen:undefined}>
+      <button type="button" className={styles.ciRow} aria-expanded={open} onClick={()=>setOpenId(open?null:inquiry.id)}>
+        <Avatar name={inquiry.contact_name||'Customer'} size={26}/>
+        <span className={styles.ciMain}><b>{inquiry.contact_name||'Customer enquiry'}</b><span>{inquiry.body}</span></span>
+        <span className={styles.ciWhen}>{inquiry.channel} · {when(inquiry.created_at)}</span>
+        <span className={`pill ${waiting?(inquiry.reply_text?'acc':'needs'):'good'}`}>{waiting?(inquiry.reply_text?'Reply ready':'Needs a reply'):inquiry.status==='closed'&&!inquiry.replied_at?'Closed':'Replied'}</span>
+        <Icon name={open?'up':'down'} size={16}/>
+      </button>
+      {open&&<div className={styles.ciBody}>
+        <p className={styles.ciMessage}>{inquiry.body}</p>
+        <small className={styles.note}>{inquiry.channel} · {when(inquiry.created_at)} IST{inquiry.contact_ref?` · ${inquiry.contact_ref}`:''} · {inquiry.consent?'Follow-up permission recorded':'No follow-up permission recorded'}</small>
+        {inquiry.reply_text&&<div className={styles.approvedReply}><b>{inquiry.replied_at?'Recorded reply':'Approved reply draft'}</b><p>{inquiry.reply_text}</p>{inquiry.replied_at&&<small>Replied {when(inquiry.replied_at)} IST</small>}{inquiry.channel==='instagram'&&!inquiry.replied_at&&!replyAvailability.allowed&&<small>{replyAvailability.reason}</small>}</div>}
+        <div className={styles.inquiryActions}>{inquiry.task_id&&<button type="button" className="btn ghost sm-btn" onClick={()=>onTask(inquiry.task_id!)}>Open reply task<Icon name="arrow" size={14}/></button>}{canCreate&&!inquiry.replied_at&&!inquiry.provider_deleted_at&&inquiry.status!=='closed'&&<>{replyAvailability.allowed&&instagram?.canSend&&<button type="button" className="btn sm-btn" disabled={busy} onClick={()=>onDialog({kind:'send_reply',inquiry})}>Send Instagram reply</button>}<button type="button" className="btn ghost sm-btn" disabled={busy} onClick={()=>onDialog({kind:'inquiry_done',inquiry})}>Mark replied manually</button></>}</div>
+      </div>}
     </li>;})}</ul>:<div className={styles.empty}><Icon name="users" size={28}/><h3>No enquiries here</h3></div>}
     <Pagination label="Customer enquiries" page={currentPage} total={inquiries.length} pageSize={10} onPageChange={setPage}/>
-    
   </section>;
 }
 

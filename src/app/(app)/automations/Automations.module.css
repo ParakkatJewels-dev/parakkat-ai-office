@@ -190,3 +190,37 @@
 @media(pointer:coarse){.page button,.page select,.modal button,.modal select,.modal input:not([type=checkbox]):not([type=radio]){min-height:44px}.modal>header button,.message button{min-width:44px}}
 .page{width:100%}
 .inbox{width:100%;margin:0}
+
+/* Customer inbox: one header row with status chips, a one-line Instagram status, and enquiry rows that open in place. */
+.ci { padding: 0 !important; overflow: hidden; max-width: none; }
+.ciHead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 10px 14px; }
+.ciHead h2 { margin: 0; font: 600 var(--fs-h, 15px) var(--f-display); }
+.ciHead .search input { height: auto; min-height: 0 !important; padding: 0; border: 0 !important; border-radius: 0; background: transparent !important; box-shadow: none; outline: none !important; }
+.ciHead .search:focus-within { border-color: var(--accent); }
+.ciHead .search { flex: 1 1 220px; max-width: 320px; height: 34px; margin: 0 0 0 auto; padding: 0 10px; box-sizing: border-box; }
+.ciChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ciChips button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--glass-line); background: transparent; color: var(--muted); font: 600 12.5px var(--f-body); cursor: pointer; }
+.ciChips button b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.ciChips button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--ink); }
+.ciConn { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 8px 14px; border-top: 1px solid color-mix(in srgb, var(--ink) 7%, transparent); background: color-mix(in srgb, var(--ink) 3%, transparent); font-size: 13px; }
+.ciConn > svg { color: var(--accent); flex: none; }
+.ciConn > b { font-weight: 600; }
+.ciConnNote { flex: 1 1 220px; min-width: 0; color: var(--dim); font-size: var(--fs-meta, 12.5px); }
+.ciConn small { color: var(--dim); }
+.ciRows { list-style: none; margin: 0; padding: 0; }
+.ciRows > li { border-top: 1px solid color-mix(in srgb, var(--ink) 7%, transparent); }
+.ciRow { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 6px 14px; border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.ciRow:hover { background: color-mix(in srgb, var(--accent-2) 8%, transparent); }
+.ciRow > svg { flex: none; color: var(--dim); }
+.ciMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ciMain b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13.5px var(--f-body); }
+.ciMain span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); font-size: var(--fs-meta, 12.5px); }
+.ciWhen { flex: 0 0 auto; color: var(--dim); font-size: var(--fs-meta, 12.5px); text-transform: capitalize; }
+.ciOpen { background: color-mix(in srgb, var(--accent-2) 9%, transparent); }
+.ciOpen .ciRow > svg { color: var(--accent); }
+.ciBody { display: flex; flex-direction: column; gap: 10px; padding: 2px 14px 14px 50px; }
+.ciMessage { margin: 0; font-size: var(--fs-read, 14px); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ciBody .approvedReply { margin: 0; }
+.ciBody .inquiryActions { justify-content: flex-start; }
+.ci > :global(nav), .ci > .empty { margin: 0 14px 14px; }
+@media (max-width: 760px) { .ciWhen { display: none; } .ciBody { padding-left: 14px; } .ciHead .search { max-width: none; margin-left: 0; } }
