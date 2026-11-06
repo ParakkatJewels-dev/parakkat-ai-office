@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import sharp from 'sharp';
-import { childEnvironment, codexArguments, validateJob, pngInfo, sha256, prepareJob, atomicJson, createWorker as createRealWorker, runCodex, readOutput, createApi, collectNativeOutput, createThreadParser, generationPrompt } from '../deploy/chatgpt-image-worker/worker-core.mjs';
+import { childEnvironment, codexArguments, decodeBase64, validateJob, pngInfo, sha256, prepareJob, atomicJson, createWorker as createRealWorker, runCodex, readOutput, createApi, collectNativeOutput, createThreadParser, generationPrompt } from '../deploy/chatgpt-image-worker/worker-core.mjs';
 const createWorker=options=>createRealWorker({checkLogin:async()=>{},...options,...(options.generate?{generate:async args=>(await options.generate(args))||{threadId:ids.holder,sha256:sha256(png)}}:{})});
 
 const ids={jobId:'12345678-1234-4234-8234-123456789001',holder:'12345678-1234-4234-8234-123456789002',itemId:'12345678-1234-4234-8234-123456789003',requestId:'12345678-1234-4234-8234-123456789004'};
@@ -83,6 +83,12 @@ test('reference bundles reject path traversal, altered bytes, duplicate names an
   const duplicate=job();duplicate.files.push({...duplicate.files[0]});assert.throws(()=>validateJob(duplicate),/filename/);
   const stale=job();stale.packet.requestId=ids.holder;assert.throws(()=>validateJob(stale),/prompt/);
   const checked=validateJob(job());assert.equal(checked.files[0].bytes.length,png.length);assert.match(checked.manifestHash,/^[a-f0-9]{64}$/);
+});
+
+test('large reference images decode without overflowing the regexp stack',()=>{
+  const image=Buffer.alloc(4*1024*1024,0x5a);
+  assert.deepEqual(decodeBase64(image.toString('base64'),20*1024*1024),image);
+  for(const invalid of ['Zg=', 'Zg== ', 'Zg==\n', 'Zg==!', 'Zh==', 'Zg__'])assert.throws(()=>decodeBase64(invalid,20*1024*1024),/Invalid image encoding/);
 });
 
 test('PNG verification rejects truncated or corrupted output and checks dimensions',()=>{

@@ -30,7 +30,9 @@ export function codexArguments(workspace, { sandbox = 'workspace-write' } = {}) 
 }
 
 export function decodeBase64(value, limit) {
-  if (typeof value !== 'string' || !value.length || value.length > Math.ceil(limit/3)*4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) throw new Error('Invalid image encoding.');
+  // A repeated-group regexp over multi-megabyte image strings can overflow V8's
+  // regexp stack. Re-encoding below checks the canonical alphabet and padding.
+  if (typeof value !== 'string' || !value.length || value.length > Math.ceil(limit/3)*4 || value.length % 4 !== 0) throw new Error('Invalid image encoding.');
   const bytes = Buffer.from(value,'base64');
   if (!bytes.length || bytes.length > limit || bytes.toString('base64') !== value) throw new Error('Invalid image encoding.');
   return bytes;
