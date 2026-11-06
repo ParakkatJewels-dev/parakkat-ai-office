@@ -2,11 +2,16 @@ import Link from 'next/link';
 import { requireUser } from '@/lib/auth/session';
 import { liveRuns, runSteps } from '@/lib/agents/campaign';
 import { Icon } from '@/components/Icon';
-import { PageHead, Tile, Stepper, Pager, pageOf, inr, when } from '@/components/ui';
+import { Tile, Stepper, Pager, pageOf, inr, when } from '@/components/ui';
 import { googleId, metaId } from '@/lib/connectors/accounts.mjs';
 import { Filters } from './Filters';
 import styles from './Dashboard.module.css';
 import { scopedOdooBranchSales } from '@/lib/connectors/odoo-scope';
+import { needsFor } from '@/lib/needs';
+import { WorkingNow } from '@/components/WorkingNow';
+
+const KIND = { plan: 'PL', report: 'RE', design: 'DE', video: 'VI' } as const;
+const KIND_WORD = { plan: 'Campaign plan', report: 'Report', design: 'Design', video: 'Video' } as const;
 
 const PLATFORM: Record<string, { label: string; color: string }> = { meta: { label: 'Meta', color: '#3d6fb0' }, google: { label: 'Google', color: '#1fc7a4' } };
 
@@ -30,20 +35,19 @@ type Summary = {
 };
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const { db, name } = await requireUser();
+  const { db, name, role } = await requireUser();
   const sp = await searchParams, P = period(sp);
   const platform = sp.platform === 'meta' || sp.platform === 'google' ? sp.platform : null, account = sp.account && /^[\w-]{1,40}$/.test(sp.account) ? sp.account : null;
   const end = `${P.to}T23:59:59.999Z`, delta = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}% vs the days before` : P.label;
   // totals are summed in the database (dashboard_report), so they stay right however many order and ad rows there are
-  const [{ data: summary, error: summaryError }, { data: posts, error: postsError }, { data: moves }, { data: runs }, { data: accts }, { data: branchRows, error: branchError }, { count: pendingReports, error: reportError }, { count: pendingPlans, error: planError }, { data: syncJob }] = await Promise.all([
+  const [{ data: summary, error: summaryError }, { data: posts, error: postsError }, { data: moves }, { data: runs }, { data: accts }, { data: branchRows, error: branchError }, inbox, { data: syncJob }] = await Promise.all([
     db.rpc('dashboard_report', { p_from: P.from, p_to: P.to, p_platform: platform, p_account: account }),
     db.from('social_posts').select('id, caption, media_type, permalink, saves, reach, media_url').gte('posted_at', P.from).lte('posted_at', end).order('saves', { ascending: false, nullsFirst: false }).limit(5),
     db.from('competitor_moves').select('id, kind, summary, seen_at, competitors(name)').gte('seen_at', P.from).lte('seen_at', end).order('seen_at', { ascending: false }).limit(6),
     db.from('agent_runs').select('id, occasion, stage, status, started_at, state').eq('kind', 'campaign').gte('started_at', P.from).lte('started_at', end).order('started_at', { ascending: false }).limit(5),
     db.rpc('ad_accounts'),
     scopedOdooBranchSales(db, P.from, P.to).then(data => ({ data, error: null })).catch(error => ({ data: null, error })),
-    db.from('reports').select('id', { count: 'exact', head: true }).eq('status', 'with_head'),
-    db.from('approvals').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    needsFor(db, role, 6),
     db.from('autopilot_jobs').select('last_run_at, last_result').eq('name', 'sync').maybeSingle(),
   ]);
   const live = await liveRuns(db, (runs || []).map(r => r.id));
@@ -66,9 +70,20 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   const top = S.top.map(t => ({ ...t, revenue: Number(t.revenue) }));
   const topMax = top[0]?.revenue || 1;
-  const reviewCount = (pendingReports || 0) + (pendingPlans || 0);
-  const reviewsAvailable = !reportError && !planError;
   const dateLabel = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long' });
+  const hour = Number(new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }));
+  const first = name.includes('@') ? '' : name.split(' ')[0];
+  const greeting = `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}${first ? `, ${first}` : ''}`;
+  const waiting = inbox.waiting, plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  // A plain-words summary built from the numbers on this page: nothing here is guessed by a model.
+  const prevRevenue = Number(S.prev_revenue), salesMove = prevRevenue ? Math.round(((revenue - prevRevenue) / prevRevenue) * 100) : null;
+  const briefing = [
+    summaryError ? 'Sales figures couldn’t load just now.' : revenue ? `Online sales were ${inr(revenue)} over ${P.label}${salesMove === null ? '' : salesMove === 0 ? ', the same as the days before' : `, ${salesMove > 0 ? 'up' : 'down'} ${Math.abs(salesMove)}% on the days before`}.` : `No online sales were recorded over ${P.label}.`,
+    !summaryError && spend ? `Ads returned ${roas.toFixed(1)}x their cost (${inr(spend)} spent).` : '',
+    top[0]?.title ? `Best seller: ${top[0].title}.` : '',
+    inbox.failed ? '' : waiting ? [inbox.plans && `${plural(inbox.plans, 'plan waits', 'plans wait')} for your sign-off`, inbox.reports && `${plural(inbox.reports, 'report waits', 'reports wait')} for your decision`].filter(Boolean).join(' and ') + '.' : 'Nothing is waiting on you.',
+    (moves || []).length ? `${plural(moves!.length, 'competitor move', 'competitor moves')} spotted.` : '',
+  ].filter(Boolean);
   // every showroom and the online store, from Odoo
   const branches = ((branchRows || []) as { branch: string; kind: string; orders: number; revenue: number; prev_revenue: number }[]).map(b => ({ ...b, revenue: Number(b.revenue), prev: Number(b.prev_revenue) }));
   const branchPage = Math.min(pageOf(sp, 'bp'), Math.max(1, Math.ceil(branches.length / 5)));
@@ -78,26 +93,48 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   return (
     <div className={`page ${styles.dashboard}`}>
-      <div className={styles.headingLabel}><Icon name="chart" size={14}/>Your workspace<span className={styles.date}>{dateLabel}</span></div>
-      <PageHead title="Dashboard" sub={name.includes('@') ? 'Your business performance, team activity, and next decisions in one place.' : `Welcome back, ${name.split(' ')[0]}. Here’s how your business and your team are doing.`}>
-        <Link href="/office" className="btn ghost"><Icon name="map" size={17} />Office map</Link>
-        <Link href="/automations#new-task" className="btn"><Icon name="plus" size={17} />Assign a task</Link>
-      </PageHead>
-      {(summaryError || branchError || postsError) && <div className="flash" role="alert"><b>Some data couldn’t load.</b> Refresh this page to try again. Unavailable results below are not zero activity.</div>}
+      <header className={styles.hello}>
+        <div><span className={styles.date}>{greeting} · {dateLabel}</span><h1>{inbox.failed ? 'Your day at a glance' : waiting ? `${plural(waiting, 'thing needs', 'things need')} you` : 'You’re all caught up'}</h1></div>
+        <div className="page-actions"><Link href="/office" className="btn ghost"><Icon name="cube" size={17} />Walk the office</Link></div>
+      </header>
+      {(summaryError || branchError || postsError) && <div className="flash" role="alert"><b>Some numbers couldn’t load.</b> Refresh to try again. A blank number below means “not loaded”, not zero.</div>}
+
+      <div className={styles.top}>
+        <section className={`card ${styles.needs}`} aria-labelledby="needs-title">
+          <div className="card-head"><div><h2 id="needs-title">Needs you</h2><p className="sub">Decide here or open the Inbox for everything</p></div>{waiting > 0 && <span className="pill needs">{waiting}</span>}</div>
+          {inbox.failed ? <div className="empty"><Icon name="inbox" size={24} /><p>Your Inbox couldn’t load. Refresh to try again.</p></div>
+            : inbox.items.length ? <ul className={styles.needList}>{inbox.items.map(n => <li key={n.id}><Link href={n.href}>
+              <span className={`kind ${n.kind}`} aria-hidden="true">{KIND[n.kind]}</span>
+              <span className={styles.needText}><b>{n.title}</b><small>{KIND_WORD[n.kind]}{n.agent ? ` from ${n.agent}` : ''} · {when(n.at)}</small></span>
+              <span className={styles.open}>Open<Icon name="next" size={15} /></span></Link></li>)}</ul>
+            : <div className="empty"><Icon name="check" size={24} /><p>Nothing waits on you. When the team sends a report or a plan, it shows up here first.</p></div>}
+          {waiting > inbox.items.length && <Link href="/approvals" className={styles.all}>See all {waiting} in the Inbox<Icon name="arrow" size={15} /></Link>}
+        </section>
+        <div className={styles.stack}>
+          <section className={`card ${styles.brief}`} aria-labelledby="brief-title">
+            <h2 id="brief-title"><Icon name="spark" size={16} />Today’s briefing</h2>
+            <p>{briefing.join(' ')}</p>
+            <small>{syncJob?.last_run_at ? `From your shop, ads and store data · updated ${when(syncJob.last_run_at)}` : 'From your shop, ads and store data'}{syncJob?.last_result?.startsWith('failed') ? ' · the last update failed, so some numbers may be old' : ''}</small>
+          </section>
+          <section className="card" aria-labelledby="team-title">
+            <div className="card-head"><div><h2 id="team-title">Team at work</h2><p className="sub">Live from the office</p></div><Link href="/office" className={styles.link}>Office<Icon name="arrow" size={14} /></Link></div>
+            <WorkingNow observedAt={new Date().toISOString()} />
+          </section>
+        </div>
+      </div>
 
       <Filters accounts={accounts} from={P.from} to={P.to} />
 
       <section className="tiles" aria-label="Key numbers">
-        <Tile icon="rupee" label="Shopify revenue" value={summaryError ? '—' : inr(revenue)} sub={summaryError ? 'Temporarily unavailable' : delta(revenue, Number(S.prev_revenue))} />
+        <Tile icon="rupee" label="Online sales" value={summaryError ? '—' : inr(revenue)} sub={summaryError ? 'Temporarily unavailable' : delta(revenue, Number(S.prev_revenue))} />
         <Tile icon="bag" tone="amber" label="Items sold" value={summaryError ? '—' : units.toLocaleString('en-IN')} sub={summaryError ? 'Temporarily unavailable' : delta(units, Number(S.prev_units))} />
         <Tile icon="megaphone" tone="blue" label="Ad spend" value={summaryError ? '—' : inr(spend)} sub={summaryError ? 'Temporarily unavailable' : delta(spend, prevSpend)} />
         <Tile icon="trend" tone="violet" label="Return on ad spend" value={!summaryError && spend ? `${roas.toFixed(1)}x` : '–'} sub={prevRoas ? `${roas >= prevRoas ? 'Up' : 'Down'} from ${prevRoas.toFixed(1)}x` : adScope} />
       </section>
 
-      <div className={styles.insight}><Icon name="clock" size={18}/><p><strong>{syncJob?.last_run_at ? `Last sync attempt ${when(syncJob.last_run_at)} IST.` : 'Your connected data, in one place.'}</strong> {syncJob?.last_result?.startsWith('failed') ? 'The latest sync needs attention. ' : 'Sales and advertising follow the filters above. ' }<Link href="/outcomes">Check campaign health</Link> for measurement gaps and follow-up.</p></div>
       <div className="bento">
         <section className="card s8">
-          <div className="card-head"><div><h3>Revenue by day</h3><p className="sub">Shopify orders, {P.label}</p></div><b className="card-num">{summaryError ? '—' : inr(revenue)}</b></div>
+          <div className="card-head"><div><h3>Online sales by day</h3><p className="sub">Shopify orders, {P.label}</p></div><b className="card-num">{summaryError ? '—' : inr(revenue)}</b></div>
           {days.length > 1 ? (
             <svg viewBox={`0 0 ${W} ${H + 22}`} className="chart" role="img" aria-label={`Daily revenue for ${P.label}, peaking at ${inr(max)}`}>
               <defs><linearGradient id="rev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--accent)" stopOpacity=".32" /><stop offset="1" stopColor="var(--accent)" stopOpacity="0" /></linearGradient></defs>
@@ -107,17 +144,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               <circle cx={X(days.length - 1)} cy={Y(days[days.length - 1][1])} r="4.5" fill="var(--accent)" stroke="var(--panel)" strokeWidth="2" />
               {[0, Math.floor((days.length - 1) / 2), days.length - 1].map((i, k) => <text key={i} x={X(i)} y={H + 16} textAnchor={(['start', 'middle', 'end'] as const)[k]} className="axis">{short(days[i][0])}</text>)}
             </svg>
-          ) : <div className="empty"><Icon name="chart" size={26} /><p>{summaryError ? 'Revenue could not load. Refresh this page to try again.' : 'Connect Shopify and run a sync to see daily revenue.'}</p></div>}
-        </section>
-
-        <section className={`card s4 ${styles.desk}`} aria-label="Review desk">
-          <div className="card-head"><div><h3>Your review desk</h3><p className="sub">Move the team’s work forward</p></div><span className="tile-ic"><Icon name="check" size={19}/></span></div>
-          <div className={styles.reviewCount}><strong>{reviewsAvailable ? reviewCount : '—'}</strong><span>awaiting human review</span></div>
-          <ul className={styles.reviewList}>
-            <li><Link href="/approvals?tab=reports"><Icon name="doc" size={17}/><span>Team reports</span><b>{reportError ? '—' : pendingReports || 0}</b><Icon name="arrow" size={15}/></Link></li>
-            <li><Link href="/approvals?tab=plans"><Icon name="megaphone" size={17}/><span>Campaign sign-offs</span><b>{planError ? '—' : pendingPlans || 0}</b><Icon name="arrow" size={15}/></Link></li>
-          </ul>
-          <div className={styles.deskFooter}><Link href="/approvals" className="btn">Open review queue<Icon name="arrow" size={16}/></Link><p>{!reviewsAvailable ? 'The review count is temporarily unavailable.' : reviewCount ? 'Includes work visible to your role. Each item shows who reviews next.' : 'You’re all caught up. New reviews will appear here.'}</p></div>
+          ) : <div className="empty"><Icon name="chart" size={26} /><p>{summaryError ? 'Revenue could not load. Refresh this page to try again.' : 'Connect Shopify in Settings to see daily sales.'}</p></div>}
         </section>
 
         <section className="card s4">
@@ -133,7 +160,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                 return <li key={p}><i style={{ background: PLATFORM[p]?.color || '#888' }} /><b>{PLATFORM[p]?.label || p}</b><span className="num">{inr(v)}</span><small>{Math.round((v / spend) * 100)}% · {(rev / v || 0).toFixed(1)}x return</small></li>;
               })}</ul>
             </div>
-          ) : <div className="empty"><Icon name="megaphone" size={26} /><p>{summaryError ? 'Ad spend could not load. Refresh this page to try again.' : platform || account ? 'No ad spend for these filters.' : 'No ad spend synced yet. Connect Meta or Google Ads on the Admin page.'}</p></div>}
+          ) : <div className="empty"><Icon name="megaphone" size={26} /><p>{summaryError ? 'Ad spend could not load. Refresh this page to try again.' : platform || account ? 'No ad spend for these filters.' : 'No ad spend yet. Connect Meta or Google Ads in Settings.'}</p></div>}
         </section>
 
         <section className="card s4">
@@ -159,14 +186,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </section>
 
         <section className="card s4">
-          <div className="card-head"><div><h3>Competitor moves</h3><p className="sub">Spotted by the War Room</p></div></div>
+          <div className="card-head"><div><h3>Competitor moves</h3><p className="sub">Spotted by the competitor watch</p></div></div>
           {(moves || []).length ? <ol className="timeline">{moves!.map(m => (
             <li key={m.id}><i /><div><b>{(m.competitors as any)?.name}</b> <span className="pill acc">{m.kind}</span><p>{m.summary}</p><time>{when(m.seen_at)}</time></div></li>
-          ))}</ol> : <div className="empty"><Icon name="eye" size={26} /><p>Add competitors on the Admin page and the War Room will watch them.</p></div>}
+          ))}</ol> : <div className="empty"><Icon name="eye" size={26} /><p>Add competitors in Settings and the team will watch them for you.</p></div>}
         </section>
 
         <section className="card s8" id="branch-sales">
-          <div className="card-head"><div><h3>Sales by branch</h3><p className="sub">Every showroom and the online store, from Odoo, {P.label}</p></div>{branches.length > 0 && <b className="card-num">{inr(branchTotal)}</b>}</div>
+          <div className="card-head"><div><h3>Sales by branch</h3><p className="sub">Every showroom and the online store, {P.label}</p></div>{branches.length > 0 && <b className="card-num">{inr(branchTotal)}</b>}</div>
           {branches.length ? <><ul className="rows">{shownBranches.map(b => (
             <li key={b.branch}>
               <span className="thumb"><Icon name={b.kind === 'online' ? 'bag' : 'map'} size={18} /></span>
@@ -174,11 +201,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                 <span className="sm">{b.kind === 'showroom' ? 'Showroom' : b.kind === 'online' ? 'Online' : 'Other sales'} · {Number(b.orders).toLocaleString('en-IN')} orders · {change(b.revenue, b.prev)} vs the days before</span></div>
               <span className="num">{inr(b.revenue)}</span>
             </li>
-          ))}</ul><Pager sp={sp} param="bp" page={branchPage} size={5} total={branches.length} shown={shownBranches.length} anchor="branch-sales"/></> : <div className="empty"><Icon name="chart" size={26} /><p>{branchError ? 'Branch results could not load. Refresh to try again.' : 'Connect Odoo on the Admin page and run a sync to see every branch.'}</p></div>}
+          ))}</ul><Pager sp={sp} param="bp" page={branchPage} size={5} total={branches.length} shown={shownBranches.length} anchor="branch-sales"/></> : <div className="empty"><Icon name="chart" size={26} /><p>{branchError ? 'Branch results could not load. Refresh to try again.' : 'Connect your billing system in Settings to see every branch.'}</p></div>}
         </section>
 
         <section className="card s12">
-          <div className="card-head"><div><h3>Recent campaign runs</h3><p className="sub">Each run moves through the team, then waits for the heads</p></div></div>
+          <div className="card-head"><div><h3>Recent campaigns</h3><p className="sub">Each one moves through the team, then waits for sign-off</p></div></div>
           {(runs || []).length ? <ul className="runs">{runs!.map(r => {
             const v = runSteps(r, live.has(r.id));
             return (
@@ -188,7 +215,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                 <span className={`pill ${v.pill[1]}`}>{v.pill[0]}</span>
               </li>
             );
-          })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No runs visible to you yet.</p></div>}
+          })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>No campaigns have run in this period. <Link href="/campaigns">Start one</Link>.</p></div>}
         </section>
       </div>
     </div>

@@ -10,8 +10,18 @@ type Hit = { id: string; label: string; sub: string; href?: string; icon?: IconN
 const PLACES: Hit[] = [
   ...BUILDINGS.map(b => ({ id: b.id, label: b.name, sub: 'Building' })),
   ...ROOMS.map(r => ({ id: r.id, label: r.name, sub: `Department · ${BUILDINGS.find(b => b.id === r.building)?.short}` })),
-  ...PEOPLE.map(p => ({ id: p.id, label: p.name, sub: `${p.human ? 'Person' : 'AI staff'} · ${ROOMS.find(r => r.id === p.room)?.name}` })),
+  // AI staff open their own page; people are found on the office floor.
+  ...PEOPLE.map(p => ({ id: p.id, label: p.name, sub: `${p.human ? 'Person' : 'AI staff'} · ${ROOMS.find(r => r.id === p.room)?.name}`, ...(p.human ? {} : { href: `/agents/${encodeURIComponent(p.id)}`, icon: 'users' as const }) })),
 ];
+
+/** One thing waiting on the signed-in person, as the bell lists it. */
+export type Need = { id: string; href: string; kind: 'plan' | 'report' | 'design' | 'video'; title: string; sub: string };
+const KIND_LABEL = { plan: 'PL', report: 'RE', design: 'DE', video: 'VI' } as const;
+
+/** Opens the shared New task panel, optionally with words already typed. */
+export function askTeam(message = '') {
+  window.dispatchEvent(new CustomEvent('workspace:new-task', { detail: { message } }));
+}
 
 /** Sends the office to a building, department or person; from another page it opens the office first. */
 export function focusOffice(id: string, onOffice: boolean, push: (u: string) => void) {
@@ -26,29 +36,33 @@ export function navigateWorkspace(href:string,push:(url:string)=>void) {
   push(href);return true;
 }
 
-export function TopBar({ name, role, waiting, admin = false, seo = false, studio = false }: { name: string; role: string; waiting: number; admin?: boolean; seo?: boolean; studio?: boolean }) {
+export function TopBar({ name, role, waiting, needs = [], admin = false, seo = false, studio = false, video = false }: { name: string; role: string; waiting: number; needs?: Need[]; admin?: boolean; seo?: boolean; studio?: boolean; video?: boolean }) {
   const path = usePathname(), router = useRouter(), onOffice = path.startsWith('/office');
   const [q, setQ] = useState(''), [open, setOpen] = useState(false), [cur, setCur] = useState(0), [dark, setDark] = useState(false);
-  const box = useRef<HTMLInputElement>(null), profile = useRef<HTMLDetailsElement>(null);
+  const box = useRef<HTMLInputElement>(null), profile = useRef<HTMLDetailsElement>(null), bell = useRef<HTMLDetailsElement>(null);
   const pages = useMemo<Hit[]>(() => [
-    { id: 'page-dashboard', label: 'Dashboard', sub: 'Business overview', href: '/dashboard', icon: 'chart' },
-    { id: 'page-tasks', label: 'Tasks & chat', sub: 'Assign work and read team reports', href: '/tasks', icon: 'doc' },
-    { id: 'page-office', label: 'Office map', sub: 'Your team at work', href: '/office', icon: 'map' },
-    { id: 'page-agents', label: 'Agent reports', sub: 'People, activity and conversations', href: '/agents', icon: 'users' },
-    { id: 'page-approvals', label: 'Approvals', sub: 'Review work waiting for you', href: '/approvals', icon: 'check' },
-    { id: 'page-outcomes', label: 'Outcomes', sub: 'Campaign health and follow-through', href: '/outcomes', icon: 'trend' },
-    { id: 'page-automations', label: 'Automations', sub: 'Workflows and scheduled tasks', href: '/automations', icon: 'rocket' },
-    { id: 'page-management', label: 'Agent management', sub: 'Roles and instructions', href: '/agents/manage', icon: 'edit' },
-    ...(studio ? [{ id: 'page-studio', label: 'Design studio', sub: 'Create and review artwork', href: '/studio', icon: 'spark' as const }] : []),
-    ...(seo ? [{ id: 'page-seo', label: 'SEO', sub: 'Search performance', href: '/seo', icon: 'search' as const }] : []),
+    { id: 'page-home', label: 'Home', sub: 'What needs you and how the business is doing', href: '/dashboard', icon: 'home' },
+    { id: 'page-inbox', label: 'Inbox', sub: 'Reports and plans waiting for your decision', href: '/approvals', icon: 'inbox' },
+    { id: 'page-tasks', label: 'Tasks', sub: 'Everything you asked the team for', href: '/tasks', icon: 'tasks' },
+    { id: 'page-office', label: 'Office', sub: 'Walk the floor and see who is working', href: '/office', icon: 'cube' },
+    ...(studio ? [{ id: 'page-studio', label: 'Studio', sub: 'Make and review artwork', href: '/studio', icon: 'spark' as const }] : []),
+    ...(video ? [{ id: 'page-video', label: 'Video', sub: 'Send footage for editing', href: '/video', icon: 'film' as const }] : []),
+    { id: 'page-campaigns', label: 'Campaigns', sub: 'Start campaigns, runs and schedules', href: '/campaigns', icon: 'rocket' },
+    { id: 'page-customers', label: 'Customer inbox', sub: 'Customer questions and reply drafts', href: '/customers', icon: 'chat' },
+    { id: 'page-results', label: 'Results', sub: 'Did the work pay off?', href: '/outcomes', icon: 'trend' },
+    ...(seo ? [{ id: 'page-seo', label: 'SEO', sub: 'Search rankings and keywords', href: '/seo', icon: 'search' as const }] : []),
+    { id: 'page-agents', label: 'Agents', sub: 'Your AI team, their work and instructions', href: '/agents', icon: 'users' },
     ...(admin ? [
-      { id: 'page-usage', label: 'Usage and billing', sub: 'Usage limits and costs', href: '/usage', icon: 'rupee' as const },
-      { id: 'page-admin', label: 'Settings', sub: 'Connections and office controls', href: '/admin', icon: 'settings' as const },
+      { id: 'page-usage', label: 'Usage & billing', sub: 'Budget, limits and costs', href: '/usage', icon: 'rupee' as const },
+      { id: 'page-admin', label: 'Settings', sub: 'People, brand, AI and connections', href: '/admin', icon: 'settings' as const },
     ] : []),
-  ], [admin, seo, studio]);
+  ], [admin, seo, studio, video]);
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return s ? [...pages, ...PLACES].filter(h => h.label.toLowerCase().includes(s) || h.sub.toLowerCase().includes(s)).slice(0, 8) : pages.slice(0, 6);
+    if (!s) return pages.slice(0, 6);
+    // Whatever was typed can always go to the team as a task: that choice comes last.
+    const found = [...pages, ...PLACES].filter(h => h.label.toLowerCase().includes(s) || h.sub.toLowerCase().includes(s)).slice(0, 7);
+    return [...found, { id: 'ask-team', label: `Ask the team: “${q.trim().slice(0, 60)}”`, sub: 'Opens New task with these words', icon: 'send' as const }];
   }, [q, pages]);
 
   useEffect(() => {
@@ -73,11 +87,17 @@ export function TopBar({ name, role, waiting, admin = false, seo = false, studio
     window.addEventListener('keydown', shortcut);
     return () => { window.removeEventListener('office:find', focus); window.removeEventListener('keydown', shortcut); };
   }, []);
-  useEffect(() => { setOpen(false); if (profile.current) profile.current.open = false; }, [path]);
+  useEffect(() => { setOpen(false); if (profile.current) profile.current.open = false; if (bell.current) bell.current.open = false; }, [path]);
+  useEffect(() => {
+    // The bell and account menus close on a click elsewhere or Escape, like any other menu.
+    const close = (e: Event) => { for (const menu of [bell.current, profile.current]) if (menu?.open && !(e instanceof KeyboardEvent ? e.key !== 'Escape' : menu.contains(e.target as Node))) menu.open = false; };
+    document.addEventListener('pointerdown', close); document.addEventListener('keydown', close);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close); };
+  }, []);
 
   const pick = (h: Hit) => {
     const push=(href:string)=>navigateWorkspace(href,router.push);
-    if (h.href) push(h.href); else focusOffice(h.id, onOffice, push);
+    if (h.id === 'ask-team') askTeam(q.trim()); else if (h.href) push(h.href); else focusOffice(h.id, onOffice, push);
     setQ(''); setOpen(false); setCur(0); box.current?.blur();
   };
   const theme = () => {
@@ -89,10 +109,10 @@ export function TopBar({ name, role, waiting, admin = false, seo = false, studio
   return (
     <header className="topbar">
       <button type="button" className="iconbtn mobile-menu-trigger" aria-label="Open workspace navigation" aria-haspopup="dialog" onClick={() => window.dispatchEvent(new Event('workspace:navigation'))}><Icon name="menu" /></button>
-      <Link href="/dashboard" className="wordmark mobile-wordmark" aria-label="Parakkat AI Office dashboard"><b>PARAKKAT</b><small>AI OFFICE</small></Link>
+      <Link href="/dashboard" className="wordmark mobile-wordmark" aria-label="Parakkat AI Office home"><b>Parakkat</b><small>AI Office</small></Link>
       <div className="search" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
         <Icon name="search" size={19} />
-        <input ref={box} value={q} placeholder="Search your workspace…" aria-label="Search pages, people, or departments" role="combobox" aria-expanded={open} aria-controls="search-hits" aria-autocomplete="list" aria-activedescendant={open && hits[cur] ? `search-${hits[cur].id}` : undefined} autoComplete="off"
+        <input ref={box} value={q} placeholder="Search pages, agents, teams…" aria-label="Search pages, agents, people or departments" role="combobox" aria-expanded={open} aria-controls="search-hits" aria-autocomplete="list" aria-activedescendant={open && hits[cur] ? `search-${hits[cur].id}` : undefined} autoComplete="off"
           onChange={e => { setQ(e.target.value); setOpen(true); setCur(0); }} onFocus={() => { setOpen(true); setCur(0); }}
           onKeyDown={e => {
             if (e.key === 'ArrowDown') { setOpen(true); setCur(c => Math.max(0, Math.min(hits.length - 1, c + 1))); e.preventDefault(); }
@@ -102,19 +122,28 @@ export function TopBar({ name, role, waiting, admin = false, seo = false, studio
           }} />
         <kbd className="search-shortcut" aria-hidden="true">⌘ K</kbd>
         {open && <div className="search-results">
-          <p className="search-caption">{q.trim() ? 'Search results' : 'Quick navigation'}</p>
+          <p className="search-caption">{q.trim() ? 'Results' : 'Go to'}</p>
           <ul id="search-hits" role="listbox" aria-label="Workspace search results" className="hits">
             {hits.map((h, i) => <li id={`search-${h.id}`} key={h.id} role="option" aria-selected={i === cur} onMouseDown={e => { e.preventDefault(); pick(h); }} onMouseEnter={() => setCur(i)}>
               <span className="search-hit-icon"><Icon name={h.icon || 'findUser'} size={18} /></span><span><b>{h.label}</b><small>{h.sub}</small></span><Icon name="arrow" size={15} />
             </li>)}
           </ul>
-          {!hits.length && <p className="search-empty" role="status">No matches. Try an agent name, department, or page.</p>}
+          {!hits.length && <p className="search-empty" role="status">No matches. Try an agent name, a team or a page.</p>}
         </div>}
       </div>
       <div className="top-actions">
-        <Link href="/tasks" className="top-create" aria-label="Create a new task"><Icon name="plus" size={17}/><span>New task</span></Link>
+        <button type="button" className="top-create" aria-haspopup="dialog" onClick={() => askTeam()}><Icon name="plus" size={17}/><span>New task</span></button>
         <button type="button" className="iconbtn theme-toggle" onClick={theme} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}><Icon name={dark ? 'sun' : 'moon'} /></button>
-        <Link href="/approvals" className="iconbtn" aria-label={waiting ? `${waiting} approvals waiting for you` : 'View approvals'} title="Approvals"><Icon name="bell" />{waiting > 0 && <i className="dot" />}</Link>
+        <details className="needs" ref={bell}>
+          <summary aria-label={waiting ? `${waiting} things need you` : 'Nothing needs you'} title="Needs you"><Icon name="bell" />{waiting > 0 && <b className="needs-count">{waiting > 99 ? '99+' : waiting}</b>}</summary>
+          <div className="needs-panel">
+            <h2>{waiting ? `${waiting} ${waiting === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you'}</h2>
+            {needs.length ? <ul>{needs.map(n => <li key={n.id}><Link href={n.href}><span className={`kind ${n.kind}`} aria-hidden="true">{KIND_LABEL[n.kind]}</span><span><b>{n.title}</b><small>{n.sub}</small></span></Link></li>)}
+              <li><Link className="all" href="/approvals">Open the Inbox<Icon name="arrow" size={15} /></Link></li></ul>
+              : <p>{waiting ? 'Open the Inbox to see them.' : 'When the team sends you a report or plan, it appears here.'}</p>}
+            {!needs.length && waiting > 0 && <ul><li><Link className="all" href="/approvals">Open the Inbox<Icon name="arrow" size={15} /></Link></li></ul>}
+          </div>
+        </details>
         <details className="me" ref={profile}>
           <summary aria-label={`Account: ${name}, ${role}`}><span className="avatar">{name.trim()[0]?.toUpperCase() || 'P'}</span><span className="who"><b>{name}</b><small>{role}</small></span><Icon name="down" size={16} /></summary>
           <div className="menu"><div className="profile-info"><b>{name}</b><small>{role}</small></div><form action={signOut}><button type="submit"><Icon name="logout" size={18} />Sign out</button></form></div>

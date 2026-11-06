@@ -15,3 +15,4 @@ next-env.d.ts
 # Never commit exported OAuth credentials or an in-project auth store.
 .chatgpt/
 chatgpt-credentials*.json
+.gstack/

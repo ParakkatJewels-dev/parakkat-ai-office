@@ -25,7 +25,8 @@ export default async function Agents({ searchParams }: { searchParams: Promise<R
 
   return (
     <AgentActivityProvider history={Object.fromEntries(all.map(card => [card.id,card.last?.at||null]))} observedAt={new Date().toISOString()}><div className={`page ${styles.page}`}>
-      <PageHead title="Agent reports" sub={`Activity, reports and results across your AI team.${role === 'super_admin' ? '' : ' You see the departments you head.'}`}><Link href="/agents/manage" className="btn ghost"><Icon name="edit" size={17}/>Agent management</Link></PageHead>
+      <PageHead title="Agents" sub={`Your AI team: who is working, what they sent and how it went.${role === 'super_admin' ? '' : ' You see the teams you head.'}`} />
+      <nav className="tabs" aria-label="Agents"><Link href="/agents" className="on" aria-current="page"><Icon name="users" size={16}/>Directory</Link><Link href="/agents/manage"><Icon name="edit" size={16}/>Instructions</Link></nav>
       <section className="tiles" aria-label="Summary">
         <AgentActivitySummary />
         <Tile icon="doc" tone="blue" label="Reports forwarded" value={sum(c => c.forwarded)} sub={`${sum(c => c.accepted)} accepted`} />

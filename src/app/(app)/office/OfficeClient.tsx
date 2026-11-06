@@ -103,7 +103,7 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
         const params = new URLSearchParams(location.search), focus = params.get('focus');
         if (focus) o.flyTo(focus);
         if (params.get('view') === 'hq') setHqOpen(true);
-      } catch (e) { setError('This browser cannot show the 3D office. The dashboard and approvals still work.'); console.error(e); }
+      } catch (e) { setError('This browser cannot show the 3D office. Home and the Inbox still work.'); console.error(e); }
     })();
     const onResize = () => o?.resize();
     const onFocus = (e: Event) => o?.flyTo((e as CustomEvent<string>).detail);
@@ -405,14 +405,14 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
                     {directDialogueEvent(it.event) && <button type="button" className="link" onClick={async () => { const event = directDialogueEvent(it.event); if (!event) return; const version = ++dialogueVersion.current; const text = await dialogueText(event, undefined, () => clearPrivateDialogue(event.threadId)); if (version === dialogueVersion.current) showDialogue(event, text, 'saved'); }}>View dialogue</button>}
                   </div></li>
                 ))}
-              </ol> : <p className="live-log-empty">Nothing yet. Start a campaign from Settings, or wait for the daily sync.</p>}
+              </ol> : <p className="live-log-empty">Nothing yet. Start a campaign in Campaigns, or wait for the daily sync.</p>}
               <div className="hud-rail-foot">{admin ? 'You see every department.' : 'Your departments, and other teams talking to them.'}</div>
             </aside>
           )}
           <div className="hud-dock float" role="toolbar" aria-label="Quick actions">
             <Link className="hud-btn" href="/tasks"><Icon name="doc" size={17} /><span>Tasks & chat</span></Link>
-            {admin ? <Link className="hud-btn" href="/admin?tab=operations#campaign"><Icon name="rocket" size={17} /><span>Start campaign</span></Link> : <Link className="hud-btn" href="/dashboard"><Icon name="chart" size={17} /><span>Dashboard</span></Link>}
-            <Link className="hud-btn" href="/approvals"><Icon name="check" size={17} /><span>Approvals</span></Link>
+            {admin ? <Link className="hud-btn" href="/campaigns"><Icon name="rocket" size={17} /><span>Start campaign</span></Link> : <Link className="hud-btn" href="/dashboard"><Icon name="home" size={17} /><span>Home</span></Link>}
+            <Link className="hud-btn" href="/approvals"><Icon name="inbox" size={17} /><span>Inbox</span></Link>
             {admin && <Link className="hud-btn" href="/admin?tab=connections#sync"><Icon name="sync" size={17} /><span>Sync data</span></Link>}
             <button type="button" className="hud-btn" aria-pressed={find} onClick={() => setFind(f => !f)}><Icon name="findUser" size={17} /><span>Find a colleague</span></button>
           </div>

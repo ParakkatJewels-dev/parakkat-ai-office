@@ -58,10 +58,11 @@ test('each settings section loads only its intended workspace and highlights the
     ['connections',['system_state','connections'],{ai:0,business:1,liveRuns:0}],
     ['team',['system_state','profiles','departments','agents'],{ai:0,business:0,liveRuns:0}],
     ['competitors',['system_state','competitors'],{ai:0,business:0,liveRuns:0}],
-    ['operations',['system_state','agent_runs','approvals','autopilot_jobs','agent_runs','agent_runs'],{ai:0,business:0,liveRuns:1}],
+    // Campaign runs and publishing moved to /campaigns; Office controls keep schedules and opportunity reviews.
+    ['operations',['system_state','autopilot_jobs','agent_runs','agent_runs'],{ai:0,business:0,liveRuns:0}],
   ];
   for(const [tab,expectedTables,expectedCalls] of cases){const h=harness(),tree=await h.render({tab});assert.deepEqual(selectedNav(tree),[`/admin?tab=${tab}`]);assert.deepEqual(tables(h),expectedTables);assert.deepEqual(h.calls,expectedCalls);}
-  const h=harness(),tree=await h.render({reviewRequested:'123',msg:'Review requested'});assert.deepEqual(selectedNav(tree),['/admin?tab=operations']);assert.match(text(tree),/Review requested/);assert.equal(h.calls.liveRuns,1);
+  const h=harness(),tree=await h.render({reviewRequested:'123',msg:'Review requested'});assert.deepEqual(selectedNav(tree),['/admin?tab=operations']);assert.match(text(tree),/Review requested/);assert.equal(h.calls.liveRuns,0);
 });
 
 test('brand guidance and learning memory have independent reads, controls and retained filter pagination',async()=>{

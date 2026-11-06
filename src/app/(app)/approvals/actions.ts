@@ -7,7 +7,21 @@ import { publishApproved } from '@/lib/agents/publish';
 import { requireUser } from '@/lib/auth/session';
 import { UUID } from '@/lib/automation/core.mjs';
 
-const back = (msg: string, tab = 'reports') => redirect(`/approvals?tab=${tab}&error=${encodeURIComponent(msg)}`);
+const back = (msg: string, tab = 'reports', focus = '') => redirect(`/approvals?tab=${tab}${focus}&error=${encodeURIComponent(msg)}`);
+const done = (msg: string, tab: string) => redirect(`/approvals?tab=${tab}&msg=${encodeURIComponent(msg)}`);
+
+/** Database refusals in words a reviewer can act on; anything unexpected gets a safe general message. */
+function plain(error: { message?: string; code?: string }, what: 'report' | 'plan') {
+  const m = error.message || '';
+  if (error.code === '42501' || /Not your department/.test(m)) return `This ${what} belongs to another team, so you can’t decide it.`;
+  if (/not waiting on/.test(m)) return `Someone already decided this ${what}. Refresh to see where it stands.`;
+  if (error.code === '40001' || /revised|changed before/.test(m)) return `This ${what} changed while you were reading it. Read the new version, then decide again. Your note is kept.`;
+  if (/Add a note/.test(m)) return 'Add a short note so the team knows what to change or why.';
+  if (/already decided/.test(m)) return 'You have already decided on this plan.';
+  if (/heads have not all approved|does not need your approval/.test(m)) return m.endsWith('.') ? m : `${m}.`;
+  return `Your decision wasn’t saved. Your note is kept; try again in a moment.`;
+}
+const REPORT_DONE: Record<string, string> = { accept: 'Report accepted. The team has been told.', send_back: 'Sent back with your note. The team will revise it and send it again.', reject: 'Report rejected. The team has your note.' };
 
 /** Queue a fresh version-bound review of existing assets; never advance or publish here. */
 export async function requestCampaignReview(form: FormData) {
@@ -25,18 +39,22 @@ export async function requestCampaignReview(form: FormData) {
 export async function decideReport(form: FormData) {
   const db = await supabaseServer();
   const revision=Number(form.get('revision'));
-  const { error } = await db.rpc('decide_report', { p_report: form.get('id'), p_decision: form.get('decision'), p_note: String(form.get('note') || '') || null, p_revision:Number.isSafeInteger(revision)&&revision>0?revision:null });
-  if (error) back(error.message);
+  const id = String(form.get('id') || ''), decision = String(form.get('decision') || '');
+  const { error } = await db.rpc('decide_report', { p_report: id, p_decision: decision, p_note: String(form.get('note') || '') || null, p_revision:Number.isSafeInteger(revision)&&revision>0?revision:null });
+  if (error) back(plain(error, 'report'), 'reports', UUID.test(id) ? `&report=${id}` : '');
   revalidatePath('/approvals');
   revalidatePath('/automations');
+  revalidatePath('/dashboard');
+  done(REPORT_DONE[decision] || 'Decision saved.', 'reports');
 }
 
 /** A head or the Super Admin signs a plan. When the Super Admin approves, the campaign is published. */
 export async function decideApproval(form: FormData) {
   const db = await supabaseServer();
   const id = String(form.get('id'));
-  const { data: status, error } = await db.rpc('decide_approval', { p_approval: id, p_decision: form.get('decision'), p_note: String(form.get('note') || '') || null });
-  if (error) back(error.message,'plans');
+  const decision = String(form.get('decision') || '');
+  const { data: status, error } = await db.rpc('decide_approval', { p_approval: id, p_decision: decision, p_note: String(form.get('note') || '') || null });
+  if (error) back(plain(error, 'plan'),'plans');
   if (status === 'approved') {
     const approved = await db.from('approvals').select('campaigns(channels)').eq('id', id).single();
     if (approved.error) back('Approved. Could not check publishing channels; no launch was started. Review this plan in Admin.','plans');
@@ -46,6 +64,9 @@ export async function decideApproval(form: FormData) {
     }
     try { await publishApproved(supabaseAdmin(), id); }
     catch (e) { back(`The plan is approved. ${e instanceof Error ? e.message : 'Publishing could not finish. Review its status in Admin.'}`,'plans'); }
+    revalidatePath('/approvals'); revalidatePath('/dashboard');
+    done('Approved and published to Meta. Follow it in Campaigns.', 'plans');
   }
-  revalidatePath('/approvals');
+  revalidatePath('/approvals'); revalidatePath('/dashboard');
+  done(decision === 'approve' ? 'Approved. It now waits on the next sign-off.' : decision === 'changes' ? 'Changes requested. The team will revise the plan and send it back to you.' : 'Plan rejected. The team has your note.', 'plans');
 }

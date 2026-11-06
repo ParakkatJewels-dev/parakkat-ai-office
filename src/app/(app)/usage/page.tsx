@@ -58,7 +58,7 @@ export default async function Usage({ searchParams }: { searchParams: Promise<Re
     <div className={`page ${styles.page}`}>
       {sp.msg && <p className="flash ok" role="status">{sp.msg}</p>}
       {sp.error && <p className="flash" role="alert">{sp.error}</p>}
-      <PageHead title="Usage and billing" sub={`Understand spending, control AI usage, and review every call. Estimates use ₹${fx} per US dollar.`}>
+      <PageHead title="Usage & billing" sub={`Understand spending, control AI usage, and review every call. Estimates use ₹${fx} per US dollar.`}>
         <div className="seg" role="group" aria-label="Period">{Object.entries(RANGES).map(([k, l]) => <a key={k} href={qs({ range: k, lp: null })} className={range === k ? 'on' : ''}>{l}</a>)}</div>
       </PageHead>
 

@@ -78,7 +78,7 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
       {sp.msg && <p className="flash ok" role="status">{sp.msg}</p>}
       {sp.made && !sp.msg && <p className="flash ok">{handoff ? automaticChatGPT ? 'Artwork request prepared. ChatGPT generation progress appears on its card.' : 'Artwork request prepared. Open its generation controls to check Higgsfield progress, connection and credits.' : 'Design ordered. It is first in the gallery and takes about a minute; you can leave this page.'}</p>}
       <Refresher active={(busy || 0) > 0 && tab === 'gallery'}>{busy} design{busy === 1 ? ' is' : 's are'} being generated. This page updates on its own.</Refresher>
-      <PageHead title="Design Studio" sub="Create, review, and refine your brand’s visual work."><a href="/studio?tab=order" className="btn"><Icon name="plus" size={17}/>Create a design</a></PageHead>
+      <PageHead title="Studio" sub="Make artwork, review it, and keep the best designs in your library."><a href="/studio?tab=order" className="btn"><Icon name="plus" size={17}/>Create a design</a></PageHead>
       <section className={studioStyles.summary} aria-label="Studio summary">
         <div><span>All artwork</span><strong>{total || 0}</strong></div>
         <a href={qs({ show: 'todo', tab: null })}><span>Awaiting review</span><strong>{todo || 0}</strong></a>
@@ -232,7 +232,7 @@ async function Library({ db, sp, role }: { db: Db; sp: Record<string, string | u
     {!folders.complete && <p className="flash" role="alert">The full folder list could not be loaded. Folder totals below may be incomplete; refresh to try again.</p>}
     <div className={studioStyles.librarySetup}>
       <section className="card">
-        <div className="card-head"><div><h3>Where the past designs come from</h3><p className="sub">Selected Drive folders and their subfolders. {handoff ? 'Saved visual fingerprints guide reference selection. Original reference images are read for generation or a downloaded artwork pack.' : 'AI Office studies each design, saves its visual fingerprint, and removes the imported preview from AI Office storage.'} Original Drive files stay in Drive.</p></div>
+        <div className="card-head"><div><h3>Where the past designs come from</h3><p className="sub">Selected Drive folders and their subfolders. {handoff ? 'Saved notes on each design guide which references are picked. Original reference images are read for generation or a downloaded artwork pack.' : 'AI Office studies each design, saves notes on its look, and removes the imported preview from AI Office storage.'} Original Drive files stay in Drive.</p></div>
           <form action={scanNow}><Submit ghost small icon="sync" pending="Queuing…" disabled={status.active || countsError}>{(pendingFolders.count || 0)>0?'Resume scan':!handoff && (waiting.count || 0)>0?'Resume study':'Read folders again'}{!handoff && (failed.count || 0)>0?' and retry failures':''}</Submit></form></div>
         <p className="sm">{handoff ? 'Scans discover supported images, PDFs, Photoshop and Illustrator files. New image studies remain disabled.' : 'The library studies available image previews of supported images, PDFs, Photoshop and Illustrator files.'} A PDF or design-file preview does not cover every page or layer. Unsupported formats are excluded.</p>
         {picked.length ? <ul className={`rows ${studioStyles.folderRows}`}>{picked.map(f => {

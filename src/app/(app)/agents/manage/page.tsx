@@ -26,9 +26,8 @@ export default async function AgentManagement({searchParams}:{searchParams:Promi
   const department=depts.find(row=>row.id===selected?.department_id);
   const base=selected?defaultAgentGuidance(selected):'';
   return <div className={`page ${styles.page}`}>
-    <PageHead title="Agent management" sub="Review roles and set the instructions your agents use on their next step.">
-      <Link href="/agents" className="btn ghost"><Icon name="users" size={17}/>Agent reports</Link>
-    </PageHead>
+    <PageHead title="Agents" sub="Each agent’s role and the instructions it follows from its next step." />
+    <nav className="tabs" aria-label="Agents"><Link href="/agents"><Icon name="users" size={16}/>Directory</Link><Link href="/agents/manage" className="on" aria-current="page"><Icon name="edit" size={16}/>Instructions</Link></nav>
     {roster.error || departments.error?<p className="flash" role="alert">The agent directory could not be loaded. Refresh to try again.</p>:selected?<AgentManager
       agents={agents.map(agent=>({...agent,canEdit:editable(agent.department_id)}))} departments={depts.map(row=>({id:row.id,name:row.name}))}
       selected={{...selected,departmentName:department?.name || selected.department_id,headRole:department?.human_head_role || 'super_admin',leadName:agents.find(agent=>agent.id===department?.ai_lead_agent)?.name || null,canEdit}}

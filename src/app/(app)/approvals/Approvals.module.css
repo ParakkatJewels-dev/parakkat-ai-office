@@ -65,3 +65,31 @@
 @media(max-width:640px){.page{gap:17px}.page :global(.card.report),.page :global(.card.plan){padding:16px;gap:16px}.page :global(.report-head) :global(.title){font-size:18px}.readPanel{padding:16px}.page :global(.decide){padding:15px}.page :global(.decide-btns)>button{flex:1 1 140px;white-space:normal}.page :global(.decide-btns)>button:last-child{flex-basis:100%}.page :global(.prop){grid-template-columns:1fr}.page :global(.facts){grid-template-columns:repeat(2,minmax(0,1fr))}.signoff :global(.stepper){overflow-x:auto;min-height:64px}.signoff :global(.stepper li){min-width:75px}.signoff :global(.stepper span){display:block;white-space:normal;overflow:visible}}
 @media(max-width:380px){.page :global(.facts){grid-template-columns:minmax(0,1fr)}.page :global(.decide-btns)>button{flex-basis:100%}}
 @media(pointer:coarse){.page :is(button,summary),.page :global(.tabs)>a{min-height:44px}}
+
+/* Aurora Glass: summary first (teal), the report on frosted glass, the decision in violet. */
+.reportList { background: var(--glass-card); border-color: var(--glass-line); border-radius: 18px; }
+.reportList h3 { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 500; color: var(--dim); }
+.reportList a { border-radius: 12px; }
+.reportList a:hover { border-color: transparent; background: color-mix(in srgb, var(--accent-2) 12%, transparent); }
+.reportList a[aria-current="true"] { border-color: color-mix(in srgb, var(--accent-2) 50%, transparent); background: color-mix(in srgb, var(--accent-2) 22%, transparent); }
+.reportList a span { font-size: 12px; color: var(--dim); }
+.page :global(.card.report), .page :global(.card.plan) { border-radius: 20px; }
+.readPanel { background: transparent; border-color: var(--glass-line); border-radius: 16px; }
+.reportText { white-space: normal; font-size: 15px; line-height: 1.7; }
+.leadReview :global(.lead-note) { border: 1px solid rgba(34,211,166,.32); border-left-width: 1px; border-radius: 14px; background: rgba(34,211,166,.1); }
+.leadReview :global(.lead-note) p { font-size: 14.5px; line-height: 1.6; }
+.page :global(.decide) { border-radius: 18px; border-color: color-mix(in srgb, var(--accent-2) 40%, transparent); background: color-mix(in srgb, var(--accent-2) 12%, transparent); }
+.page :global(.decide) textarea { border-radius: 12px; background: color-mix(in srgb, var(--bg) 60%, transparent); }
+.feedbackLabel { font-size: 13px; font-weight: 600; }
+.planOverview { border-radius: 14px; border: 1px solid rgba(91,140,255,.32); border-left-width: 1px; background: rgba(91,140,255,.1); }
+.page :global(.facts) > div { border-radius: 12px; border-color: var(--glass-line); background: var(--glass-card); }
+.copySection, .signoff, .page :global(.proposal) { border-radius: 14px; border: 1px solid var(--glass-line); background: transparent; }
+.copySection :global(.copy) p + p, .page :global(.rows) > li { border-color: color-mix(in srgb, var(--ink) 8%, transparent); }
+.page :global(.rows) a { color: var(--accent); }
+.page :is(a, button, summary, textarea):focus-visible { outline-color: var(--accent-2); }
+@media (max-width: 640px) {
+  /* On a phone the decision buttons stack: the main action on its own row, full width. */
+  .page :global(.decide-btns) { display: grid; grid-template-columns: 1fr 1fr; }
+  .page :global(.decide-btns) > :last-child { grid-column: 1 / -1; grid-row: 1; min-height: 50px; }
+  .page :global(.decide-btns) :global(.btn) { width: 100%; min-height: 48px; }
+}

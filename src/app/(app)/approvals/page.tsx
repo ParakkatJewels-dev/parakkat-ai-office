@@ -9,6 +9,8 @@ import { redesign } from '../studio/actions';
 import { Refresher } from '@/components/Refresher';
 import { Icon } from '@/components/Icon';
 import { Submit } from '@/components/forms';
+import { Markdown } from '@/components/Markdown';
+import { DecisionNote } from '@/components/DecisionNote';
 import type { Proposal } from '@/lib/agents/campaign';
 import { UUID } from '@/lib/automation/core.mjs';
 import { publicationBlock } from '@/lib/agents/publish-core.mjs';
@@ -18,7 +20,9 @@ export const maxDuration = 300; // publishing to Meta happens in the approve act
 
 type Step = { role: AppRole; decision: string; note: string | null };
 
-const REPORTS = 4, PLANS = 3, DECIDED = 10;
+const REPORTS = 8, PLANS = 3, DECIDED = 10;
+// The seven status words used everywhere.
+const REPORT_WORD: Record<string, string> = { with_head: 'Needs you', accepted: 'Approved', sent_back: 'Sent back', rejected: 'Rejected', lead_review: 'AI review', revise: 'Working', rejected_by_lead: 'Rejected' };
 
 /** Where a plan stands for me: who signs next, and whether that is me. */
 function standing(p: { status: string; required_roles: unknown; approval_steps: unknown }, role: AppRole) {
@@ -64,21 +68,21 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
       {sp.error && <p className="flash" role="alert">{sp.error}</p>}
       {sp.msg && <p className="flash ok" role="status">{sp.msg}</p>}
       <Refresher active={view.some(v => (v.c?.creatives || []).some((x: any) => ['queued', 'making'].includes(x.art_status)))}>A banner is being redesigned in the background. This page updates on its own.</Refresher>
-      <PageHead title="Approvals" sub="Read the work first, then choose what the team should do next." />
+      <PageHead title="Inbox" sub="Everything the team needs you to decide. Read the summary, then accept, send back or reject." />
 
-      <nav className="tabs" aria-label="Approval queues">
-        <Link href={sectionHref('reports')} className={section==='reports'?'on':''} aria-current={section==='reports'?'page':undefined}><Icon name="doc" size={16}/>Reports to review <span className="pill">{myCount || 0}</span></Link>
-        <Link href={sectionHref('plans')} className={section==='plans'?'on':''} aria-current={section==='plans'?'page':undefined}><Icon name="rocket" size={16}/>Campaign plans <span className="pill">{minePlans}</span></Link>
-        <Link href={sectionHref('decided')} className={section==='decided'?'on':''} aria-current={section==='decided'?'page':undefined}><Icon name="check" size={16}/>Report history</Link>
+      <nav className="tabs" aria-label="Inbox sections">
+        <Link href={sectionHref('reports')} className={section==='reports'?'on':''} aria-current={section==='reports'?'page':undefined}><Icon name="doc" size={16}/>Reports{role !== 'super_admin' && (myCount || 0) > 0 && <span className="pill needs">{myCount}</span>}</Link>
+        <Link href={sectionHref('plans')} className={section==='plans'?'on':''} aria-current={section==='plans'?'page':undefined}><Icon name="rocket" size={16}/>Campaign plans{minePlans > 0 && <span className="pill needs">{minePlans}</span>}</Link>
+        <Link href={sectionHref('decided')} className={section==='decided'?'on':''} aria-current={section==='decided'?'page':undefined}><Icon name="check" size={16}/>Decided</Link>
       </nav>
 
       {section==='reports' && <section id="reports" className="section">
-        <div className={presentation.queueHeading}><h2 className="section-title">{focusedReport&&focusedReport.status!=='with_head'?'Selected report and pending reviews':'Reports waiting on you'}</h2><p>Choose a report, read the AI lead’s summary and full output, then decide.</p></div>
-        {requestedReport&&!focusedReport&&<p className="sub">The selected report is unavailable or outside your current department access.</p>}
+        <div className={presentation.queueHeading}><h2 className="section-title">{focusedReport&&focusedReport.status!=='with_head'?'The report you opened':'Reports waiting on you'}</h2><p>Pick a report from the list. The AI lead’s view comes first, the full report below it.</p></div>
+        {requestedReport&&!focusedReport&&<p className="sub">That report isn’t available: it may belong to another team.</p>}
         {(myCount || 0) > REPORTS && <Pager sp={{...sp,report:undefined}} param="rp" page={rp} size={REPORTS} total={myCount} shown={(myReports || []).length} anchor="reports" />}
         {selectedReport ? <div className={presentation.reviewLayout}>
           <nav className={presentation.reportList} aria-label="Choose a report to review">
-            <h3>Report inbox</h3>
+            <h3>{displayReports.length} {displayReports.length===1?'report':'reports'}</h3>
             {displayReports.map(report=><Link key={report.id} href={`/approvals?tab=reports&report=${report.id}${rp>1?`&rp=${rp}`:''}#report-${report.id}`} aria-current={selectedReport.id===report.id?'true':undefined}>
               <b>{report.title}</b><span>{D[report.department_id]} · {when(report.updated_at)}</span>
             </Link>)}
@@ -89,27 +93,27 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
               <Avatar name={A[r.author_agent] || r.author_agent} dept={r.department_id} size={44} />
               <div className="grow"><h3 className="title">{r.title}</h3>
                 <p className="sub">From <b>{A[r.author_agent]}</b> · {D[r.department_id]} · {when(r.updated_at)}{r.revision > 1 ? ` · revision ${r.revision}` : ''}</p></div>
-              <span className={`pill ${r.status==='accepted'?'good':r.status==='with_head'?'acc':'warn'}`}>{r.status==='with_head'?D[r.department_id]:r.status.replaceAll('_',' ')}</span>
+              <span className={`pill ${r.status==='accepted'?'good':r.status==='with_head'?'needs':r.status==='rejected'?'bad':'warn'}`}>{REPORT_WORD[r.status]||r.status.replaceAll('_',' ')}</span>
             </header>
-            {r.lead_note && <section className={presentation.leadReview}><h4>AI team lead’s summary</h4><blockquote className="lead-note"><Avatar name={A[r.lead_agent!] || 'Lead'} dept={r.department_id} size={28} /><div><b>{A[r.lead_agent!]}</b><p>{r.lead_note}</p></div></blockquote></section>}
-            <section className={presentation.readPanel} aria-label={`Report: ${r.title}`}><h4>Full team report</h4><div className={presentation.reportText}>{r.body}</div></section>
-            {r.automation_task_id&&<p className="sub"><Link href={`/automations?task=${encodeURIComponent(r.automation_task_id)}`} className="btn ghost sm-btn"><Icon name="users" size={14}/>See task and agent handoffs</Link></p>}
-            {r.status!=='with_head'&&r.head_note&&<p className="note-line"><b>Human reviewer:</b> {r.head_note}</p>}
+            {r.lead_note && <section className={presentation.leadReview}><h4>The AI lead’s view</h4><blockquote className="lead-note"><Avatar name={A[r.lead_agent!] || 'Lead'} dept={r.department_id} size={28} /><div><b>{A[r.lead_agent!]}</b><p>{r.lead_note}</p></div></blockquote></section>}
+            <section className={presentation.readPanel} aria-label={`Report: ${r.title}`}><h4>The report</h4><Markdown text={r.body} className={`md ${presentation.reportText}`} /></section>
+            {r.automation_task_id&&<p className="sub"><Link href={`/automations?task=${encodeURIComponent(r.automation_task_id)}`} className="btn ghost sm-btn"><Icon name="users" size={14}/>See who worked on it</Link></p>}
+            {r.status!=='with_head'&&r.head_note&&<p className="note-line"><b>Your team’s note:</b> {r.head_note}</p>}
             {r.status==='with_head'&&<form action={decideReport} className="decide">
               <input type="hidden" name="id" value={r.id} />
               <input type="hidden" name="revision" value={r.revision} />
-              <div className={presentation.decisionHeading}><h4>Your decision</h4><p>Accept if the report is ready. Send back for revisions, or reject it to close this review.</p></div>
-              <label className={presentation.feedbackLabel} htmlFor={`report-note-${r.id}`}>Feedback to the team <span>Required for send back or reject</span></label>
-              <textarea id={`report-note-${r.id}`} className="in" name="note" placeholder="Explain what should change or why you’re rejecting it." />
-              <div className="decide-btns"><Submit ghost danger confirm="Reject this report? Your note will be sent to the team and the report will be marked rejected." confirmTitle="Reject report" confirmLabel="Reject report" name="decision" value="reject" pending="Rejecting…">Reject</Submit><Submit ghost name="decision" value="send_back" pending="Sending back…">Send back for changes</Submit><Submit name="decision" value="accept" icon="check" pending="Accepting…">Accept report</Submit></div>
+              <div className={presentation.decisionHeading}><h4>Your decision</h4><p>Accept if it’s ready. Send back if it needs changes. Reject closes it.</p></div>
+              <label className={presentation.feedbackLabel} htmlFor={`report-note-${r.id}`}>Note to the team <span>Needed to send back or reject</span></label>
+              <DecisionNote id={`report-note-${r.id}`} storageKey={`report:${r.id}:${r.revision}`} placeholder="What should change, or why you’re rejecting it." />
+              <div className="decide-btns"><Submit ghost danger confirm="Reject this report? The team gets your note and the report is closed." confirmTitle="Reject this report?" confirmLabel="Reject report" name="decision" value="reject" pending="Rejecting…">Reject</Submit><Submit ghost name="decision" value="send_back" pending="Sending back…">Send back</Submit><Submit name="decision" value="accept" icon="check" pending="Accepting…">Accept</Submit></div>
             </form>}
           </article>
           ))}
-        </div> : <div className="empty"><Icon name="doc" size={26} /><p>No reports waiting on you.</p></div>}
+        </div> : <div className="empty"><Icon name="doc" size={26} /><p>No reports wait on you. When an AI lead forwards one, it appears here and in the bell.</p></div>}
       </section>}
 
       {section==='plans' && <section id="plans" className="section">
-        <div className={presentation.queueHeading}><h2 className="section-title">Campaign plans</h2><p>{minePlans ? `${minePlans} plan${minePlans===1?'':'s'} need${minePlans===1?'s':''} your decision. ` : ''}Read the reason, goal, artwork and budget before approving. Final Super Admin approval may launch ads.</p></div>
+        <div className={presentation.queueHeading}><h2 className="section-title">Campaign plans</h2><p>{minePlans ? `${minePlans} plan${minePlans===1?'':'s'} need${minePlans===1?'s':''} your sign-off. ` : ''}Each plan shows why, what it costs and the artwork first. The last sign-off can publish ads, and it always asks before it does.</p></div>
         {requestedCampaign&&!focusedPlan&&<p className="sub">The selected campaign has no approval available within your current access. Its plan may not have reached human review yet.</p>}
         {view.length ? view.map(({ p, c, steps, approved, next, mine }) => {
           const chain: AppRole[] = [...(p.required_roles as AppRole[]), 'super_admin'];
@@ -138,7 +142,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
               </div>
               <div className="plan-main">
                 <header className="report-head"><div className="grow"><span className="pill acc">{c.occasion}</span><h3 className="title">{c.name}{p.version > 1 ? ` · v${p.version}` : ''}</h3></div>
-                  <span className={`pill ${p.status === 'published' ? 'good' : p.status === 'pending' ? 'warn' : p.status === 'approved' ? 'acc' : 'bad'}`}>{p.status === 'published' ? 'Live' : p.status === 'pending' ? (mine ? 'Needs you' : 'In sign-off') : p.status === 'changes' ? 'Changes requested' : p.status}</span></header>
+                  <span className={`pill ${p.status === 'published' ? 'live' : p.status === 'pending' ? (mine ? 'needs' : 'info') : p.status === 'approved' ? 'good' : p.status === 'changes' ? 'warn' : 'bad'}`}>{p.status === 'published' ? 'Live' : p.status === 'pending' ? (mine ? 'Needs you' : 'Waiting on others') : p.status === 'changes' ? 'Sent back' : p.status === 'approved' ? 'Approved' : p.status === 'rejected' ? 'Rejected' : p.status}</span></header>
                 <section className={presentation.planOverview}>
                   <h4>What you’re approving</h4>
                   {c.plan.report ? <><p><b>Why now:</b> {c.plan.report.why}</p><p><b>Goal:</b> {c.plan.report.goal}</p></>
@@ -153,7 +157,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
                 </div>
                 {c.plan.split && <p className="sub">{c.plan.split}</p>}
                 {c.creatives?.length > 0 && <section className={presentation.copySection}><h4>Ad copy</h4><div className="copy">{c.creatives.map((x: any) => <p key={x.id}><span className="pill">{x.language.toUpperCase()}</span> <b>{x.headline}</b> {x.body}</p>)}</div></section>}
-                {c.plan.ai_review && <section className={presentation.leadReview}><h4>AI CMO’s review</h4><blockquote className="lead-note"><Avatar name="CMO AI" dept="board" size={28} /><div><p>{c.plan.ai_review}</p></div></blockquote></section>}
+                {c.plan.ai_review && <section className={presentation.leadReview}><h4>The AI CMO’s view</h4><blockquote className="lead-note"><Avatar name="CMO AI" dept="board" size={28} /><div><p>{c.plan.ai_review}</p></div></blockquote></section>}
                 {c.plan.report && <ProposalReport r={c.plan.report} />}
                 <details className={presentation.signoff}><summary>Who has signed off?</summary><Stepper steps={[{ label: 'AI CMO', state: 'done' }, ...chain.map(r => ({
                   label: ROLE_LABEL[r],
@@ -166,25 +170,25 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
                 {mine ? (
                   <form action={decideApproval} className="decide">
                     <input type="hidden" name="id" value={p.id} />
-                    <div className={presentation.decisionHeading}><h4>Your decision</h4><p>{role==='super_admin'&&!manual?'Approving will publish this campaign to Meta.':'Approve to send this plan to the next step.'} Request changes for a revision, or reject to close this plan.</p></div>
-                    <label className={presentation.feedbackLabel} htmlFor={`plan-note-${p.id}`}>Feedback to the team <span>Required for changes or reject</span></label>
-                    <textarea id={`plan-note-${p.id}`} className="in" name="note" placeholder="Explain what should change or why you’re rejecting it." />
-                    <div className="decide-btns"><Submit ghost danger confirm="Reject this campaign plan? The current approval will close without publishing." confirmTitle="Reject campaign plan" confirmLabel="Reject plan" name="decision" value="reject" pending="Rejecting…">Reject</Submit><Submit ghost name="decision" value="changes" pending="Sending…">Request changes</Submit><Submit name="decision" value="approve" confirm={role==='super_admin' && !manual ? `Publish ${c.name} to Meta with a daily budget of ${inr(Number(c.budget_daily))}? This creates live ads using the reviewed plan.` : undefined} confirmTitle="Publish campaign" confirmLabel="Approve and publish" disabled={!quality.current} icon={role === 'super_admin' && !manual ? 'rocket' : 'check'} pending={role === 'super_admin' && !manual ? 'Approving and publishing…' : 'Approving…'}>{role === 'super_admin' ? manual ? 'Approve for manual launch' : 'Approve and publish' : 'Approve plan'}</Submit></div>
+                    <div className={presentation.decisionHeading}><h4>Your decision</h4><p>{role==='super_admin'&&!manual?'Approving publishes this campaign to Meta. You’ll be asked to confirm first.':'Approving sends the plan to the next sign-off.'} Request changes to get a revised plan, or reject to close it.</p></div>
+                    <label className={presentation.feedbackLabel} htmlFor={`plan-note-${p.id}`}>Note to the team <span>Needed to request changes or reject</span></label>
+                    <DecisionNote id={`plan-note-${p.id}`} storageKey={`plan:${p.id}`} placeholder="What should change, or why you’re rejecting it." />
+                    <div className="decide-btns"> <Submit ghost danger confirm="Reject this campaign plan? It closes without publishing anything." confirmTitle="Reject this plan?" confirmLabel="Reject plan" name="decision" value="reject" pending="Rejecting…">Reject</Submit><Submit ghost name="decision" value="changes" pending="Sending…">Request changes</Submit><Submit name="decision" value="approve" confirm={role==='super_admin' && !manual ? `Publish ${c.name} to Meta with a daily budget of ${inr(Number(c.budget_daily))}? This creates live ads using the reviewed plan.` : undefined} confirmTitle="Publish this campaign?" confirmLabel="Approve and publish" disabled={!quality.current} icon={role === 'super_admin' && !manual ? 'rocket' : 'check'} pending={role === 'super_admin' && !manual ? 'Approving and publishing…' : 'Approving…'}>{role === 'super_admin' ? manual ? 'Approve for manual launch' : 'Approve and publish' : 'Approve plan'}</Submit></div>
                   </form>
-                ) : p.status === 'pending' && <p className="sub">Waiting on {next.map(r => ROLE_LABEL[r]).join(', ')}.</p>}
+                ) : p.status === 'pending' && <p className="sub">Waiting on {next.map(r => ROLE_LABEL[r]).join(', ')}. Nothing for you to do yet.</p>}
               </div>
             </article>
           );
-        }) : <div className="empty"><Icon name="check" size={26} /><p>No campaign plans are waiting for sign-off.</p></div>}
+        }) : <div className="empty"><Icon name="check" size={26} /><p>No campaign plans wait for sign-off. <Link href="/campaigns">Start a campaign</Link></p></div>}
         <Pager sp={sp} param="pp" page={pp} size={PLANS} total={planCount} shown={(plans||[]).length} anchor="plans" />
       </section>}
 
       {section==='decided' && <section id="decided" className="section">
-        <h2 className="section-title">Recent report decisions</h2>
-        {!(doneReports || []).length && <div className="empty"><Icon name="check" size={26}/><p>No report decisions yet.</p></div>}
+        <h2 className="section-title">Decided reports</h2>
+        {!(doneReports || []).length && <div className="empty"><Icon name="check" size={26}/><p>Reports you accept, send back or reject are listed here.</p></div>}
         <ul className="card rows">{doneReports!.map(r => (
           <li key={r.id}><Avatar name={A[r.author_agent] || r.author_agent} dept={r.department_id} /><div className="grow"><b className="clip">{r.title}</b><span className="sm">{D[r.department_id]}{r.head_note ? ` · ${r.head_note}` : ''}</span><Link href={`/approvals?report=${r.id}#report-${r.id}`}>Read report</Link></div>
-            <span className={`pill ${r.status === 'accepted' ? 'good' : r.status.includes('reject') ? 'bad' : 'warn'}`}>{r.status.replace(/_/g, ' ')}</span></li>
+            <span className={`pill ${r.status === 'accepted' ? 'good' : r.status.includes('reject') ? 'bad' : 'warn'}`}>{REPORT_WORD[r.status] || r.status.replace(/_/g, ' ')}</span></li>
         ))}</ul>
         <Pager sp={sp} param="dp" page={dp} size={DECIDED} total={doneCount} shown={(doneReports || []).length} anchor="decided" />
       </section>}

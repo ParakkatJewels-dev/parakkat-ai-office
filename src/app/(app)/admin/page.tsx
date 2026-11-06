@@ -2,14 +2,12 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
 import { ROLE_LABEL, type AppRole } from '@/lib/roles';
-import { liveRuns, runSteps } from '@/lib/agents/campaign';
 import { BUILDINGS } from '@/office/roster.mjs';
 import { Icon } from '@/components/Icon';
-import { PageHead, Avatar, Stepper, Pager, pageOf, rangeOf, when } from '@/components/ui';
+import { PageHead, Avatar, Pager, pageOf, rangeOf, when } from '@/components/ui';
 import { Integrations, AIIntegrations } from './Integrations';
 import { ModelRouting } from './ModelRouting';
 import { HiggsfieldCard } from './HiggsfieldCard';
-import { publicationBlock, hasConfirmedPublication } from '@/lib/agents/publish-core.mjs';
 import { SyncButton } from './SyncButton';
 import { Locked, Submit } from '@/components/forms';
 import { OpportunityRefresh } from './OpportunityRefresh';
@@ -17,7 +15,7 @@ import { latestSeoJob } from '@/lib/agents/seo-status.mjs';
 import { SettingsDraftGuard } from './SettingsDraftGuard';
 import { SettingsAnchor } from './SettingsAnchor';
 import styles from './Settings.module.css';
-import { setRole, setHead, addCompetitor, runCampaign, nextStep, syncNow, togglePause, publishAgain, saveBrandBook, addLesson, retireLesson, findOpportunitiesNow } from './actions';
+import { setRole, setHead, addCompetitor, syncNow, togglePause, saveBrandBook, addLesson, retireLesson, findOpportunitiesNow } from './actions';
 
 export const maxDuration = 300;
 const ROLES: AppRole[] = ['super_admin', 'creative_head', 'ecom_manager', 'perf_marketer', 'viewer'];
@@ -46,7 +44,7 @@ const TABS = [
   { id: 'brand', label: 'Brand guidance', icon: 'doc', group: 'Workspace', description: 'Voice, standards and context', intro: 'Give every agent a consistent understanding of your brand. Individual agent instructions live in Agent management.' },
   { id: 'ai', label: 'AI providers', icon: 'spark', group: 'Intelligence', description: 'Model routing and provider keys', intro: 'See which model handles each job, then manage its connection and usage.' },
   { id: 'memory', label: 'Learning memory', icon: 'heart', group: 'Intelligence', description: 'Feedback your agents remember', intro: 'Review the lessons agents use, add guidance for a team, or retire advice that no longer applies.' },
-  { id: 'competitors', label: 'Competitors', icon: 'eye', group: 'Intelligence', description: 'Your market watchlist', intro: 'Choose the brands the War Room follows for market and competitor research.' },
+  { id: 'competitors', label: 'Competitors', icon: 'eye', group: 'Intelligence', description: 'Your market watchlist', intro: 'Choose the brands the team watches for market and competitor research.' },
   { id: 'connections', label: 'Connections', icon: 'plug', group: 'System', description: 'Business accounts and sync', intro: 'Connect your sales, advertising and analytics accounts. Review saved access separately from the latest data sync.' },
   { id: 'operations', label: 'Office controls', icon: 'clock', group: 'System', description: 'Schedules, activity and recovery', intro: 'Control office activity, inspect scheduled work and recover campaigns that need attention.' },
 ] as const;
@@ -64,7 +62,7 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
   return (
     <div className={`page ${styles.page}`}>
       <SettingsAnchor />
-      <PageHead title="Workspace settings" sub="Connections, access and guidance for your AI office.">
+      <PageHead title="Settings" sub="Set up people, brand, AI and connections for your office.">
         <span className={styles.accessBadge}><Icon name="lock" size={15} />Super admin</span>
       </PageHead>
       <SettingsDraftGuard key={`${tab}:${sp.msg || ''}:${sp.error || ''}`}>
@@ -114,19 +112,16 @@ function Overview({ paused }: { paused: boolean | null }) {
         <span className={styles.cardIcon}><Icon name={t.icon} size={21} /></span><div><h3>{t.label}</h3><p>{t.description}</p></div><Icon name="arrow" size={17} />
       </Link>)}
     </div>
-    <section className={styles.related}><div><h3>Looking for agent instructions or spending limits?</h3><p>Use these workspaces to manage the team’s responsibilities and resource limits.</p></div><div className={styles.relatedLinks}><Link href="/agents/manage">Agent management<Icon name="arrow" size={15} /></Link><Link href="/usage?tab=limits">Usage limits<Icon name="arrow" size={15} /></Link></div></section>
+    <section className={styles.related}><div><h3>Looking for agent instructions, campaigns or spending limits?</h3><p>They have their own pages now.</p></div><div className={styles.relatedLinks}><Link href="/agents/manage">Agent instructions<Icon name="arrow" size={15} /></Link><Link href="/campaigns">Campaigns<Icon name="arrow" size={15} /></Link><Link href="/usage?tab=limits">Usage limits<Icon name="arrow" size={15} /></Link></div></section>
   </>;
 }
 
 async function Operations({ db, paused, requestedAt }: { db: Db; paused: boolean | null; requestedAt: number }) {
-  const [{ data: runs, error: runsError }, { data: stuck, error: approvalsError }, { data: jobs, error: jobsError }, { data: reviews, error: reviewsError }, { data: seoRun }] = await Promise.all([
-    db.from('agent_runs').select('id, occasion, stage, status, error, started_at, state').eq('kind', 'campaign').order('started_at', { ascending: false }).limit(8),
-    db.from('approvals').select('id, campaigns(name,status,channels,external_ids)').eq('status', 'approved').limit(50),
+  const [{ data: jobs, error: jobsError }, { data: reviews, error: reviewsError }, { data: seoRun }] = await Promise.all([
     db.from('autopilot_jobs').select('name, last_run_at, last_result'),
     db.from('agent_runs').select('id, status, stage, state, error, started_at, finished_at').eq('kind', 'opportunity').order('started_at', { ascending: false }).limit(3),
     db.from('agent_runs').select('status, stage, state, error, started_at').eq('kind', 'seo').order('started_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
-  const live = await liveRuns(db, (runs || []).map(r => r.id));
   const J = Object.fromEntries((jobs || []).map(j => [j.name, j]));
   const seoStatus = latestSeoJob(J.seo, seoRun);
   if (seoStatus) J.seo = { ...seoStatus, name: 'seo' };
@@ -140,7 +135,7 @@ async function Operations({ db, paused, requestedAt }: { db: Db; paused: boolean
       <div className={styles.statusCopy}><h3>{paused === null ? 'Office status unavailable' : paused ? 'The office is paused' : 'The office is running'}</h3><p>Pausing stops new scheduled steps, AI requests, syncs and publishing until you resume. Work already in progress may finish.</p></div>
       {paused !== null && <form action={togglePause}><input type="hidden" name="pause" value={paused ? '0' : '1'} /><Submit ghost icon={paused ? 'play' : 'pause'} confirm={paused ? 'Resume office activity? Scheduled work and provider requests can run again within your saved limits.' : 'Pause the entire AI office? New scheduled steps, AI requests, syncs and publishing will wait until you resume. Work already in progress may finish.'} confirmTitle={paused ? 'Resume the office' : 'Pause all agents'} confirmLabel={paused ? 'Resume office' : 'Pause office'} pending={paused ? 'Resuming…' : 'Pausing…'}>{paused ? 'Resume office' : 'Pause all agents'}</Submit></form>}
     </section>
-    {(runsError || approvalsError || jobsError || reviewsError) && <p className="flash" role="alert">Some office activity could not be loaded. Reload before retrying work.</p>}
+    {(jobsError || reviewsError) && <p className="flash" role="alert">Some office activity could not be loaded. Reload before retrying work.</p>}
     <div className={styles.stack}>
       <section className="card s12" id="opportunities">
         <OpportunityRefresh active={reviewActive} />
@@ -156,39 +151,7 @@ async function Operations({ db, paused, requestedAt }: { db: Db; paused: boolean
         {(opportunityReports || []).length > 0 && <ul className="rows">{opportunityReports!.map(r => <li key={r.id}><div className="grow"><div className="conn-top"><b>{r.title}</b><span className="pill">{r.status === 'with_head' ? 'Awaiting your review' : r.status.replaceAll('_', ' ')}</span></div><Link className="sm" href={`/agents/${r.author_agent}`}>{(r.agents as any)?.name || r.author_agent}</Link><details className="report-body"><summary>Evidence and next step</summary><p>{r.body}</p></details></div></li>)}</ul>}
         <Link href="/approvals?tab=reports" className="btn ghost sm-btn">Review the team’s proposals<Icon name="arrow" size={14} /></Link>
       </section>
-      <section className="card" id="campaign"><div className="card-head"><div><h3>Start a campaign</h3><p className="sub">A new brief for your marketing team</p></div><Icon name="rocket" size={22} /></div>
-      <form action={runCampaign} className={styles.stack}>
-        <p className="sub">Give the team a goal. Specialists prepare the plan, quality reviewers check it, and human heads approve before launch.</p>
-        <label className="field">Occasion or goal<input name="occasion" required placeholder="Diwali gold edit, wedding season, new kids range…" /></label>
-        <div className={styles.formFooter}><Submit icon="rocket" pending="Starting the team…" disabled={paused !== false}>Start campaign</Submit></div>
-      </form>
-      </section>
-
-      <section className="card s8 wide-md">
-        <div className="card-head"><div><h3>Recent campaign runs</h3><p className="sub">Latest eight runs. Retry only after correcting the reported issue.</p></div><Link href="/automations" className="btn ghost sm-btn">Task board<Icon name="arrow" size={14} /></Link></div>
-        {(stuck || []).map(a => {
-          const c = a.campaigns as any;
-          const finish = hasConfirmedPublication(c, a.id) && ['publishing', 'live'].includes(c?.status);
-          const block = publicationBlock(c);
-          const launch = c?.status === 'approved' && !block && !c?.external_ids?.meta;
-          return <form key={a.id} action={publishAgain} className="banner"><input type="hidden" name="id" value={a.id} />
-            <Icon name="rocket" size={20} /><span><b>{c?.name}</b> · {finish ? 'Meta confirmed the launch. Finish saving its status; this creates no new ads.' : block || (launch ? 'Approved and ready to publish.' : 'Existing publication records need review before another launch.')}</span>
-            {(launch || finish) && <Submit confirm={launch ? `Publish ${c?.name || 'this campaign'} to Meta now? This creates live ads with the approved budget.` : undefined} confirmTitle="Publish campaign" confirmLabel="Publish now" pending={finish ? 'Saving…' : 'Publishing…'}>{finish ? 'Finish saving' : 'Publish now'}</Submit>}</form>;
-        })}
-        {(runs || []).length ? <ul className="runs">{runs!.map(r => {
-          const v = runSteps(r, live.has(r.id));
-          return (
-            <li key={r.id}>
-              <div className="run-name"><b>{r.occasion}</b>{(r.state as any)?.origin && <span className="pill acc" title={(r.state as any).origin.why}>Opened by the AI CMO</span>}
-                <span className={`sm ${r.error ? 'err' : ''}`}>{r.error ? `${(r.state as any)?.retry?.at && r.status === 'running' ? `Trying again at ${when((r.state as any).retry.at)} (try ${(r.state as any).retry.n}): ` : ''}${r.error.slice(0, 120)}` : (r.state as any)?.origin?.why || `Started ${when(r.started_at)}`}</span></div>
-              <Stepper steps={v.steps} />
-              {['running','failed'].includes(r.status) && r.stage !== 'done'
-                ? <form action={nextStep}><input type="hidden" name="id" value={r.id} />{r.status==='failed'&&<input type="hidden" name="retry" value="1"/>}<Submit ghost small icon="arrow" pending="Working…">{r.status==='failed'?'Retry after fixing inputs':'Next step'}</Submit></form>
-                : <span className={`pill ${v.pill[1]}`}>{v.pill[0]}</span>}
-            </li>
-          );
-        })}</ul> : <div className="empty"><Icon name="rocket" size={26} /><p>{runsError ? 'Campaign activity is unavailable.' : 'No campaign runs yet. Start with a brief above, or review the team’s scheduled work below.'}</p></div>}
-      </section>
+      <section className={styles.related} id="campaign"><div><h3>Starting and following campaigns has moved</h3><p>Start a campaign, follow each run through the team and publish signed-off plans on the Campaigns page.</p></div><div className={styles.relatedLinks}><Link href="/campaigns">Open Campaigns<Icon name="arrow" size={15} /></Link></div></section>
 
       <section className="card s12">
         <div className="card-head"><div><h3>Scheduled activity</h3><p className="sub">Times are in IST. Open a schedule to see its cadence and latest result. Campaigns still require approval.</p></div></div>
@@ -300,9 +263,9 @@ async function Competitors({ db, sp }: { db: Db; sp: Record<string, string | und
         <div className={styles.formFooter}><Submit icon="plus" pending="Adding…">Add competitor</Submit></div>
       </form>
     </details>
-    <section className="card"><div className="card-head"><div><h3>Your watchlist</h3><p className="sub">Public Instagram, website and Meta ad activity for the War Room to review.</p></div><span className="pill">{error ? 'Unavailable' : `${count || 0} competitors`}</span></div>
+    <section className="card"><div className="card-head"><div><h3>Your watchlist</h3><p className="sub">Public Instagram, website and Meta ad activity for the team to review.</p></div><span className="pill">{error ? 'Unavailable' : `${count || 0} competitors`}</span></div>
       {error && <p className="flash" role="alert">The watchlist could not be loaded. Reload to try again.</p>}
-      {(rivals || []).length ? <ul className={styles.watchlist}>{rivals!.map(c => <li key={c.id}><Avatar name={c.name} size={38} /><div><b>{c.name}</b><span className="sm">{[c.instagram_handle && '@' + c.instagram_handle, c.website].filter(Boolean).join(' · ') || 'No public profiles added'}</span></div></li>)}</ul> : !error && <div className="empty"><Icon name="eye" size={25} /><p>Your watchlist is empty. Add a competitor above to give the War Room a place to start.</p></div>}
+      {(rivals || []).length ? <ul className={styles.watchlist}>{rivals!.map(c => <li key={c.id}><Avatar name={c.name} size={38} /><div><b>{c.name}</b><span className="sm">{[c.instagram_handle && '@' + c.instagram_handle, c.website].filter(Boolean).join(' · ') || 'No public profiles added'}</span></div></li>)}</ul> : !error && <div className="empty"><Icon name="eye" size={25} /><p>Your watchlist is empty. Add a competitor above to give the team a place to start.</p></div>}
       <Pager sp={sp} param="cp" page={cp} size={15} total={count} shown={(rivals || []).length} />
     </section>
   </>;

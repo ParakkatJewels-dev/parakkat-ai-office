@@ -26,12 +26,16 @@ async function admin() {
   if (u.role !== 'super_admin') redirect('/office');
   return u;
 }
-// back to the Admin tab the form was sent from, with the result on top
-async function tabOf() {
-  try { const t = new URL((await headers()).get('referer') || '').searchParams.get('tab'); return t && /^[a-z]+$/.test(t) ? `tab=${t}&` : ''; } catch { return ''; }
+// back to the page the form was sent from (a Settings tab, or Campaigns), with the result on top
+async function origin() {
+  try {
+    const u = new URL((await headers()).get('referer') || '');
+    if (u.pathname === '/campaigns') return '/campaigns?';
+    const t = u.searchParams.get('tab'); return `/admin?${t && /^[a-z]+$/.test(t) ? `tab=${t}&` : ''}`;
+  } catch { return '/admin?'; }
 }
-const done = async (msg?: string) => { revalidatePath('/admin'); const t = await tabOf(); redirect(msg ? `/admin?${t}msg=${encodeURIComponent(msg)}` : `/admin?${t.slice(0, -1)}`); };
-const fail = async (e: unknown): Promise<never> => redirect(`/admin?${await tabOf()}error=${encodeURIComponent(errText(e))}`);
+const done = async (msg?: string) => { revalidatePath('/admin'); revalidatePath('/campaigns'); const o = await origin(); redirect(msg ? `${o}msg=${encodeURIComponent(msg)}` : o.slice(0, -1)); };
+const fail = async (e: unknown): Promise<never> => redirect(`${await origin()}error=${encodeURIComponent(errText(e))}`);
 
 export async function setRole(form: FormData) {
   const { db } = await admin();
@@ -53,7 +57,7 @@ export async function runCampaign(form: FormData) {
   await admin();
   let id = '';
   try { id = await startCampaign(supabaseAdmin(), String(form.get('occasion')).trim()); await advance(supabaseAdmin(), id); } catch (e) { await fail(e); }
-  await done('Campaign started. Watch it in the Office; the next steps run every minute.');
+  await done('Campaign started. Follow it here or watch the team in the Office; the next step runs every minute.');
 }
 export async function nextStep(form: FormData) {
   await admin();
