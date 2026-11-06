@@ -322,7 +322,7 @@ export async function runConversationTask(admin: SupabaseClient, reader: Supabas
         for (let i = 0; i < intent.count; i++) {
           const product = products[i % products.length];
           const variation = intent.cohesiveSeries ? `Card ${i + 1} of ${intent.count}. ${sharedDirection} ` : intent.count > 1 ? `Poster ${i + 1} of ${intent.count}: choose a composition suited to this product and customer hook. ` : creativeResearchBrief(research);
-          const id = await queueDesign(admin,{format:intent.format,brief:`${variation} Ad poster for ${product.title}. ${conversationText(task.prompt, 1200)} Keep the exact Shopify product photo; draft for human review, do not publish.`,headline:'',language:'en',productIds:[product.id],userId:task.requested_by,
+          const id = await queueDesign(admin,{format:intent.format,brief:`${variation} Make this one finished poster for ${product.title} only, using its exact Shopify photo. The manager's quantity applies to the full set of ${intent.count} separate posters, not to the number of products in this image. Do not make a multi-product grid or collage. Campaign brief: ${conversationText(task.prompt, 1200)} This individual poster must contain only ${product.title}; draft for human review, do not publish.`,headline:'',language:'en',productIds:[product.id],userId:task.requested_by,
             refIds: sharedRefs.map(ref => ref.id), carouselSource: seriesId ? { series_id: seriesId, index: i + 1, total: intent.count, direction: sharedDirection, research } : research ? { research } : undefined});
           designs.push({id,product});
         }

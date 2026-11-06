@@ -26,6 +26,7 @@ const salesCategories = [
   [/\bnecklaces?\b/i, 'Necklace'], [/\bpendants?\b/i, 'Pendant'],
   [/\bbangles?\b/i, 'Bangle'], [/\bbracelets?\b/i, 'Bracelet'],
   [/\bchains?\b/i, 'Chain'], [/\banklets?\b/i, 'Anklet'],
+  [/\b(?:idols?|deities|deity|figurines?)\b/i, 'Idol'],
 ];
 export function requestedSalesCategory(request) {
   const text = String(request || '');

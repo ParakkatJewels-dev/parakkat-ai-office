@@ -188,6 +188,28 @@ test('an office-map request for three posters queues three distinct ChatGPT imag
   } finally {if(previous===undefined)delete process.env.CHATGPT_IMAGE_WORKER_ENABLED;else process.env.CHATGPT_IMAGE_WORKER_ENABLED=previous;}
 });
 
+test('a five-product idol request creates five separate one-product posters',async()=>{
+  const agents=[
+    {id:'creativeDirector',name:'Creative Director',role_desc:'Creative head',department_id:'creative',is_lead:true,enabled:true},
+    {id:'sales',name:'Sales Analyst',role_desc:'Shopify sales',department_id:'insights',is_lead:false,enabled:true},
+    {id:'designer',name:'Banner Designer',role_desc:'Ad images',department_id:'creative',is_lead:false,enabled:true},
+  ];
+  const photo='https://cdn.shopify.com/s/files/1/1234/files/idol.webp';
+  const previous=process.env.CHATGPT_IMAGE_WORKER_ENABLED;process.env.CHATGPT_IMAGE_WORKER_ENABLED='true';
+  try {
+    const h=harness({agents,hostId:'creativeDirector',category:'Idol',profiles:[{id:'user',role:'creative_head'}],
+      departments:[{id:'creative',human_head_role:'creative_head'},{id:'insights',human_head_role:'ecom_manager'}],
+      prompt:'find the top selling idols and create a poster for diwali sale ads. generate for 5 products',
+      posterSales:{available:true,data:[1,2,3,4,5].map(id=>({product_id:String(id),units:6-id}))},
+      productStock:[1,2,3,4,5].map(id=>({id:String(id),title:`Idol ${id}`,status:'ACTIVE',stock:4,stock_source:'odoo',image_url:photo}))});
+    await h.run();
+    assert.equal(h.state.agent_tasks[0].status,'completed',h.state.rawError);
+    assert.deepEqual(h.state.designOrders.map(order=>order.productIds),[[1],[2],[3],[4],[5]]);
+    assert.ok(h.state.designOrders.every(order=>order.brief.includes('Do not make a multi-product grid or collage')));
+    assert.equal(h.state.chatgptBatches[0][1].length,5);
+  } finally {if(previous===undefined)delete process.env.CHATGPT_IMAGE_WORKER_ENABLED;else process.env.CHATGPT_IMAGE_WORKER_ENABLED=previous;}
+});
+
 test('a direct Shopify product poster is generated through the designer and missing products are reported',async()=>{
   const agents=[{id:'creativeDirector',name:'Creative Director',role_desc:'Creative head',department_id:'creative',is_lead:true,enabled:true},
     {id:'designer',name:'Banner Designer',role_desc:'Ad images',department_id:'creative',is_lead:false,enabled:true}];

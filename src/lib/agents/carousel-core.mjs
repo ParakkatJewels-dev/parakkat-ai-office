@@ -6,14 +6,15 @@ export function requestedPosterCount(request) {
   const quantity = '(?:[1-5]|one|two|three|four|five)';
   const nearPoster = text.match(new RegExp(`\\b(${quantity})\\s+(?:separate\\s+|individual\\s+)?(?:portrait\\s+|ad\\s+)?posters?\\b`, 'i'));
   const nearRanking = text.match(new RegExp(`\\b(?:top|best[ -]?selling)\\s+(${quantity})\\b|\\b(${quantity})\\s+top[ -]?selling\\b`, 'i'));
-  const value = (nearPoster?.[1] || nearRanking?.[1] || nearRanking?.[2] || 'one').toLowerCase();
+  const perProduct = text.match(new RegExp(`\\b(?:generate|create|make|produce|design)(?:\\s+\\w+){0,6}\\s+for\\s+(${quantity})\\s+(?:different\\s+|separate\\s+)?products?\\b`, 'i'));
+  const value = (nearPoster?.[1] || nearRanking?.[1] || nearRanking?.[2] || perProduct?.[1] || 'one').toLowerCase();
   return {one:1,two:2,three:3,four:4,five:5}[value] || Number(value);
 }
 
 export function requestedPosterProductCount(request) {
-  const match = String(request || '').match(/\b(?:top|best[ -]?selling)\s+([1-5]|one|two|three|four|five)\b|\b([1-5]|one|two|three|four|five)\s+top[ -]?selling\b/i);
+  const match = String(request || '').match(/\b(?:top|best[ -]?selling)\s+([1-5]|one|two|three|four|five)\b|\b([1-5]|one|two|three|four|five)\s+top[ -]?selling\b|\bfor\s+([1-5]|one|two|three|four|five)\s+(?:different\s+|separate\s+)?products?\b/i);
   if (!match) return 1;
-  const value = (match[1] || match[2]).toLowerCase();
+  const value = (match[1] || match[2] || match[3]).toLowerCase();
   return {one:1,two:2,three:3,four:4,five:5}[value] || Number(value);
 }
 

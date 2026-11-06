@@ -19,6 +19,7 @@ test('a top-seller ad poster is one image while a later carousel redesign resolv
   assert.deepEqual(salesPosterIntent('make a printed poster for the best selling rings'),{category:'Ring',format:'poster',count:1,productCount:1,cohesiveSeries:false});
   assert.deepEqual(salesPosterIntent('find the top selling chain in Shopify and create 3 posters'),{category:'Chain',format:'portrait',count:3,productCount:1,cohesiveSeries:false});
   assert.deepEqual(salesPosterIntent('select 3 top selling men chain and create 3 poster for carsoul ads'),{category:'Chain',format:'portrait',count:3,productCount:3,cohesiveSeries:true});
+  assert.deepEqual(salesPosterIntent('find the top selling idols and create a poster for diwali sale ads. generate for 5 products'),{category:'Idol',format:'portrait',count:5,productCount:5,cohesiveSeries:false});
   assert.equal(carouselIntent('select 3 top selling men chain and create 3 poster for carsoul ads'),null);
   assert.equal(salesPosterIntent('make a five-card carousel poster of top selling rings'),null);
   assert.equal(salesPosterIntent('draft a brief only for a top selling poster'),null);

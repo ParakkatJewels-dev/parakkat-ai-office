@@ -64,6 +64,7 @@ test('source windows stay on seven started UTC days even after midnight in Keral
 
 test('category sales ranks all recorded Ring rows before limiting and includes stock and Shopify images', async () => {
   assert.equal(requestedSalesCategory('Find five top selling rings for a carousel'), 'Ring');
+  assert.equal(requestedSalesCategory('Find the top selling idols for Diwali posters'), 'Idol');
   assert.equal(requestedSalesCategory('Write a ring headline'), null);
   const sales = Array.from({ length: 30 }, (_, i) => ({ day: '2026-10-25', product_id: i + 1, units: i < 24 ? 10 : 8 - (i - 24), revenue: i < 24 ? 1000 : (8 - (i - 24)) * 100 }));
   const products = sales.map((x, i) => ({ id: x.product_id, product_type: i < 24 ? 'Earrings' : 'Ring', title: `Product ${i + 1}`, status: 'ACTIVE', price: 100, stock: i === 24 ? 0 : 5, stock_source: 'odoo', image_url: `https://cdn.shopify.com/${i + 1}.jpg` }));
