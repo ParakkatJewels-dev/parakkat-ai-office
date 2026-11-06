@@ -16,6 +16,7 @@ export type ChatGPTArtworkProps = {
   status?: string;
   initialProvider?: Provider;
   automaticChatGPT?: boolean;
+  manualFallback?: boolean;
 };
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -115,7 +116,7 @@ export function HiggsfieldGeneration({ source, id, requestId, title, initialGene
 }
 
 /** Automatic Higgsfield generation with a manual website/import fallback. */
-export function ChatGPTArtwork({ source, id, requestId, title, compact = false, status, initialProvider = 'higgsfield', automaticChatGPT = false }: ChatGPTArtworkProps) {
+export function ChatGPTArtwork({ source, id, requestId, title, compact = false, status, initialProvider = 'higgsfield', automaticChatGPT = false, manualFallback = false }: ChatGPTArtworkProps) {
   const router = useRouter(), labelId = useId();
   const [chosenProvider, setProvider] = useState<Provider>(status === 'generating' ? 'higgsfield' : initialProvider);
   const provider = status === 'generating' ? 'higgsfield' : chosenProvider;
@@ -227,7 +228,7 @@ export function ChatGPTArtwork({ source, id, requestId, title, compact = false, 
       </label>)}</div>
     </fieldset>
     {provider === 'higgsfield' && <HiggsfieldGeneration source={source} id={id} requestId={requestId} title={title} initialGenerating={status === 'generating'} disabled={busy !== null} onActive={setGenerationActive} onPending={setGenerationBusy} />}
-    {provider === 'chatgpt' && <p>ChatGPT is a manual import option here; its connected account does not support automatic image generation in AI Office.</p>}
+    {provider === 'chatgpt' && <p>{manualFallback ? 'Use this option if you prefer to generate in ChatGPT and import the finished image. Automatic generation is available above.' : 'Create the image in ChatGPT and import it here for review.'}</p>}
     {!activeGeneration && !generationBusy && <details className={styles.manual} open={provider === 'chatgpt'}><summary>{provider === 'higgsfield' ? 'Manual Higgsfield fallback' : 'Create in ChatGPT and import'}</summary>
     <p>Create the image in {selected.label}, then import it here. Your {selected.label} plan and model limits apply.</p><ol className={styles.steps}>
       <li><b>Get the brief and references</b>
@@ -309,7 +310,7 @@ export function ChatGPTAutomaticArtwork({source,id,requestId,title,compact=false
   const progress=data?.job?.state==='queued'?'Queued for ChatGPT image generation. The worker checks the queue every 15 minutes.':data?.job?.state==='preparing'?'Preparing the saved brief and reference images…':'ChatGPT is generating the image. It will be saved here for human review.';
   return <section className={`${styles.handoff} ${compact?styles.compact:''}`} aria-labelledby={`${labelId}-title`} aria-busy={busy}>
     <strong id={`${labelId}-title`}>ChatGPT image generation</strong>
-    <p>Images are generated automatically using your ChatGPT plan and saved in AI Office for human review. Your plan’s usage limits apply.</p>
+    <p>Select Generate with ChatGPT to create and save an image in AI Office for human review. Your ChatGPT plan’s usage limits apply.</p>
     {active&&<p className={styles.notice} role="status">{progress}</p>}
     {otherActive&&<p role="status">This request already has a generation in progress. Open its existing provider controls below.</p>}
     {data&&!data.enabled&&<p role="status">The ChatGPT image worker is not enabled. Your artwork remains available.</p>}
@@ -320,7 +321,7 @@ export function ChatGPTAutomaticArtwork({source,id,requestId,title,compact=false
     {canStart&&<button type="button" className="btn sm-btn" onClick={()=>void start()}>{data?.job?.state==='blocked'?'Retry ChatGPT preparation':'Generate with ChatGPT'}</button>}
     <button type="button" className="btn ghost sm-btn" disabled={busy} onClick={()=>void read()}>{busy?'Checking generation…':'Refresh generation status'}</button>
     {error&&<p className={styles.error} role="alert">{error}</p>}
-    {!active&&!locked&&<details className={styles.manual}><summary>Manual import and other provider options</summary><ChatGPTArtwork source={source} id={id} requestId={requestId} title={title} compact status={otherActive?status:undefined} initialProvider="chatgpt" /></details>}
+    {!active&&!locked&&<details className={styles.manual}><summary>Manual import and other provider options</summary><ChatGPTArtwork source={source} id={id} requestId={requestId} title={title} compact status={otherActive?status:undefined} initialProvider="chatgpt" manualFallback /></details>}
     <p className={styles.review}>Review the product, wording and brand details in Studio before approval.</p>
   </section>;
 }
