@@ -13,7 +13,7 @@ import { WorkingNow } from '@/components/WorkingNow';
 const KIND = { plan: 'PL', report: 'RE', design: 'DE', video: 'VI' } as const;
 const KIND_WORD = { plan: 'Campaign plan', report: 'Report', design: 'Design', video: 'Video' } as const;
 
-const PLATFORM: Record<string, { label: string; color: string }> = { meta: { label: 'Meta', color: '#3d6fb0' }, google: { label: 'Google', color: '#1fc7a4' } };
+const PLATFORM: Record<string, { label: string; color: string }> = { meta: { label: 'Meta', color: 'var(--gold)' }, google: { label: 'Google', color: 'var(--dim)' } };
 
 const DAY = 864e5, iso = (d: Date) => d.toISOString().slice(0, 10), isDate = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v));
 /** The dates the filters ask for: a preset ending today, this month so far, or two dates (at most two years apart). */
@@ -35,7 +35,7 @@ type Summary = {
 };
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const { db, name, role } = await requireUser();
+  const { db, role } = await requireUser();
   const sp = await searchParams, P = period(sp);
   const platform = sp.platform === 'meta' || sp.platform === 'google' ? sp.platform : null, account = sp.account && /^[\w-]{1,40}$/.test(sp.account) ? sp.account : null;
   const end = `${P.to}T23:59:59.999Z`, delta = (now: number, before: number) => before ? `${now >= before ? '+' : ''}${Math.round(((now - before) / before) * 100)}% vs before` : undefined;
@@ -70,9 +70,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const top = S.top.map(t => ({ ...t, revenue: Number(t.revenue) }));
   const topMax = top[0]?.revenue || 1;
   const dateLabel = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long' });
-  const hour = Number(new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }));
-  const first = name.includes('@') ? '' : name.split(' ')[0];
-  const greeting = `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}${first ? `, ${first}` : ''}`;
   const waiting = inbox.waiting, plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   // every showroom and the online store, from Odoo
   const branches = ((branchRows || []) as { branch: string; kind: string; orders: number; revenue: number; prev_revenue: number }[]).map(b => ({ ...b, revenue: Number(b.revenue), prev: Number(b.prev_revenue) }));
@@ -84,7 +81,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   return (
     <div className={`page ${styles.dashboard}`}>
       <header className={styles.hello}>
-        <div><span className={styles.date}>{greeting} · {dateLabel}</span><h1>{inbox.failed ? 'Your day at a glance' : waiting ? `${plural(waiting, 'thing needs', 'things need')} you` : 'You’re all caught up'}</h1></div>
+        <div><span className={styles.date}>{dateLabel}</span><h1>Home</h1>{!inbox.failed && <p className={styles.status}>{waiting ? `${plural(waiting, 'thing needs', 'things need')} your review` : 'Nothing waits on you'}</p>}</div>
         <div className="page-actions"><Filters accounts={accounts} from={P.from} to={P.to} ads={false} /><Link href="/office" className="btn ghost"><Icon name="cube" size={17} />Office</Link></div>
       </header>
       {(summaryError || branchError || postsError) && <div className="flash" role="alert">Some numbers couldn’t load. Refresh to try again; a dash means “not loaded”, not zero.</div>}
@@ -102,11 +99,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <div className="card-head"><div><h3>Online sales by day</h3></div><b className="card-num">{summaryError ? '—' : inr(revenue)}</b></div>
           {days.length > 1 ? (
             <svg viewBox={`0 0 ${W} ${H + 22}`} className="chart" role="img" aria-label={`Daily revenue for ${P.label}, peaking at ${inr(max)}`}>
-              <defs><linearGradient id="rev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--accent)" stopOpacity=".32" /><stop offset="1" stopColor="var(--accent)" stopOpacity="0" /></linearGradient></defs>
+              <defs><linearGradient id="rev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--gold)" stopOpacity=".18" /><stop offset="1" stopColor="var(--gold)" stopOpacity="0" /></linearGradient></defs>
               {[0, .5, 1].map(f => <g key={f}><line x1="0" x2={W} y1={Y(max * f)} y2={Y(max * f)} className="grid" /><text x={W} y={Y(max * f) - 5} textAnchor="end" className="axis">{inr(max * f)}</text></g>)}
               <polygon points={`0,${H - 8} ${line} ${W},${H - 8}`} fill="url(#rev)" />
-              <polyline points={line} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="round" />
-              <circle cx={X(days.length - 1)} cy={Y(days[days.length - 1][1])} r="4.5" fill="var(--accent)" stroke="var(--panel)" strokeWidth="2" />
+              <polyline points={line} fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinejoin="round" />
+              <circle cx={X(days.length - 1)} cy={Y(days[days.length - 1][1])} r="4" fill="var(--gold)" stroke="var(--panel)" strokeWidth="2" />
               {[0, Math.floor((days.length - 1) / 2), days.length - 1].map((i, k) => <text key={i} x={X(i)} y={H + 16} textAnchor={(['start', 'middle', 'end'] as const)[k]} className="axis">{short(days[i][0])}</text>)}
             </svg>
           ) : <div className="empty"><Icon name="chart" size={26} /><p>{summaryError ? 'Revenue could not load. Refresh this page to try again.' : 'Connect Shopify in Settings to see daily sales.'}</p></div>}
