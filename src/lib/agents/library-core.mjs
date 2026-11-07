@@ -50,6 +50,34 @@ function directionTerms(value) {
 const referenceText = ref => [ref.name,...(Array.isArray(ref.tags)?ref.tags:[]),ref.kind,ref.occasion,ref.style,ref.palette,ref.layout,ref.typography,
   ...Object.entries(ref.fingerprint||{}).filter(([key])=>key!=='avoid').map(([,value])=>typeof value==='string'?value:'')].filter(Boolean).join(' ');
 
+// A past campaign's occasion is content, not a reusable part of its visual style.
+// Prefer a matching or general design before borrowing a different festival's scene.
+const THEMES = [
+  ['diwali', /\b(?:diwali|deepavali|dhanteras)\b/i], ['christmas', /\b(?:christmas|xmas)\b/i],
+  ['onam', /\bonam\b/i], ['vishu', /\bvishu\b/i], ['eid', /\b(?:eid|bakrid)\b/i],
+  ['easter', /\beaster\b/i], ['valentines', /\bvalentine(?:'s)?\b/i],
+  ['newyear', /\bnew\s+year\b/i], ['wedding', /\b(?:wedding|bridal)\b/i],
+];
+const themes = value => THEMES.filter(([, pattern]) => pattern.test(String(value || ''))).map(([name]) => name);
+const referenceThemes = ref => {
+  const description=[ref.occasion,ref.name,...(ref.tags||[]),ref.style,ref.fingerprint?.visualBrief,ref.fingerprint?.materials].filter(Boolean).join(' ');
+  const found=themes(description);
+  // "Festive" library metadata often hides a specific old campaign. Treat its
+  // original pixels as seasonal content until the requested occasion matches.
+  if (/\b(?:festive|festival|holiday|diyas?|oil lamps?|puja|rangoli|marigold)\b/i.test(description) && !found.length) found.push('other-seasonal');
+  return found;
+};
+
+/** A named task occasion, independent of an earlier reference's metadata. */
+export function requestedDesignOccasion(...values) {
+  const description=values.filter(Boolean).join(' ');
+  const found=themes(description).filter(theme=>theme!=='wedding'||/\b(?:wedding|bridal\s+(?:campaign|theme|poster|season))\b/i.test(description));
+  const namedHoliday=found.filter(theme=>theme!=='wedding');
+  // "Bridal" is often part of a product title, including Christmas necklace
+  // briefs. A named holiday in the task is more specific than that descriptor.
+  return namedHoliday.length===1?namedHoliday[0]:found.length===1?found[0]:null;
+}
+
 /** Supplemental indexed reads for a library larger than the bounded full scan. */
 export function designReferenceQueries(words, options={}) {
   const wanted=subjects(options.productTitles?.length?options.productTitles.join(' '):words.join(' '));
@@ -62,27 +90,37 @@ export function designReferenceQueries(words, options={}) {
 export function rankDesignReferences(refs, words, options={}) {
   const wanted=subjects(options.productTitles?.length?options.productTitles.join(' '):words.join(' '));
   const direction=directionTerms(options.direction),requested=referenceTokens(words.join(' ')).filter(word=>!direction.excluded.includes(word)),previous=new Set(options.previousIds||[]);
+  const requestedThemes=options.occasion==='general'?[]:themes(options.occasion).length?themes(options.occasion):themes([options.direction,...words].filter(Boolean).join(' '));
   const format=/story|reel/i.test(options.format||'')?'story':/banner|website/i.test(options.format||'')?'banner':/poster/i.test(options.format||'')?'poster':/post|portrait/i.test(options.format||'')?'post':null;
   const scored=refs.map(ref=>{
     const identity=[ref.name,...(ref.tags||[])].join(' '),direct=subjects(identity);
     const text=referenceText(ref),tokens=new Set(referenceTokens(text)),actual=subjects([identity,ref.style,ref.layout,ref.fingerprint?.visualBrief,ref.fingerprint?.composition].filter(Boolean).join(' '));
     const match=wanted.some(name=>actual.includes(name)),conflicting=actual.filter(name=>!wanted.includes(name)).length;
     const requestedChain=/\bchains?\b/i.test((options.productTitles||[]).join(' ')),directChain=requestedChain&&/\bchains?\b/i.test(identity)&&!direct.includes('wristwear')&&!direct.includes('anklet');
-    return {ref,tokens,key:[wanted.length?(match?(wanted.some(name=>direct.includes(name))?3:2):actual.length?0:1):1,directChain?1:0,match?-conflicting:0,
+    const refThemes=referenceThemes(ref);
+    const themeFit=requestedThemes.length ? refThemes.some(theme=>requestedThemes.includes(theme))?2:refThemes.length?0:1 : 1;
+    return {ref,tokens,direct,match,themeFit,key:[wanted.length?(match?(wanted.some(name=>direct.includes(name))?3:2):actual.length?0:1):1,directChain?1:0,match?-conflicting:0,
       -direction.excluded.filter(word=>tokens.has(word)).length,
       direction.positive.filter(word=>tokens.has(word)).length,
-      requested.filter(word=>tokens.has(word)).length,format&&ref.kind===format?1:0,
+      themeFit,requested.filter(word=>tokens.has(word)).length,format&&ref.kind===format?1:0,
       Math.max(0,Math.min(5,Number(ref.quality)||0)),ref.pinned?1:0,previous.has(ref.id)?1:0]};
   });
   const compare=(a,b)=>{for(let i=0;i<a.key.length;i++){if(a.key[i]!==b.key[i])return b.key[i]-a.key[i];}return String(a.ref.id).localeCompare(String(b.ref.id));};
-  scored.sort(compare);
+  // For a named occasion, an unrelated festival's source pixels can dominate
+  // even an explicit text instruction. Use only a matching product reference
+  // or a general reference whose metadata directly names the product category.
+  // An empty result is safer than showing the image model a wrong holiday.
+  const eligible=requestedThemes.length
+    ? scored.filter(row=>row.themeFit>0 && (!wanted.length || wanted.some(name=>row.direct.includes(name))&&row.direct.every(name=>wanted.includes(name)) || row.themeFit===2&&row.match))
+    : scored;
+  eligible.sort(compare);
   // Prefer compatible supporting references after choosing the strongest match.
   // Explicit subject/direction always remain ahead of stylistic consistency.
-  const primary=scored.shift();if(!primary)return [];
+  const primary=eligible.shift();if(!primary)return [];
   const palette=new Set(referenceTokens([primary.ref.palette,primary.ref.fingerprint?.palette,primary.ref.fingerprint?.lighting].join(' ')));
-  for(const row of scored)row.key.splice(5,0,[...palette].filter(word=>row.tokens.has(word)).length);
-  scored.sort(compare);
-  return [primary,...scored].slice(0,Math.max(1,Math.min(3,Number(options.limit)||3))).map(row=>row.ref);
+  for(const row of eligible)row.key.splice(6,0,[...palette].filter(word=>row.tokens.has(word)).length);
+  eligible.sort(compare);
+  return [primary,...eligible].slice(0,Math.max(1,Math.min(3,Number(options.limit)||3))).map(row=>row.ref);
 }
 
 /** The one-line summary of a past design that the art director reads, from what the describer saw. */

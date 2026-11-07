@@ -9,6 +9,7 @@ import { Icon } from '@/components/Icon';
 import type { AgentMeeting } from '@/components/AgentConversation';
 import conversationStyles from '@/components/AgentConversation.module.css';
 import OfficeDialogue, { type OfficeDialogueRecord } from '@/components/OfficeDialogue';
+import AgentWorkOverview from '@/components/AgentWorkOverview';
 import { directDialogueEvent, authorizedDialogueText, type DirectDialogueEvent } from '@/office/dialogue-events.mjs';
 import { useAgentWorkStatus } from '@/components/useAgentWorkStatus';
 import { BUILDINGS, PEOPLE, ROOMS, teamLead } from '@/office/roster.mjs';
@@ -61,6 +62,7 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
   const workFeed = useAgentWorkStatus(observedAt);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Selection | null>(null);
+  const [drawerTab, setDrawerTab] = useState<'work' | 'chat'>('work');
   const [dialogues, setDialogues] = useState<OfficeDialogueRecord[]>([]), [activeDialogue, setActiveDialogue] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('overview'), [hqOpen, setHqOpen] = useState(false);
   const [area, setArea] = useState<Area>(null), [prompt, setPrompt] = useState<Prompt>(null), [banner, setBanner] = useState<Area>(null);
@@ -236,7 +238,7 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
 
   useEffect(() => { office?.setQuest(me, false); }, [office, me]);
   useEffect(() => {
-    office?.setInset(mode === 'overview' ? (selected ? 488 : panel ? 300 : 0) : 0);
+    office?.setInset(mode === 'overview' ? (selected ? 548 : panel ? 300 : 0) : 0);
     try { localStorage.setItem('pk-chat', panel ? '1' : '0'); } catch {}
   }, [panel, selected, office, mode]);
   useEffect(() => {
@@ -250,11 +252,12 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
   };
   useEffect(() => {
     if (!selected) return;
+    setDrawerTab(selected.threadId || selected.meetingId || selected.meeting ? 'chat' : 'work');
     closeConversation.current?.focus();
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') closeChat(); };
     window.addEventListener('keydown', close);
     return () => window.removeEventListener('keydown', close);
-  }, [selected?.person.id, office]);
+  }, [selected?.person.id, selected?.threadId, selected?.meetingId, selected?.meeting, office]);
 
   // Restore the team's latest meeting on page load and keep the physical table in sync.
   useEffect(() => {
@@ -356,6 +359,11 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
       office?.setMeeting?.(active || currentMeetings.current.find(m => m.status === 'running' || m.status === 'planned') || currentMeetings.current[0] || null);
     }} /> : null;
   const statusLine = selected ? (() => { const work = liveWork.find(w => w.id === selected.person.id); return work ? `${work.label}` : selected.person.role || (selected.person.human ? 'Human team head' : 'AI team member'); })() : '';
+  const selectedWork = selected && !selected.person.human ? <AgentWorkOverview agentId={selected.person.id} live={liveWork.find(work => work.id === selected.person.id) || null} availability={workFeed.availability} /> : null;
+  const drawerTabs = selected && !selected.person.human ? <div className={conversationStyles.drawerTabs} role="group" aria-label={`${selected.person.name} view`}>
+    <button type="button" aria-pressed={drawerTab === 'work'} onClick={() => setDrawerTab('work')}><Icon name="spark" size={15} />Work</button>
+    <button type="button" aria-pressed={drawerTab === 'chat'} onClick={() => setDrawerTab('chat')}><Icon name="doc" size={15} />Chat and meetings</button>
+  </div> : null;
   const humanNote = selected?.person.human ? <><p className={conversationStyles.humanNote}>This is a human team head. Select an AI staff member to give them a task or ask the team to hold a meeting.</p><Link className={conversationStyles.drawerLink} href="/approvals">Open approvals<Icon name="arrow" size={14} /></Link></> : null;
 
   const log = (limit: number) => items.slice(0, limit);
@@ -433,8 +441,12 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
               <div><b>{selected.person.name}</b><small>{statusLine}</small></div>
               <button type="button" ref={closeConversation} className="hud-btn" aria-label="Close and keep walking" onClick={() => closeChat()}><Icon name="x" size={16} /></button>
             </div>
-            <div className="walk-chat-body">{selected.person.human ? humanNote : conversation(true)}</div>
-            {!selected.person.human && <div className="walk-chat-foot"><span>Esc to keep walking</span><Link href={`/agents/${selected.person.id}`}>Activity and reports</Link></div>}
+            {drawerTabs}
+            <div className="walk-chat-body">{selected.person.human ? humanNote : <>
+              <div className={conversationStyles.drawerPane} style={{ display: drawerTab === 'work' ? 'flex' : 'none' }}>{selectedWork}</div>
+              <div className={conversationStyles.drawerPane} style={{ display: drawerTab === 'chat' ? 'flex' : 'none' }}>{conversation(true)}</div>
+            </>}</div>
+            {!selected.person.human && <div className="walk-chat-foot"><span>Esc to keep walking</span><Link href={`/agents/${selected.person.id}`}>Full agent record</Link></div>}
           </aside>}
           {menu && <EscMenu thirdPerson={thirdPerson} onResume={resume} onOverview={goOverview} onHq={() => { goOverview(); setHqOpen(true); }} onFind={() => { setMenu(false); setFind(true); }} onNav={openNav} onToggleView={() => { office?.toggleThirdPerson(); setThirdPerson(t => !t); }} />}
         </>}
@@ -469,8 +481,9 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
             <button type="button" ref={closeConversation} className={conversationStyles.drawerClose} aria-label="Close agent conversation" onClick={() => closeChat(false)}><Icon name="x" size={18} /></button>
           </div>
           {selected.person.human ? humanNote : <>
-            <Link className={conversationStyles.drawerLink} href={`/agents/${selected.person.id}`}>View activity and reports<Icon name="arrow" size={14} /></Link>
-            {conversation(false)}
+            {drawerTabs}
+            <div className={conversationStyles.drawerPane} style={{ display: drawerTab === 'work' ? 'flex' : 'none' }}>{selectedWork}</div>
+            <div className={conversationStyles.drawerPane} style={{ display: drawerTab === 'chat' ? 'flex' : 'none' }}>{conversation(false)}</div>
           </>}
         </aside>}
       </div>

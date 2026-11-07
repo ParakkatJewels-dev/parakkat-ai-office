@@ -74,7 +74,7 @@ export async function bannerImage(prompt: string, productPhotos: string[], aspec
   const config = await getGeminiConfig();
   const parts = await generate(config.imageModel, [
     { text: `${prompt}\n${fidelity}` },
-    ...(refs.length ? [{ text: 'STYLE REFERENCES AND FINGERPRINTS: Past Parakkat Jewels designs. Match their level of finish, art direction, typography, palette and visual balance. Adapt the composition to the requested product and format. Do not copy their words, claims or jewellery.' }, ...refs] : []),
+    ...(refs.length ? [{ text: 'STYLE REFERENCES AND FINGERPRINTS: Past Parakkat Jewels designs. Extract reusable composition, product scale, palette relationships, typography, lighting and finish. The current task decides the occasion, setting, symbols and props. Ignore any different festival or campaign content visible in these references. Do not copy their words, claims or jewellery.' }, ...refs] : []),
     { text: 'PRODUCT PHOTOS:' },
     ...photos,
   ], true, aspectRatio, false, system, agent.signal, {config});
@@ -84,7 +84,7 @@ export async function bannerImage(prompt: string, productPhotos: string[], aspec
 /** One reference-led style scene shared by a carousel's five newly rendered product images. */
 export async function carouselStyleBackground(refs: Part[], agent: AgentPromptContext, direction = ''): Promise<{ data: Buffer; mimeType: string }> {
   if (!refs.length) throw new Error('Choose a ready Design Library fingerprint before generating a carousel style.');
-  const instruction = `Create a premium 4:5 style scene for a Parakkat Jewels product carousel based on the supplied visual reference and fingerprint of a past brand design. Follow its mood, palette, lighting, decorative details and finish. Keep the five-card series visually consistent. Use restrained decorative detail that leaves room for the hero product and brand typography. Each finished card will generate its jewellery and scene together, using this image for art direction. Do not add jewellery, gemstones, product silhouettes, people, text, letters, numerals, logos, watermarks, or offer badges.${direction.trim() ? ` The manager requested this new art direction for the whole set: ${direction.trim().slice(0, 600)}.` : ''}`;
+  const instruction = `Create a premium 4:5 style scene for a Parakkat Jewels product carousel. Use the supplied past design only for transferable composition, palette relationships, lighting, texture and finish. The current task controls the scene and seasonal details. Never copy a different festival's symbols, decorations or props from the reference. Keep the five-card series visually consistent. Use restrained decorative detail that leaves room for the hero product and brand typography. Each finished card will generate its jewellery and scene together, using this image for art direction. Do not add jewellery, gemstones, product silhouettes, people, text, letters, numerals, logos, watermarks, or offer badges.${direction.trim() ? ` The manager requested this new art direction for the whole set: ${direction.trim().slice(0, 600)}.` : ''}`;
   const system = await agentPrompt(agent.db, agent.id, `${instruction}\nThe source reference is for style only. Do not copy any product or words in it.`, {signal:agent.signal});
   const config = await getGeminiConfig();
   const parts = await generate(config.imageModel, [

@@ -323,7 +323,7 @@ export async function runConversationTask(admin: SupabaseClient, reader: Supabas
           const product = products[i % products.length];
           const variation = intent.cohesiveSeries ? `Card ${i + 1} of ${intent.count}. ${sharedDirection} ` : intent.count > 1 ? `Poster ${i + 1} of ${intent.count}: choose a composition suited to this product and customer hook. ` : creativeResearchBrief(research);
           const id = await queueDesign(admin,{format:intent.format,brief:`${variation} Make this one finished poster for ${product.title} only, using its exact Shopify photo. The manager's quantity applies to the full set of ${intent.count} separate posters, not to the number of products in this image. Do not make a multi-product grid or collage. Campaign brief: ${conversationText(task.prompt, 1200)} This individual poster must contain only ${product.title}; draft for human review, do not publish.`,headline:'',language:'en',productIds:[product.id],userId:task.requested_by,
-            refIds: sharedRefs.map(ref => ref.id), carouselSource: seriesId ? { series_id: seriesId, index: i + 1, total: intent.count, direction: sharedDirection, research } : research ? { research } : undefined});
+            refIds: sharedRefs.map(ref => ref.id), carouselSource: seriesId ? { series_id: seriesId, index: i + 1, total: intent.count, direction: sharedDirection, ...(i ? { template_design_id: designs[0].id } : {}), research } : research ? { research } : undefined});
           designs.push({id,product});
         }
         const generation = isChatGPTHandoff() ? await requestArtworkGeneration(designs,task.requested_by,profile.role,`thread:${task.thread_id}`,requestedArtworkProvider(task.prompt)) : '';
@@ -411,7 +411,7 @@ export async function runConversationTask(admin: SupabaseClient, reader: Supabas
         for(let index=0;index<total;index++){
           const product=products[index%products.length];
           const variation=intent.cohesiveSeries?`Card ${index+1} of ${total}. ${shared}`:total>1?`Poster ${index+1} of ${total}. ${creativeResearchBrief(research)}`:creativeResearchBrief(research);
-          const id=await queueDesign(admin,{format:intent.format,brief:`${variation} Create a finished ad image for ${product.title}. ${conversationText(task.prompt,1200)} Preserve the exact official Shopify product photo identity. Draft for human review; do not publish.`,headline:'',language:'en',productIds:[Number(product.id)],userId:task.requested_by,refIds:refs.map(ref=>ref.id),carouselSource:intent.cohesiveSeries?{series_id:task.id,index:index+1,total,direction:shared,research}: {research}});
+          const id=await queueDesign(admin,{format:intent.format,brief:`${variation} Create a finished ad image for ${product.title}. ${conversationText(task.prompt,1200)} Preserve the exact official Shopify product photo identity. Draft for human review; do not publish.`,headline:'',language:'en',productIds:[Number(product.id)],userId:task.requested_by,refIds:refs.map(ref=>ref.id),carouselSource:intent.cohesiveSeries?{series_id:task.id,index:index+1,total,direction:shared,...(index?{template_design_id:designs[0].id}:{}),research}: {research}});
           designs.push({id,product});
         }
         const generation=isChatGPTHandoff()?await requestArtworkGeneration(designs,task.requested_by,profile.role,`thread:${task.thread_id}`,requestedArtworkProvider(task.prompt)):'';
