@@ -7,19 +7,19 @@
 .navLink{display:flex;gap:11px;align-items:center;padding:12px;border:1px solid transparent;border-radius:6px;text-decoration:none;color:var(--muted);transition:background .15s}
 .navLink>svg{flex:none}
 .navLink>span{display:flex;flex-direction:column;gap:3px;min-width:0}
-.navLink b{font-size:13px;font-weight:550;color:var(--ink)}
+.navLink b{font-size:13px;font-weight: 500;color:var(--ink)}
 .navLink small{font-size:12px;line-height:1.5;color:var(--muted)}
 .navLink:hover{background:var(--panel)}
 .navLink[aria-current="page"]{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
-.navLink[aria-current="page"] b{color:var(--accent);font-weight:650}
+.navLink[aria-current="page"] b{color:var(--accent);font-weight: 600}
 .billingLink{display:flex;align-items:center;gap:8px;margin:0 10px;padding:14px 0 0;border-top:1px solid var(--line);font-size:12px;color:var(--muted);text-decoration:none}
 .billingLink>svg:last-child{margin-left:auto}
 .content{min-width:0;display:flex;flex-direction:column;gap:12px;padding:2px 0 14px}
-.sectionHead h2{font-size:20px;letter-spacing:-.035em;line-height:1.3}
+.sectionHead h2{font-size:20px;letter-spacing:-.01em;line-height:1.3}
 .sectionHead p{font-size:13px;line-height:1.7;color:var(--muted);max-width:760px;margin:7px 0 0}
 .content :global(.card){padding:14px;border-radius:6px}
-.content :global(.card h3){text-transform:none;letter-spacing:-.02em;font-size:16px;margin:0}
-.content :global(.card h2){font-size:18px;letter-spacing:-.02em}
+.content :global(.card h3){text-transform:none;letter-spacing:-.01em;font-size:16px;margin:0}
+.content :global(.card h2){font-size:18px;letter-spacing:-.01em}
 .content :global(.card-head){margin-bottom:12px;align-items:flex-start;gap:12px;flex-wrap:wrap}
 .content :global(.sub){font-size:12.5px;line-height:1.7}
 .content :global(.flash){margin:0;overflow-wrap:anywhere}
@@ -33,7 +33,7 @@
 .officeStatus{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
 .statusIcon{width:40px;height:40px;display:grid;place-items:center;border:1px solid var(--line);background:var(--panel-2);border-radius:6px;color:var(--accent);flex:none}
 .statusCopy{flex:1;min-width:min(100%,220px)}
-.statusCopy h3{font-size:17px;font-weight:600;letter-spacing:-.02em;margin:0}
+.statusCopy h3{font-size:17px;font-weight:600;letter-spacing:-.01em;margin:0}
 .statusCopy p{font-size:12.5px;line-height:1.7;color:var(--muted);margin:5px 0}
 .statusCopy b{font-size:13px}
 .quickGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -48,12 +48,12 @@
 .related h3{font-size:13px;letter-spacing:0;font-weight:600}
 .related p{font-size:12px;line-height:1.6;color:var(--muted);margin:6px 0 0}
 .relatedLinks{display:flex;gap:12px;flex-wrap:wrap}
-.relatedLinks a,.inlineLink,.notice>a{display:inline-flex;gap:7px;align-items:center;font-size:12px;color:var(--accent);font-weight:550;text-decoration:none}
+.relatedLinks a,.inlineLink,.notice>a{display:inline-flex;gap:7px;align-items:center;font-size:12px;color:var(--accent);font-weight: 500;text-decoration:none}
 .relatedLinks a:hover,.inlineLink:hover,.notice>a:hover{text-decoration:underline}
 .notice{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--line);border-radius:6px;padding:14px 14px;background:var(--panel-2);font-size:12.5px;line-height:1.6;color:var(--muted)}
 .notice>svg{flex:none;color:var(--dim)}
 .notice>span{flex:1;min-width:min(100%,180px)}
-.notice>b,.notice b{color:var(--ink);font-weight:550}
+.notice>b,.notice b{color:var(--ink);font-weight: 500}
 .notice>a,.notice>form{flex:none}
 .formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .formGrid label,.stack label{gap:8px;min-width:0;color:var(--ink);font-size:12.5px}
@@ -70,7 +70,7 @@
 .departmentGroup[open]>summary>svg:last-child{transform:rotate(180deg)}
 .departmentGroup>summary::-webkit-details-marker,.addPanel>summary::-webkit-details-marker,.serviceList summary::-webkit-details-marker,.schedules summary::-webkit-details-marker{display:none}
 .details{font-size:12px;margin-top:9px}
-.details summary{cursor:pointer;color:var(--muted);font-weight:550}
+.details summary{cursor:pointer;color:var(--muted);font-weight: 500}
 .details p{font-size:12px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}
 .addPanel>summary{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;font-size:13px}
 .addPanel>summary>span{margin-left:auto;font-size:12px}

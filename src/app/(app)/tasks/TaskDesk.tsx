@@ -23,9 +23,9 @@ const word=(status:string)=>WORD[status]||[status,''];
 // The board's four columns, by where each request stands.
 const COLUMNS:{id:string;label:string;statuses:string[];dot:string}[]=[
   {id:'needs',label:'Needs you',statuses:['review','blocked'],dot:'var(--needs)'},
-  {id:'working',label:'Working',statuses:['queued','running'],dot:'#9d85ff'},
-  {id:'done',label:'Done',statuses:['completed','idle'],dot:'#22d3a6'},
-  {id:'stopped',label:'Stopped',statuses:['failed','cancelled'],dot:'#ff6b6b'},
+  {id:'working',label:'Working',statuses:['queued','running'],dot:'var(--dim)'},
+  {id:'done',label:'Done',statuses:['completed','idle'],dot:'var(--good)'},
+  {id:'stopped',label:'Stopped',statuses:['failed','cancelled'],dot:'var(--bad)'},
 ];
 const ago=(at:string)=>{const m=Math.round((Date.now()-Date.parse(at))/6e4);return m<1?'just now':m<60?`${m} min ago`:m<1440?`${Math.round(m/60)} h ago`:`${Math.round(m/1440)} d ago`;};
 

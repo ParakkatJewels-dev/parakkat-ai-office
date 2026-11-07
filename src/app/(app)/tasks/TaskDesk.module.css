@@ -7,24 +7,24 @@
 .colHead i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .colHead h2 { flex: 1; margin: 0; font: 600 14px var(--f-display); }
 .colHead span { color: var(--dim); font-size: var(--fs-meta, 12.5px); }
-.card { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 10px 12px; text-align: left; border-radius: 12px; border: 1px solid var(--glass-line); background: var(--glass-card); color: var(--ink); font: inherit; cursor: pointer; }
+.card { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 10px 12px; text-align: left; border-radius: 8px; border: 1px solid var(--glass-line); background: var(--glass-card); color: var(--ink); font: inherit; cursor: pointer; }
 .card:hover { border-color: color-mix(in srgb, var(--accent-2) 50%, transparent); }
 .card.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
 .card b { font: 600 13.5px/1.35 var(--f-body); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card small { color: var(--dim); font-size: var(--fs-meta, 12px); }
 .bar { display: flex; gap: 3px; }
 .bar i { flex: 1; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 12%, transparent); }
-.bar i[data-state="done"] { background: var(--teal); }
+.bar i[data-state="done"] { background: var(--good); }
 .bar i[data-state="now"] { background: var(--needs); }
 .bar i[data-state="bad"] { background: var(--bad); }
-.tag { align-self: flex-start; padding: 1px 7px; border-radius: 999px; background: rgba(91,140,255,.2); color: var(--info); font: 600 11px var(--f-body); }
-.none { margin: 0; padding: 10px 12px; border-radius: 12px; border: 1px dashed color-mix(in srgb, var(--ink) 14%, transparent); color: var(--dim); font-size: 13px; }
+.tag { align-self: flex-start; padding: 1px 7px; border-radius: 6px; background: color-mix(in srgb, var(--info) 14%, transparent); color: var(--info); font: 600 11px var(--f-body); }
+.none { margin: 0; padding: 10px 12px; border-radius: 8px; border: 1px dashed color-mix(in srgb, var(--ink) 14%, transparent); color: var(--dim); font-size: 13px; }
 .moreBtn { height: 32px; border: 0; background: transparent; color: var(--accent); font: 600 12.5px var(--f-body); cursor: pointer; text-align: left; padding: 0 4px; }
 .wide { grid-column: 1 / -1; }
-.skeleton { display: block; height: 74px; border-radius: 12px; background: linear-gradient(90deg, color-mix(in srgb, var(--ink) 5%, transparent), color-mix(in srgb, var(--ink) 10%, transparent), color-mix(in srgb, var(--ink) 5%, transparent)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+.skeleton { display: block; height: 74px; border-radius: 8px; background: linear-gradient(90deg, color-mix(in srgb, var(--ink) 5%, transparent), color-mix(in srgb, var(--ink) 10%, transparent), color-mix(in srgb, var(--ink) 5%, transparent)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
-.drawer { flex: 1 1 380px; max-width: 460px; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--glass-line); background: color-mix(in srgb, var(--panel) 92%, transparent); position: sticky; top: 0; max-height: calc(100dvh - 90px); overflow: auto; }
+.drawer { flex: 1 1 380px; max-width: 460px; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 8px; border: 1px solid var(--glass-line); background: color-mix(in srgb, var(--panel) 92%, transparent); position: sticky; top: 0; max-height: calc(100dvh - 90px); overflow: auto; }
 .drawerHead { display: flex; align-items: flex-start; gap: 8px; }
 .drawerHead > div { flex: 1; min-width: 0; }
 .drawerHead h2 { margin: 2px 0 0; font: 600 clamp(15px, .85rem + .35vw, 18px)/1.3 var(--f-display); overflow-wrap: anywhere; }
@@ -38,17 +38,17 @@
 .path li { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--dim); }
 .path i { height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 12%, transparent); display: block; }
 .path i svg { display: none; }
-.path li[data-state="done"] i { background: var(--teal); }
+.path li[data-state="done"] i { background: var(--good); }
 .path li[data-state="now"] i { background: var(--needs); }
 .path li[data-state="now"] { color: var(--ink); font-weight: 600; }
 .path li[data-state="bad"] i { background: var(--bad); }
 .path li[data-state="bad"] { color: var(--bad); font-weight: 600; }
 .brief { color: var(--muted); font-size: 13.5px; white-space: pre-wrap; }
-.answer { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(34,211,166,.32); background: rgba(34,211,166,.1); }
+.answer { padding: 10px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--good) 14%, transparent); background: color-mix(in srgb, var(--good) 14%, transparent); }
 .output { padding: 2px; max-height: 420px; overflow: auto; }
 .check { color: var(--muted); font-size: 13.5px; }
 .check b { color: var(--ink); font-weight: 600; }
-.more { border: 1px solid var(--glass-line); border-radius: 12px; padding: 0 12px; }
+.more { border: 1px solid var(--glass-line); border-radius: 8px; padding: 0 12px; }
 .more summary { min-height: 40px; display: flex; align-items: center; cursor: pointer; font-weight: 600; font-size: 13.5px; }
 .more[open] { padding-bottom: 12px; }
 .more ol { padding-left: 20px; margin: 6px 0 0; }

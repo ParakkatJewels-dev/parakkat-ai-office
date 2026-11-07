@@ -12,7 +12,7 @@
 .meta { display: block; color: var(--dim); font-size: var(--fs-meta, 12px); }
 .dots { display: inline-flex; gap: 3px; margin-right: 8px; vertical-align: middle; }
 .dots i { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--ink) 14%, transparent); }
-.dots i[data-state="done"] { background: var(--teal); }
+.dots i[data-state="done"] { background: var(--good); }
 .dots i[data-state="now"] { background: var(--needs); }
 .dots i[data-state="bad"] { background: var(--bad); }
 .stage { color: var(--muted); font-size: 13px; white-space: nowrap; }

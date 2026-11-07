@@ -1,8 +1,8 @@
-.handoff{border:1px solid var(--line);border-radius:12px;background:var(--panel-2);padding:14px;display:grid;gap:10px;min-width:0;color:var(--ink)}
+.handoff{border:1px solid var(--line);border-radius: 8px;background:var(--panel-2);padding:14px;display:grid;gap:10px;min-width:0;color:var(--ink)}
 .handoff>strong{font-size:13px;line-height:1.45}
 .handoff p{margin:0;font-size:12px;line-height:1.55;color:var(--muted);overflow-wrap:anywhere}
 .providers{margin:0;padding:0;border:0;min-width:0}
-.providers legend{padding:0;margin-bottom:7px;font-size:11px;font-weight:650;color:var(--muted)}
+.providers legend{padding:0;margin-bottom:7px;font-size:11px;font-weight: 600;color:var(--muted)}
 .providers>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .providers label{display:flex;align-items:center;gap:7px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);cursor:pointer;min-width:0;font-size:12px;line-height:1.4}
 .providers input{flex:none;margin:0;accent-color:var(--accent)}
@@ -12,14 +12,14 @@
 .providers:disabled label{cursor:wait;opacity:.65}
 .automatic{display:grid;gap:10px;min-width:0}
 .generationFacts{display:flex;justify-content:space-between;flex-wrap:wrap;gap:7px;font-size:12px}
-.model{display:grid;gap:6px;font-size:12px;font-weight:650}
+.model{display:grid;gap:6px;font-size:12px;font-weight: 600}
 .model select{width:100%;min-width:0;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit}
 .manual{border-top:1px solid var(--line);padding-top:10px;font-size:12px}
-.manual>summary{cursor:pointer;font-weight:650;color:var(--ink);margin-bottom:10px}
+.manual>summary{cursor:pointer;font-weight: 600;color:var(--ink);margin-bottom:10px}
 .manual>.steps{margin-top:12px}
 .steps{margin:0;padding-left:20px;display:grid;gap:16px;font-size:12px;line-height:1.5}
 .handoff .steps>li{display:list-item;border:0;border-radius:0;background:none;overflow:visible;padding-left:2px;min-width:0}
-.steps li>b{display:block;margin-bottom:6px;font-weight:650}
+.steps li>b{display:block;margin-bottom:6px;font-weight: 600}
 .steps li>p{margin-bottom:8px}
 .actions{display:flex;flex-wrap:wrap;gap:6px}
 .handoff :global(.btn){font-size:11px;white-space:normal;text-align:center}

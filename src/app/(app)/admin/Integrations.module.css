@@ -3,7 +3,7 @@
 .card p{margin:0}
 .card :global(.integr-top){align-items:flex-start}
 .card :global(.integr-top .grow){gap:4px}
-.card :global(.integr-top .grow>b){font-size:16px;font-weight:650;color:var(--ink)}
+.card :global(.integr-top .grow>b){font-size:16px;font-weight: 600;color:var(--ink)}
 .card :global(.integr-top .pill){flex:none;font-size:12px}
 .card :global(.tile-ic){background:var(--accent-soft);border-radius:6px;color:var(--accent);flex:none}
 .card :global(.integr-pick){gap:12px;align-items:flex-end;min-width:0}

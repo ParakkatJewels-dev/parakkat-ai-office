@@ -4,8 +4,8 @@
 .page :is(a, button, summary, input, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.strip > a { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--glass-line); background: var(--glass-card); color: var(--muted); font: 600 13px var(--f-body); text-decoration: none; }
-.strip > a b { font: 700 13px var(--f-body); color: var(--ink); font-variant-numeric: tabular-nums; }
+.strip > a { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--glass-line); background: var(--glass-card); color: var(--muted); font: 600 13px var(--f-body); text-decoration: none; }
+.strip > a b { font: 600 13px var(--f-body); color: var(--ink); font-variant-numeric: tabular-nums; }
 .strip > a:hover { border-color: color-mix(in srgb, var(--accent-2) 55%, transparent); }
 .strip > a.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--ink); }
 .stripNote { flex: 1 1 240px; min-width: 0; color: var(--dim); font-size: var(--fs-meta, 12.5px); text-align: right; }

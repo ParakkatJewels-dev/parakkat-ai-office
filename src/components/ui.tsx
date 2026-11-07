@@ -23,11 +23,18 @@ export function Avatar({ name, dept, human, size = 38 }: { name: string; dept?: 
   return <span className="avatar-sm" style={{ width: size, height: size, background: bg, color: human ? '#1c1c1c' : '#fff', fontSize: size * .34 }} aria-hidden="true">{ini}</span>;
 }
 
-/** Horizontal steps with a line between them: done, current, or still to come. */
+const STEP_STATE = { done: ', signed', now: ', their turn', todo: ', still to come', bad: ', sent back' } as const;
+/** A reviewer's initials, struck like a hallmark: "Creative head" becomes CH, "AI CMO" becomes CMO. */
+const hallmark = (label: string) => {
+  const words = label.replace(/\bAI\b/g, '').trim().split(/\s+/).filter(Boolean);
+  return (words.length > 1 ? words.map(w => w[0]).join('') : words[0] || '?').slice(0, 3).toUpperCase();
+};
+
+/** The sign-off chain as hallmark stamps: struck once signed, outlined while it is their turn, faint until then. */
 export function Stepper({ steps }: { steps: { label: string; state: 'done' | 'now' | 'todo' | 'bad' }[] }) {
   return (
     <ol className="stepper">
-      {steps.map(s => <li key={s.label} className={s.state}><i>{s.state === 'done' ? '✓' : s.state === 'bad' ? '!' : ''}</i><span>{s.label}</span></li>)}
+      {steps.map(s => <li key={s.label} className={s.state}><i aria-hidden="true">{hallmark(s.label)}</i><span>{s.label}<span className="sr-only">{STEP_STATE[s.state]}</span></span></li>)}
     </ol>
   );
 }
