@@ -159,7 +159,7 @@ test('an office-map request for three posters queues three distinct ChatGPT imag
   const base={agents,hostId:'creativeDirector',category:'Chain',profiles:[{id:'user',role:'creative_head'}],
     departments:[{id:'creative',human_head_role:'creative_head'},{id:'insights',human_head_role:'ecom_manager'}],
     posterSales:{available:true,data:[{product_id:'1',units:24},{product_id:'2',units:21},{product_id:'3',units:18}]},
-    productStock:[1,2,3].map(id=>({id:String(id),title:`Chain ${id}`,status:'ACTIVE',stock:4,stock_source:'odoo',image_url:photo}))};
+    productStock:[1,2,3].map(id=>({id:String(id),title:`Chain ${id}`,tags:['gender:men'],status:'ACTIVE',stock:4,stock_source:'odoo',image_url:photo}))};
   const previous=process.env.CHATGPT_IMAGE_WORKER_ENABLED;
   process.env.CHATGPT_IMAGE_WORKER_ENABLED='true';
   try {
