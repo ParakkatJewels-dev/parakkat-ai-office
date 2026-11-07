@@ -51,7 +51,7 @@ function designHarness(reviewFailure,imagePath='old-reviewed-or-unreviewed.png',
       },
     },
     './library':{pickRefs:async()=>[],refParts:async()=>options.referenceParts||[]},
-    './library-core.mjs':{recentConcepts:()=>[],versionPath:base=>base,refLine:ref=>ref.description},
+    './library-core.mjs':{recentConcepts:()=>[],versionPath:base=>base,refLine:ref=>ref.description,requestedDesignOccasion:()=>null},
     '@/lib/llm/gemini':{
       imagePart:async()=>{state.photoReads++;return {inlineData:{mimeType:'image/png',data:'official-product-photo'}};},
       bannerImage:async prompt=>{state.images++;state.imagePrompts.push(prompt);return {mimeType:'image/png',data:Buffer.from('fixture')};},

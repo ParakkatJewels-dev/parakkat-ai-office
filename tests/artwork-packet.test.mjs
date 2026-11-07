@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import ts from 'typescript';
 import sharp from 'sharp';
 import * as core from '../src/lib/artwork/import-core.mjs';
-import { rankDesignReferences, referenceFingerprint } from '../src/lib/agents/library-core.mjs';
+import { rankDesignReferences, referenceFingerprint, requestedDesignOccasion } from '../src/lib/agents/library-core.mjs';
 import { shopifyPhotoUrl } from '../src/lib/agents/carousel-url.mjs';
 
 const id = '11111111-1111-4111-8111-111111111111', requestId = '22222222-2222-4222-8222-222222222222';
@@ -21,9 +21,11 @@ function harness(options = {}) {
     row: { id, format: 'portrait', status: 'awaiting_import', artwork_request_id: requestId, artwork_handoff: null, requested_by: 'owner',
       product_ids: [2,1], headline: 'Fine Millennium', brief: 'Premium chain artwork', language: 'en', ref_ids: [], versions: [], image_path: null, ...options.row },
     products: options.products || [product(1), product(2)],
+    designs: [],
     refs: options.refs || [reference('chain','Fine chain design')],
     reads: [], writes: [], photoReads: [], driveReads: [], previousReads: [], storageWrites: 0, saves: 0,
   };
+  state.designs = [state.row,...(options.designs || [])];
   function query(table, admin) {
     const q = { table, admin, filters: [], limit: null, values: null, single: false, orders: [] };
     state.reads.push(q);
@@ -32,7 +34,7 @@ function harness(options = {}) {
         q.executed = true; state.saves++;
         options.beforeSave?.(state, q);
       }
-      let rows = table === 'products' ? state.products : table === 'design_refs' ? state.refs : [state.row];
+      let rows = table === 'products' ? state.products : table === 'design_refs' ? state.refs : table === 'designs' ? state.designs : [state.row];
       rows = rows.filter(row => q.filters.every(filter => filter(row)));
       for (const key of q.orders.toReversed()) rows = [...rows].sort((a,b) => String(a[key]).localeCompare(String(b[key])));
       if (q.limit != null) rows = rows.slice(0,q.limit);
@@ -46,6 +48,7 @@ function harness(options = {}) {
     const api = {
       select(columns) { q.columns = columns; return api; },
       eq(key,value) { q.filters.push(row => row[key] === value); return api; },
+      contains(key,value) { q.filters.push(row => Object.entries(value).every(([field,expected]) => row[key]?.[field] === expected)); return api; },
       in(key,values) { q.filters.push(row => values.includes(row[key])); return api; },
       is(key,value) { q.filters.push(row => (row[key] ?? null) === value); return api; },
       not(key,operator,value) { assert.equal(operator,'is'); assert.equal(value,null); q.filters.push(row => row[key] != null); return api; },
@@ -65,7 +68,7 @@ function harness(options = {}) {
     '@/lib/supabase/admin': { supabaseAdmin: () => admin },
     '@/lib/agents/conversation-api': { conversationUser: async () => ({ db: { from: table => query(table,false) }, user: { id: 'owner' }, role: 'ecom_manager' }) },
     '@/lib/agents/design': { FORMATS: { post: { label: 'Post', ratio: '1:1', size: '1080 × 1080' }, portrait: { label: 'Portrait', ratio: '4:5', size: '1080 × 1350' }, carousel_card: { label: 'Carousel card', ratio: '4:5', size: '1080 × 1350' }, web_banner: { label: 'Web banner', ratio: '16:9', size: '1920 × 1080' } } },
-    '@/lib/agents/library-core.mjs': { rankDesignReferences, referenceFingerprint },
+    '@/lib/agents/library-core.mjs': { rankDesignReferences, referenceFingerprint, requestedDesignOccasion },
     '@/lib/agents/carousel-card.mjs': { shopifyPhotoUrl, fetchShopifyPhoto: async url => { state.photoReads.push(url); return url === photo(2) ? images[1] : images[0]; } },
     '@/lib/connectors/drive': { designImageById: async (driveId,signal,expected) => { state.driveReads.push({ driveId, signal, expected }); if (options.driveError) throw new Error('Changed Drive original'); return { data: images[3] }; } },
     '@/lib/connectors/shopify': { shopifyArtworkPrice: async () => options.price || null },
@@ -110,14 +113,21 @@ test('packet and pack keep selected product order, actual source pixels and prev
 });
 
 test('a carousel keeps its shared format and only displays a live verified price', async () => {
-  const row={product_ids:[1],carousel_source:{series_id:'series-1',index:2,total:3,direction:'Warm ivory grid; fixed product position.'},ref_ids:['chain']};
-  const priced=harness({row,price:{min:1299,max:1799,currency:'INR',checkedAt:'2026-11-02T10:00:00Z'}});
+  const firstId='33333333-3333-4333-8333-333333333333';
+  const row={product_ids:[1],carousel_source:{series_id:'series-1',index:2,total:3,template_design_id:firstId,direction:'Warm ivory grid; fixed product position.'},ref_ids:['chain']};
+  const designs=[{id:firstId,requested_by:'owner',status:'ready',image_path:'template-v1.png',carousel_source:{series_id:'series-1',index:1,total:3},versions:[]}];
+  const priced=harness({row,designs,price:{min:1299,max:1799,currency:'INR',checkedAt:'2026-11-02T10:00:00Z'}});
   const packet=await priced.packet();
   assert.match(packet.prompt,/card 2 of a 3-card carousel ad/);
   assert.match(packet.prompt,/Warm ivory grid; fixed product position/);
+  assert.match(packet.prompt,/FIXED CAROUSEL TEMPLATE/);
+  assert.deepEqual(packet.assets.map(asset=>asset.kind),['product','template']);
   assert.match(packet.prompt,/from ₹1,299/);
   assert.match(packet.prompt,/offer only when the manager explicitly supplied/);
-  const unpriced=harness({row});
+  const files=unzip((await priced.pack()).bytes);
+  assert.ok(files.has('template-1.png'));
+  assert.deepEqual(priced.state.previousReads,['template-v1.png']);
+  const unpriced=harness({row,designs});
   assert.match((await unpriced.packet()).prompt,/omit all prices/);
 });
 
@@ -132,6 +142,40 @@ test('normal revisions rerank prior irrelevant references using product category
   assert.ok(['Chain in ivory studio','Fine chain minimalist'].includes(styles[0].title), 'explicit ivory direction beats the popular dark chain');
   assert.equal(styles.some(asset => asset.title === 'Idol wedding gifting'),false);
   assert.equal(styles.length,3); assert.match(packet.prompt,/REQUESTED REVISION.*No ceremonial props/s);
+});
+
+test('a Christmas request treats Diwali artwork as design technique, not scene content', async () => {
+  const h = harness({ row: { product_ids: [1], brief: 'Create Christmas theme images for the fine chain' }, products: [product(1)], refs: [
+    reference('diwali','Diwali chain artwork',{occasion:'Diwali',style:'Warm diyas and brass lamps',quality:5,pinned:true}),
+    reference('general','Fine chain studio',{occasion:'general',style:'Ivory studio lighting'}),
+  ] });
+  const packet=await h.packet();
+  assert.equal(packet.assets.find(asset=>asset.kind==='style').title,'Fine chain studio');
+  assert.equal(packet.assets.filter(asset=>asset.kind==='style').length,1);
+  assert.match(packet.prompt,/current brief and requested occasion control the subject, setting, symbols, decorations and props/);
+  assert.match(packet.prompt,/different festival shown or described in a past reference must not appear/);
+  assert.match(packet.prompt,/CURRENT TASK OCCASION: CHRISTMAS/);
+});
+
+test('Christmas necklace posters with only Diwali necklace references attach no old festival pixels',async()=>{
+  const h=harness({row:{product_ids:[1],brief:'Create a Christmas promotion poster for this necklace'},products:[product(1,'Bead Knot Slim Chain Necklace')],refs:[
+    reference('diwali','Chain on diyas',{occasion:'Diwali',style:'Gold chain with traditional brass lamps',tags:['chain'],quality:5}),
+    reference('festive','Festive necklace',{occasion:'festive',style:'Palace background with lanterns',tags:['necklace'],quality:5}),
+    reference('resort','Christmas resort',{occasion:'Christmas',style:'Misty hill station hotel',tags:['resort'],quality:5}),
+  ]});
+  const packet=await h.packet();
+  assert.deepEqual(packet.assets.filter(asset=>asset.kind==='style'),[]);
+  assert.match(packet.prompt,/Do not use diyas, brass oil lamps/);
+  assert.match(packet.prompt,/No matching saved style reference/);
+});
+
+test('a fresh theme correction can omit the previous contaminated artwork',async()=>{
+  const h=harness({row:{product_ids:[1],brief:'Christmas necklace poster',image_path:'old-diwali.png',redo_note:'Start from the official product photo. Do not use previous artwork. Make a fresh Christmas scene.'},products:[product(1)],refs:[reference('diwali','Diwali chain',{occasion:'Diwali',tags:['chain']})]});
+  const packet=await h.packet();
+  assert.deepEqual(packet.assets.map(asset=>asset.kind),['product']);
+  const files=unzip((await h.pack()).bytes);
+  assert.deepEqual([...files.keys()],['brief.txt','README.txt','product-1.png']);
+  assert.deepEqual(h.state.previousReads,[]);
 });
 
 test('packets keep all product photos while fitting the image tool reference limit', async () => {
@@ -152,12 +196,12 @@ test('packets keep all product photos while fitting the image tool reference lim
 test('explicit carousel references outside the general bound are preserved and missing chosen references reject', async () => {
   const chosen = reference('zz-selected','Chosen ring design', { tags: ['ring'] });
   const refs = Array.from({ length: 1000 }, (_,i) => reference(`candidate-${String(i).padStart(4,'0')}`,'Chain design'));
-  const h = harness({ row: { format: 'carousel_card', carousel_id: 'set', carousel_index: 3, ref_ids: [chosen.id] }, refs: [...refs,chosen] });
+  const h = harness({ row: { format: 'carousel_card', carousel_id: 'set', carousel_index: 1, ref_ids: [chosen.id] }, refs: [...refs,chosen] });
   const packet = await h.packet();
   assert.deepEqual(packet.assets.filter(asset => asset.kind === 'style').map(asset => asset.title),['Chosen ring design']);
-  assert.match(packet.prompt,/card 3 of a five-card carousel/);
+  assert.match(packet.prompt,/card 1 of a five-card carousel/);
   for (const selected of [[],[{ ...chosen, hidden: true }],[{ ...chosen, modified_at: null }]]) {
-    const missing = harness({ row: { carousel_id: 'set', carousel_index: 3, ref_ids: [chosen.id] }, refs: [reference('other','Other chain'),...selected] });
+    const missing = harness({ row: { carousel_id: 'set', carousel_index: 1, ref_ids: [chosen.id] }, refs: [reference('other','Other chain'),...selected] });
     await assert.rejects(missing.packet(),/selected carousel style reference is unavailable/);
     assert.equal(missing.state.saves,0); assert.deepEqual(missing.state.driveReads,[]);
   }

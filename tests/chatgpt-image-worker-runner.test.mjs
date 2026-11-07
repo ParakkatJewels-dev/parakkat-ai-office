@@ -86,6 +86,14 @@ test('reference bundles reject path traversal, altered bytes, duplicate names an
   const checked=validateJob(job());assert.equal(checked.files[0].bytes.length,png.length);assert.match(checked.manifestHash,/^[a-f0-9]{64}$/);
 });
 
+test('a saved first poster is accepted as a fixed carousel template',()=>{
+  const carousel=job();
+  carousel.files.push({name:'template-1.png',base64:png.toString('base64'),sha256:sha256(png)});
+  const checked=validateJob(carousel);
+  assert.deepEqual(checked.files.map(file=>file.name),['product-1.png','template-1.png']);
+  assert.match(generationPrompt(checked.manifest,'/work/job'),/fixed carousel layout template/);
+});
+
 test('large reference images decode without overflowing the regexp stack',()=>{
   const image=Buffer.alloc(4*1024*1024,0x5a);
   assert.deepEqual(decodeBase64(image.toString('base64'),20*1024*1024),image);

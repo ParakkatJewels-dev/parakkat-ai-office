@@ -37,6 +37,18 @@ test('supporting references prefer compatible palettes without overruling explic
   const ranked=core.rankDesignReferences([ref('a','chain',{palette:'Deep blue silk',quality:5}),ref('b','chain',{palette:'Deep blue silk',quality:2}),ref('c','chain',{palette:'Bright green foliage',quality:4}),ref('d','idol',{palette:'Deep blue silk',quality:5})],['Chain'],options);
   assert.deepEqual(ranked.map(ref=>ref.id),['a','b','c']);
 });
+test('a new occasion prefers matching or general style over a previous festival',()=>{
+  const rows=[
+    ref('diwali','chain',{occasion:'Diwali',style:'Chain with diyas and brass lamps',quality:5,pinned:true}),
+    ref('general','chain',{occasion:'general',style:'Chain in an ivory studio',quality:3}),
+    ref('christmas','chain',{occasion:'Christmas',style:'Chain with evergreen branches',quality:2}),
+  ];
+  assert.deepEqual(core.rankDesignReferences(rows,['Christmas chain campaign'],{...options,occasion:'Christmas'}).map(row=>row.id),['christmas','general']);
+  assert.equal(core.rankDesignReferences(rows.slice(0,2),['Christmas chain campaign'],{...options,occasion:'Christmas'})[0].id,'general');
+  assert.deepEqual(core.rankDesignReferences(rows.slice(0,1),['Christmas chain campaign'],{...options,occasion:'Christmas'}),[]);
+  assert.deepEqual(core.rankDesignReferences([ref('festive','chain',{occasion:'festive',style:'Palace interior with lanterns'})],['Christmas chain campaign'],{...options,occasion:'Christmas'}),[]);
+  assert.equal(core.requestedDesignOccasion('Christmas poster for Bridal Necklace'),'christmas');
+});
 const compiled=ts.transpileModule(readFileSync(new URL('../src/lib/agents/library.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 function harness({rows=[],count=rows.length,error=null,supplement=[]}={}){
   const reads=[],marks=[];

@@ -58,13 +58,13 @@
 .room-banner small { display: block; margin-bottom: 6px; font: 700 13px var(--f-data); letter-spacing: .08em; color: var(--hi); text-shadow: 0 1px 4px #000; }
 .room-banner b { display: inline-block; padding: 3px 11px 4px; background: var(--hi); color: var(--hi-ink); font: 900 clamp(24px, 3.2vw, 42px)/1.05 var(--f-display); text-transform: uppercase; letter-spacing: -.01em; }
 @keyframes banner { 0% { opacity: 0; transform: translateY(10px); } 8%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; } }
-.walk-chat { left: calc(50% - 140px); bottom: 58px; transform: translateX(-50%); display: flex; flex-direction: column; width: min(430px, calc(100% - 20px)); max-height: min(70%, 560px); overflow: hidden; }
+.walk-chat { left: calc(50% - 140px); bottom: 58px; transform: translateX(-50%); display: flex; flex-direction: column; width: min(430px, calc(100% - 20px)); height: min(70%, 560px); max-height: min(70%, 560px); overflow: hidden; }
 .walk-chat-head { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-bottom: 1px solid rgba(255, 255, 255, .1); }
 .walk-chat-avatar { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%; color: #fff; font: 800 13px var(--f-display); box-shadow: 0 0 0 2px var(--hi); }
 .walk-chat-head div { min-width: 0; flex: 1; }
 .walk-chat-head b { display: block; color: #fff; font: 700 14px var(--f-display); }
 .walk-chat-head small { display: block; color: #a39c8e; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.walk-chat-body { min-height: 0; flex: 1; overflow: auto; }
+.walk-chat-body { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .walk-chat-foot { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; border-top: 1px solid rgba(255, 255, 255, .1); font-size: 12px; color: #a39c8e; }
 .walk-chat-foot a { color: var(--hi); }
 .esc-menu { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; padding: 16px; background: rgba(5, 5, 4, .62); backdrop-filter: blur(3px); }

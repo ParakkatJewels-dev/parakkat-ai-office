@@ -113,7 +113,8 @@ async function claim(db: SupabaseClient, input: any) {
         return { name: file.name, base64: file.data.toString('base64'), sha256: sha256(file.data) };
       });
       return { job: { jobId: job.id, holder, source: job.source, itemId: job.item_id, requestId: job.request_id, packet: bundle.packet, files } };
-    } catch {
+    } catch (error) {
+      console.error('ChatGPT image preflight failed:', error instanceof Error ? `${error.name}: ${error.message.slice(0, 240)}` : 'unknown error');
       await rpc(db, 'fail_chatgpt_image_job', { p_id: job.id, p_holder: holder, p_kind: 'preflight' }).catch(() => {});
       throw new ArtworkError('The saved image references could not be prepared. No generation was dispatched.', 409);
     }

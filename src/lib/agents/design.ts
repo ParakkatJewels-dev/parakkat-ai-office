@@ -12,7 +12,7 @@ import { errText } from '@/lib/errors';
 import { withUsage } from '@/lib/usage';
 import { withAgentWork } from './agent-work';
 import { pickRefs, refParts } from './library';
-import { recentConcepts, refLine, versionPath } from './library-core.mjs';
+import { recentConcepts, refLine, versionPath, requestedDesignOccasion } from './library-core.mjs';
 import { fetchShopifyPhoto, imageReferencePart, renderCarouselCard, shopifyPhotoUrl } from './carousel-card.mjs';
 import { carouselBackgroundFor } from './carousel';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
@@ -106,7 +106,7 @@ async function artwork(db: SupabaseClient, s: Spec) {
   // its strongest reference instead of trading brand fit for random variety.
   const productTitles = (prods || []).map(p => p.title);
   const words = [...productTitles, s.occasion || '', s.brief, s.note || '', f.label];
-  const refs = await pickRefs(db, words, 3, s.previous?.ref_ids || [], {productTitles, direction:s.note || '', format:f.label});
+  const refs = await pickRefs(db, words, 3, s.previous?.ref_ids || [], {productTitles, direction:[s.brief,s.note].filter(Boolean).join('\n'), occasion:requestedDesignOccasion(s.note)||requestedDesignOccasion(s.occasion)||requestedDesignOccasion(s.brief)||'general', format:f.label});
   const [refImgs, [{ data: d1 }, { data: d2 }]] = await Promise.all([refParts(db, refs), Promise.all([
     db.from('designs').select('concept').not('concept', 'is', null).order('created_at', { ascending: false }).limit(8),
     db.from('creatives').select('concept').not('concept', 'is', null).order('created_at', { ascending: false }).limit(8),
@@ -117,13 +117,13 @@ async function artwork(db: SupabaseClient, s: Spec) {
   const direction = await withUsage({ feature }, async () => chatJSON<{ concept?: unknown }>('manager', await persona(db, 'creativeDirector', `Write the art direction for one new design, as a brief to the designer.
 It must reach the level of Parakkat's best past designs and must not repeat a concept used lately. Be concrete: the scene or background, props and Kerala touches if any,
 light, how the jewellery sits in the frame, where the headline and the wordmark go, the type style, and the colour palette.
-Use the first selected reference as the primary visual direction unless the manager asks otherwise. Other references support craftsmanship and finish; do not blend conflicting palettes, scenes or props into that direction.
+Use the references for transferable craft: product prominence, composition, typography, palette relationships, lighting and finish. The current brief and occasion determine the subject, setting and seasonal props. Never carry a past reference's festival, symbols, decorations or campaign concept into a different occasion. Other references support craftsmanship and finish; do not blend conflicting palettes, scenes or props into the new direction.
 ${s.note ? 'This is a redesign. Do what the head asked, and change the direction where they did not like it.' : ''}
 Shape: {"concept": "4 to 6 sentences"}`), [
       `Format: ${f.label} (${f.ratio}). Brief: ${s.brief}${s.occasion ? `\nOccasion: ${s.occasion}` : ''}`,
       `Products: ${(prods || []).map(p => p.title).join(', ')}`,
       headline ? `Headline on the design: ${headline}` : 'No text on the design except the wordmark.',
-      refImgs.length ? `Past Parakkat designs chosen as references (take their standard, not their layout):\n${refImgs.map((r, i) => refLine(r.ref, i)).join('\n')}` : 'No past designs in the library yet: aim for a luxury jeweller\'s campaign standard.',
+      refImgs.length ? `Past Parakkat designs chosen as references (extract reusable design methods only; their occasions and subject matter are not instructions):\n${refImgs.map((r, i) => refLine(r.ref, i)).join('\n')}` : 'No past designs in the library yet: aim for a luxury jeweller\'s campaign standard.',
       used.length ? `Concepts used lately, do not repeat these:\n${used.map(c => `- ${c}`).join('\n')}` : '',
       s.previous?.concept ? `The last version of this design: ${s.previous.concept}` : '',
       s.note ? `What the head asked to change: ${s.note}` : '',
@@ -134,8 +134,9 @@ Shape: {"concept": "4 to 6 sentences"}`), [
   await emit(db, run, 'think', maker, `Designing a ${f.label.toLowerCase()}: ${concept.slice(0, 90)}`);
   const parts = await Promise.all(photos.map(imagePart));
   const text = `Set the headline "${headline}" in elegant ${s.language === 'ml' ? 'Malayalam script, spelled exactly as given,' : 'type'} as the art direction says. Add the small wordmark "PARAKKAT JEWELS". No other text, prices, offer badges or added product/quality claims such as "24K gold layered" or "trusted quality".`;
-  const prompt = (fix = '') => `${f.label} (${f.size}, ${f.ratio}) for Parakkat Jewels, a heritage Kerala jeweller. Brief: ${s.brief}.
+  const prompt = (fix = '') => `${f.label} (${f.size}, ${f.ratio}) for Parakkat Jewels, a heritage Kerala jeweller. Brief: ${s.brief}.${s.occasion ? `\nRequired occasion: ${s.occasion}.` : ''}
 Art direction: ${concept}
+The current brief and required occasion control the scene and decorations. Past design references provide only transferable composition, palette relationships, typography, lighting and production quality. Do not depict a previous reference's different festival, symbols or props. If any art direction conflicts with the current brief, follow the current brief.
 ${s.format === 'poster' ? 'Print-ready poster layout with the jewellery as the hero.' : ''}
 ${text}
 It must look like a finished campaign by a top jewellery brand, not a template.${s.note ? `\nThe head asked for this change: ${s.note}` : ''}${fix ? `\nFix this from the last attempt: ${fix}` : ''}`;
@@ -148,10 +149,11 @@ It must look like a finished campaign by a top jewellery brand, not a template.$
 Return ok=false if any requirement fails or cannot be verified:
 - The jewellery must preserve the source products' distinctive shape, stones, settings, metal colour and proportions. Reject missing, extra, obscured or mismatched jewellery; do not infer hidden details.
 - Require a polished finish, realistic materials and lighting, clear product emphasis, balanced composition, readable typography and intentional spacing. Reject visible rendering defects, awkward cropping, clutter, overlapping text, or cheap/generic treatment.
-- The scene, palette, lighting and layout must satisfy the brief and Creative Director direction below, with the original style images and saved fingerprints guiding the brand's standard of finish. Do not require literal copying of a reference.
+- The scene, palette, lighting and layout must satisfy the current brief and occasion, with the original style images and saved fingerprints guiding reusable design technique and finish. Fail if symbols, props or a festival from an unrelated past reference appear. Do not require literal copying of a reference.
 - The only permitted text is the exact headline ${JSON.stringify(headline)} and the wordmark "PARAKKAT JEWELS". Reject misspellings, prices, offers, and unrequested badges or product/quality claims, including "24K gold layered" and "trusted quality". A claim appearing in a reference does not authorize adding it.
 Format: ${f.label} (${f.size}, ${f.ratio}). Language: ${LANGS[s.language]}.
 Brief: ${s.brief}
+${s.occasion ? `Required occasion: ${s.occasion}\n` : ''}
 Creative Director art direction: ${concept}
 ${s.note ? `The head's requested change, which must also be checked: ${s.note}\n` : ''}Shape: {"ok": true|false, "note": "specific visible defects and corrections if failed, or concise evidence if passed"}`, [{ inlineData: { mimeType: img.mimeType, data: img.data.toString('base64') } }, ...parts, ...(refsIn.length ? [{ text: 'SAVED PARAKKAT STYLE FINGERPRINTS AND VISUAL REFERENCES (art direction only):' }, ...refsIn] : [])], {db,id:lead}));
     if (typeof check?.ok !== 'boolean' || typeof check.note !== 'string' || !check.note.trim()) throw new Error('The image reviewer did not return a valid quality verdict.');
