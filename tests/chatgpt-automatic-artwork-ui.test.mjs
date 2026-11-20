@@ -10,7 +10,7 @@ const text=tree=>Array.isArray(tree)?tree.map(text).join(' '):tree&&typeof tree=
 const json=value=>({ok:true,json:async()=>value});
 const state=job=>({enabled:true,requestId:'request-1',job});
 function harness(initial=state(null)) {
-  const hooks=[],effects=[],queue=[],timers=[],calls=[];let cursor=0,tree,refreshes=0,next=async()=>json(initial);
+  const hooks=[],effects=[],queue=[],timers=[],calls=[],listeners=new Map();let cursor=0,tree,refreshes=0,next=async()=>json(initial);
   const router={refresh:()=>refreshes++};
   const changed=(a,b)=>!a||a.length!==b.length||b.some((value,index)=>!Object.is(value,a[index]));
   const react={
@@ -21,13 +21,13 @@ function harness(initial=state(null)) {
   };
   const modules={react,'react/jsx-runtime':jsx,'next/navigation':{useRouter:()=>router},'./ChatGPTArtwork.module.css':{default:new Proxy({},{get:(_,key)=>key})}};
   const exports={};
-  new Function('exports','require','fetch','setTimeout','clearTimeout',code)(exports,name=>{assert.ok(name in modules,`Unexpected import ${name}`);return modules[name];},async(...args)=>{calls.push(args);return next(...args);},(fn,delay)=>{const timer={fn,delay,cancelled:false};timers.push(timer);return timer;},timer=>{timer.cancelled=true;});
+  new Function('exports','require','fetch','setTimeout','clearTimeout','setInterval','clearInterval','document',code)(exports,name=>{assert.ok(name in modules,`Unexpected import ${name}`);return modules[name];},async(...args)=>{calls.push(args);return next(...args);},(fn,delay)=>{const timer={fn,delay,cancelled:false};timers.push(timer);return timer;},timer=>{timer.cancelled=true;},(fn,delay)=>{const timer={fn,delay,cancelled:false};timers.push(timer);return timer;},timer=>{timer.cancelled=true;},{visibilityState:'visible',addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:(name,fn)=>{if(listeners.get(name)===fn)listeners.delete(name);}});
   const render=()=>{cursor=0;tree=exports.ChatGPTAutomaticArtwork({source:'design',id:'design-1',requestId:'request-1',title:'Fine Millennium'});while(queue.length)queue.shift()();};
   const settle=async()=>{await new Promise(resolve=>setImmediate(resolve));render();};render();
   return {calls,timers,settle,get tree(){return tree;},get refreshes(){return refreshes;},setFetch(fn){next=fn;},
     button(label){return nodes(tree,node=>node.type==='button'&&text(node)===label)[0];},
     async click(label){const button=this.button(label);assert.ok(button,`Missing ${label}`);assert.ok(!button.props.disabled);button.props.onClick();await settle();},
-    async poll(){const timer=timers.find(timer=>!timer.cancelled&&timer.delay===5000);assert.ok(timer);timer.cancelled=true;timer.fn();await settle();},
+    async poll(){const timer=timers.find(timer=>!timer.cancelled&&timer.delay===3000);assert.ok(timer);timer.fn();await settle();},
     unmount(){for(const effect of effects)effect?.cleanup?.();},
   };
 }

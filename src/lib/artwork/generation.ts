@@ -16,7 +16,7 @@ const activeStates=['queued','submitting','submitted','collecting'];
 const catalogCache=new Map<string,{at:number,value:any}>();
 const ratioFor=(format:string)=>FORMATS[format as keyof typeof FORMATS]?.ratio||'1:1';
 const modelId=(value?:unknown)=>value==null?'gpt_image_2_5':typeof value==='string'&&HIGGSFIELD_IMAGE_MODELS.some(m=>m.id===value)?value:(()=>{throw new ArtworkError('Choose an available Higgsfield image model.');})();
-const publicJob=(job:any)=>job?{id:job.id,state:job.state,error:job.error||null,errorCode:job.error_code||null,warning:job.usage?.warning||null,model:job.model,updatedAt:job.updated_at,credits:job.usage?.credits??null}:null;
+const publicJob=(job:any)=>job?{id:job.id,state:job.state,error:job.error||null,errorCode:job.error_code||null,warning:job.usage?.warning||null,model:job.model,updatedAt:job.updated_at,nextPollAt:job.next_poll_at,credits:job.usage?.credits??null}:null;
 const callFor=(accountId:string,workspaceId?:string)=> (name:string,args:any={},timeoutMs=30_000)=>callHiggsfieldTool(name,args,{expectedAccountId:accountId,expectedWorkspaceId:workspaceId,timeoutMs});
 
 async function catalog(status:any,ratio:string) {
@@ -199,6 +199,15 @@ export function createGenerationWorker(deps:{call?:typeof callHiggsfieldTool;aut
   };
 }
 const runGeneration=createGenerationWorker();
+/** A status read can collect an already submitted job as soon as its provider poll is due. */
+export async function collectSubmittedHiggsfieldGeneration(jobId:string) {
+  if(!validId(jobId)||await isPaused(true))return;
+  const db=supabaseAdmin();
+  const {data,error}=await db.from('artwork_generation_jobs').select('*').eq('id',jobId).maybeSingle();
+  if(error)throw new Error('Generation progress could not be read.');
+  if(data&&['submitted','collecting'].includes(data.state)&&Date.parse(data.next_poll_at)<=Date.now())
+    await runGeneration(db,data as GenerationJob);
+}
 export async function drainHiggsfieldGenerations(db=supabaseAdmin(),limit=2) {
   if(await isPaused(true))return [];
   const jobs=await dueGenerationJobs(db,Math.max(1,Math.min(limit,3))),results=[];

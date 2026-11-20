@@ -39,7 +39,7 @@ docker compose -f deploy/chatgpt-image-worker/compose.yml \
   up -d --no-build --no-deps worker
 ```
 
-The queue checks every 15 minutes and handles one image at a time. It preserves generated output and dispatch records so a restart can finish import without repeating an uncertain generation. The 26-minute stop grace allows the runner's bounded active attempt to settle. Existing AI Office and its scheduler are separate services and are not recreated by these commands.
+The queue checks for new jobs every 30 seconds and handles one image at a time. A finished image is imported immediately, and the worker continues to the next saved job without waiting for another queue check. It preserves generated output and dispatch records so a restart can finish import without repeating an uncertain generation. The 26-minute stop grace allows the runner's bounded active attempt to settle. Existing AI Office and its scheduler are separate services and are not recreated by these commands.
 
 To stop only this queue service while retaining its auth, output and recovery records:
 

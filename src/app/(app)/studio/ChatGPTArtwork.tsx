@@ -41,8 +41,8 @@ export function HiggsfieldGeneration({ source, id, requestId, title, initialGene
 }) {
   const router = useRouter(), labelId = useId();
   const [data, setData] = useState<GenerationStatus | null>(null), [model, setModel] = useState('gpt_image_2_5');
-  const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const inFlight = useRef(false), base = `/api/studio/artwork/${source}/${encodeURIComponent(id)}/generation`;
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [pollAttempt, setPollAttempt] = useState(0);
+  const inFlight = useRef(false), initialStatusLoaded = useRef(false), base = `/api/studio/artwork/${source}/${encodeURIComponent(id)}/generation`;
   const active = data ? !!data.job && ACTIVE_JOBS.has(data.job.state) : initialGenerating;
   const choice = data?.models.find(item => item.id === model);
   const balance = data?.balance.credits, cost = choice?.credits;
@@ -64,14 +64,20 @@ export function HiggsfieldGeneration({ source, id, requestId, title, initialGene
       setData(next); onActive(!!next.job && ACTIVE_JOBS.has(next.job.state));
       if (next.job?.imageUrl || (initialGenerating && next.job && !ACTIVE_JOBS.has(next.job.state))) router.refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Generation status could not be loaded.'); }
-    finally { inFlight.current = false; setBusy(false); onPending?.(false); }
+    finally { inFlight.current = false; setBusy(false); setPollAttempt(attempt => attempt + 1); onPending?.(false); }
   }
 
   useEffect(() => {
-    if (!data?.job || !ACTIVE_JOBS.has(data.job.state)) return;
+    if (!initialGenerating || initialStatusLoaded.current) return;
+    initialStatusLoaded.current = true;
+    void load();
+  }, [initialGenerating, load]);
+
+  useEffect(() => {
+    if (!active || disabled) return;
     const timer = setTimeout(() => { void load(); }, 5000);
     return () => clearTimeout(timer);
-  }, [data]); // a fresh status schedules the next active-job check
+  }, [active, data, disabled, pollAttempt]); // retry even when a status request fails
 
   async function generate() {
     if (!canGenerate || inFlight.current || !data) return;
@@ -286,10 +292,14 @@ export function ChatGPTAutomaticArtwork({source,id,requestId,title,compact=false
     return()=>{mounted.current=false;requestEpoch.current++;controller.current?.abort();inFlight.current=false;};
   },[read]);
   const active=!!data?.job&&CHATGPT_ACTIVE.has(data.job.state);
+  const monitoring=active||(status==='generating'&&!data);
   useEffect(()=>{
-    if(!active||busy)return;
-    const timer=setTimeout(()=>{void read();},5000);return()=>clearTimeout(timer);
-  },[active,busy,data?.job?.state,read]);
+    if(!monitoring)return;
+    const timer=setInterval(()=>{if(document.visibilityState==='visible')void read();},3000);
+    const onVisible=()=>{if(document.visibilityState==='visible')void read();};
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',onVisible);};
+  },[monitoring,read]);
   const otherActive=status==='generating'&&!!data&&!data.job;
   const locked=!!data?.job&&['uncertain','cancelled','succeeded'].includes(data.job.state);
   const canStart=!!data?.enabled&&!busy&&!active&&!locked&&!otherActive;
@@ -307,7 +317,7 @@ export function ChatGPTAutomaticArtwork({source,id,requestId,title,compact=false
     }catch(cause){if(mounted.current&&epoch===requestEpoch.current&&!abort.signal.aborted)setError(cause instanceof Error?cause.message:'The image could not be queued.');}
     finally{if(epoch===requestEpoch.current){inFlight.current=false;if(mounted.current)setBusy(false);}}
   }
-  const progress=data?.job?.state==='queued'?'Queued for ChatGPT image generation. The worker checks the queue every 15 minutes.':data?.job?.state==='preparing'?'Preparing the saved brief and reference images…':'ChatGPT is generating the image. It will be saved here for human review.';
+  const progress=data?.job?.state==='queued'?'Queued for ChatGPT image generation. The worker checks for new jobs about every 30 seconds.':data?.job?.state==='preparing'?'Preparing the saved brief and reference images…':'ChatGPT is generating the image. It will be saved here for human review.';
   return <section className={`${styles.handoff} ${compact?styles.compact:''}`} aria-labelledby={`${labelId}-title`} aria-busy={busy}>
     <strong id={`${labelId}-title`}>ChatGPT image generation</strong>
     <p>Select Generate with ChatGPT to create and save an image in AI Office for human review. Your ChatGPT plan’s usage limits apply.</p>

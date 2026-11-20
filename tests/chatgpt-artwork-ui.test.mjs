@@ -218,10 +218,10 @@ test('zero, insufficient or unknown credits and unavailable models block generat
   assert.equal(nodes(disconnected.tree,n=>n.type==='button'&&text(n)==='Generate in AI Office').length,0);
 });
 
-test('active generations poll only after opening status and terminal results require review or explicit new requests',async()=>{
+test('active generations fetch on opening and poll until the image is saved for review',async()=>{
   const h=harness({automatic:true,status:'generating',fetch:async()=>json(generationStatus({job:{id:'job-1',state:'submitted'}}))});
-  assert.equal(h.calls.length,0);
-  await h.click('Check generation progress');
+  await h.settle();
+  assert.equal(h.calls.length,1);
   assert.equal(h.timers.filter(timer=>!timer.cancelled&&timer.delay===5000).length,1);
   h.setFetch(async()=>json(generationStatus({job:{id:'job-1',state:'succeeded',imageUrl:'https://office.example/generated.png',warning:'Higgsfield adjusted the requested settings.'}})));
   await h.fireTimers(5000);
@@ -235,6 +235,18 @@ test('active generations poll only after opening status and terminal results req
     assert.equal(nodes(stopped.tree,n=>n.type==='button'&&text(n)==='Generate in AI Office').length,0);
     assert.equal(stopped.calls.length,1);
   }
+});
+
+test('active Higgsfield status retries after a temporary read failure',async()=>{
+  const h=harness({automatic:true,status:'generating',fetch:async()=>json(generationStatus({job:{id:'job-1',state:'submitted'}}))});
+  await h.settle();
+  h.setFetch(async()=>{throw new Error('Temporary status error');});
+  await h.fireTimers(5000);
+  assert.match(text(h.tree),/Temporary status error/);
+  assert.equal(h.timers.filter(timer=>!timer.cancelled&&timer.delay===5000).length,1);
+  h.setFetch(async()=>json(generationStatus({job:{id:'job-1',state:'succeeded',imageUrl:'https://office.example/recovered.png'}})));
+  await h.fireTimers(5000);
+  assert.equal(nodes(h.tree,n=>n.type==='img')[0].props.src,'https://office.example/recovered.png');
 });
 
 test('generation cannot cross a changed request and repeated start clicks reserve only once',async()=>{

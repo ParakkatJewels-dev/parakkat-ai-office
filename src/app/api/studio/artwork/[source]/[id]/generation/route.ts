@@ -1,5 +1,5 @@
 import { after } from 'next/server';
-import { artworkGenerationStatus, startArtworkGeneration, drainHiggsfieldGenerations } from '@/lib/artwork/generation';
+import { artworkGenerationStatus, startArtworkGeneration, drainHiggsfieldGenerations, collectSubmittedHiggsfieldGeneration } from '@/lib/artwork/generation';
 import { artworkError, ArtworkError, type ArtworkContext } from '@/lib/artwork/server';
 import { validOrigin } from '@/lib/artwork/import-core.mjs';
 export const runtime='nodejs';
@@ -7,7 +7,12 @@ export const dynamic='force-dynamic';
 export const maxDuration=300;
 const headers={'Cache-Control':'private, no-store'};
 export async function GET(_request:Request,context:ArtworkContext){
-  try{return Response.json(await artworkGenerationStatus(context),{headers});}catch(error){return artworkError(error);}
+  try{
+    const status=await artworkGenerationStatus(context);
+    if(status.job&&['submitted','collecting'].includes(status.job.state)&&Date.parse(status.job.nextPollAt)<=Date.now())
+      after(async()=>{await collectSubmittedHiggsfieldGeneration(status.job!.id);});
+    return Response.json(status,{headers});
+  }catch(error){return artworkError(error);}
 }
 export async function POST(request:Request,context:ArtworkContext){
   try{
