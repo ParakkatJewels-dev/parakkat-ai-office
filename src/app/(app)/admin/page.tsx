@@ -42,7 +42,7 @@ const AUTOPILOT = [
 const TABS = [
   { id: 'overview', label: 'Overview', icon: 'settings', group: 'Workspace', description: 'Your settings, in one place', intro: 'Choose what you want to manage. Each section keeps related settings and actions together.' },
   { id: 'team', label: 'People & permissions', icon: 'users', group: 'Workspace', description: 'Access and department heads', intro: 'Manage who can use the office and which roles review each department’s work.' },
-  { id: 'brand', label: 'Brand guidance', icon: 'doc', group: 'Workspace', description: 'Voice, standards and context', intro: 'Give every agent a consistent understanding of your brand. Individual agent instructions live in Agent management.' },
+  { id: 'brand', label: 'Brand logo & guidance', icon: 'doc', group: 'Workspace', description: 'Official logo, voice and standards', intro: 'Upload the official creative logo and give every agent a consistent understanding of your brand. Individual agent instructions live in Agent management.' },
   { id: 'ai', label: 'AI providers', icon: 'spark', group: 'Intelligence', description: 'Model routing and provider keys', intro: 'See which model handles each job, then manage its connection and usage.' },
   { id: 'memory', label: 'Learning memory', icon: 'heart', group: 'Intelligence', description: 'Feedback your agents remember', intro: 'Review the lessons agents use, add guidance for a team, or retire advice that no longer applies.' },
   { id: 'competitors', label: 'Competitors', icon: 'eye', group: 'Intelligence', description: 'Your market watchlist', intro: 'Choose the brands the team watches for market and competitor research.' },
@@ -100,6 +100,7 @@ function Overview({ paused }: { paused: boolean | null }) {
       <span className={`pill ${paused === null || paused ? 'warn' : 'good'}`}>{paused === null ? 'Unavailable' : paused ? 'Paused' : 'Running'}</span>
       <Link href="/admin?tab=operations" className="btn ghost sm-btn">Office controls<Icon name="arrow" size={14} /></Link>
     </section>
+    <Link href="/admin?tab=brand#official-logo" className={styles.quickCard}><span className={styles.cardIcon}><Icon name="doc" size={21} /></span><div><h3>Upload official brand logo</h3><p>Set the exact logo used on new creative artwork.</p></div><Icon name="arrow" size={17} /></Link>
     <div className={styles.quickGrid}>
       {TABS.filter(t => !['overview', 'operations'].includes(t.id)).map(t => <Link href={`/admin?tab=${t.id}`} className={styles.quickCard} key={t.id}>
         <span className={styles.cardIcon}><Icon name={t.icon} size={21} /></span><div><h3>{t.label}</h3></div><Icon name="arrow" size={17} />
@@ -272,7 +273,7 @@ async function Brand({ db }: { db: Db }) {
   const saved = !!(book?.voice || book?.always || book?.never || book?.notes);
   if (error) return <p className="flash" role="alert">Brand guidance could not be loaded. Reload before editing so existing guidance is preserved.</p>;
   return <>
-    <section className="card"><div className="card-head"><div><h3>Official creative logo</h3><p className="sub">Upload the approved mark once. New artwork reserves a brand area and AI Office places these exact logo pixels on each saved creative.</p></div><span className={`pill ${logoRow.data ? 'good' : 'warn'}`}>{logoRow.data ? 'Configured' : 'Required for new artwork'}</span></div>
+    <section className="card" id="official-logo"><div className="card-head"><div><h3>Official creative logo</h3><p className="sub">Upload the approved mark once. New artwork reserves a brand area and AI Office places these exact logo pixels on each saved creative.</p></div><span className={`pill ${logoRow.data ? 'good' : 'warn'}`}>{logoRow.data ? 'Configured' : 'Required for new artwork'}</span></div>
       {logoRow.error && <p className="flash" role="alert">Logo settings could not be loaded. Apply the latest database migration and reload.</p>}
       {logoUrl && <div className={styles.logoPreview}><img src={logoUrl} alt="Current official brand logo" /><span className="sm">Current logo · updated {when(logoRow.data!.updated_at)}</span></div>}
       <form action={saveBrandLogo} className={styles.logoForm}><label className="field">{logoRow.data ? 'Replace official logo' : 'Upload official logo'}<input name="logo" type="file" accept="image/png,image/webp,image/jpeg" required /><span className="sm">PNG, WebP or JPEG, up to 5 MiB. A transparent PNG works best.</span></label><Submit icon="spark" pending="Saving logo…">Save logo</Submit></form>

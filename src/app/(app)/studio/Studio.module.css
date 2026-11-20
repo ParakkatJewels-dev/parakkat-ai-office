@@ -90,6 +90,10 @@
 .summary>div,.summary>a{padding:14px 16px}
 .summary strong{font-size:22px}
 .handoffNotice{padding:11px 14px;border-radius:8px}
+.logoNotice{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:16px;border:1px solid var(--line-2);border-radius:8px;background:var(--panel-2)}
+.logoNotice>div{flex:1;min-width:min(100%,250px)}
+.logoNotice strong{font-size:15px}
+.logoNotice p{margin:5px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
 .galleryCard .galleryGrid{gap:16px}
 .galleryGrid>.galleryItem{border-radius:10px}
 .galleryItem :global(.meta){padding:16px}

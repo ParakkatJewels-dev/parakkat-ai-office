@@ -70,7 +70,11 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
   const R = new Map((usedRefs || []).map(r => [r.id, r]));
   const paths = (items || []).map(d => d.image_path).filter(Boolean) as string[];
   const ids = (items || []).map(d => d.id as string);
-  const decisions = ids.length ? await supabaseAdmin().from('artwork_provider_decisions').select('source,item_id,request_id,provider,basis').in('item_id',ids) : {data:[],error:null};
+  const admin = supabaseAdmin();
+  const [decisions, logo] = await Promise.all([
+    ids.length ? admin.from('artwork_provider_decisions').select('source,item_id,request_id,provider,basis').in('item_id',ids) : Promise.resolve({data:[],error:null}),
+    role === 'super_admin' ? admin.from('brand_logo').select('id').eq('id',1).maybeSingle() : Promise.resolve({data:null,error:null}),
+  ]);
   const providerFor = (d:{source:string;id:string;artwork_request_id?:string|null}) => decisions.data?.find(choice=>choice.source===d.source&&choice.item_id===d.id&&choice.request_id===d.artwork_request_id)?.provider as 'chatgpt'|'higgsfield'|undefined;
   const [[views, downloads], asked] = await Promise.all([
     paths.length ? Promise.all([
@@ -96,7 +100,14 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
       {sp.msg && <p className="flash ok" role="status">{sp.msg}</p>}
       {sp.made && !sp.msg && <p className="flash ok">{handoff ? 'Artwork request prepared. Open its card to see the selected provider and generation progress.' : 'Design ordered. It is first in the gallery and takes about a minute; you can leave this page.'}</p>}
       <Refresher active={(busy || 0) > 0 && tab === 'gallery'}>{busy} design{busy === 1 ? ' is' : 's are'} being generated. This page updates on its own.</Refresher>
-      <PageHead title="Studio" sub="Make artwork, review it, and keep the best designs in your library."><a href="/studio?tab=order" className="btn"><Icon name="plus" size={17}/>Create a design</a></PageHead>
+      <PageHead title="Studio" sub="Make artwork, review it, and keep the best designs in your library.">
+        {role === 'super_admin' && <Link href="/admin?tab=brand#official-logo" className="btn ghost"><Icon name="doc" size={17}/>Brand logo</Link>}
+        <a href="/studio?tab=order" className="btn"><Icon name="plus" size={17}/>Create a design</a>
+      </PageHead>
+      {role === 'super_admin' && !logo.data && <section className={studioStyles.logoNotice} role="status" aria-label="Brand logo setup">
+        <div><strong>Upload your official brand logo</strong><p>New artwork needs the approved logo before generation. Add it once in Settings; AI Office places it on every new creative.</p></div>
+        <Link href="/admin?tab=brand#official-logo" className="btn"><Icon name="plus" size={17}/>Upload brand logo</Link>
+      </section>}
       <section className={studioStyles.summary} aria-label="Studio summary">
         <div><span>All artwork</span><strong>{total || 0}</strong></div>
         <a href={qs({ show: 'todo', tab: null })}><span>Awaiting review</span><strong>{todo || 0}</strong></a>
