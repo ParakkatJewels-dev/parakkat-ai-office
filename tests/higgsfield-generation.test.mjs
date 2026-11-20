@@ -17,7 +17,7 @@ function harness(options={}) {
   let job={...base,...options.job},paused=false,balanceCalls=0;
   const calls={tools:[],updates:[],uploads:[],completed:[],artwork:[],renewals:[],projects:[],authorized:[],reserved:[]};
   const image=options.image||Buffer.from('reference');
-  const bundle={packet:{format:'square',prompt:'Keep the exact chain in product-1.png.'},refs:[{id:'verified-reference'}],files:[{name:'product-1.png',data:image}]};
+  const bundle={packet:{format:'square',prompt:'Keep the exact chain in product-1.png.'},refs:[{id:'verified-reference'}],files:[{name:'product-1.png',data:image}],logoSha256:'a'.repeat(64)};
   const bucket={upload:async(path,bytes,opts)=>{calls.uploads.push({path,bytes,opts});return{error:options.uploadError?{}:null};},download:async()=>({data:new Blob([options.existing||image]),error:null})};
   const query={select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{artwork_request_id:base.request_id},error:null})};
   const db={from:()=>query,storage:{from:name=>{assert.equal(name,'creatives');return bucket;}}};
@@ -52,7 +52,7 @@ function harness(options={}) {
     updateGenerationJob:async(_db,input)=>{assert.equal(input.expectedState,job.state);calls.updates.push(input);job={...job,state:input.state,provider_request_id:input.providerRequestId||job.provider_request_id};return job;},
     completeGenerationJob:async(_db,input)=>{calls.completed.push(input);job.state='succeeded';return{status:'ready'};},
   };
-  const modules={'server-only':{},'node:crypto':{randomUUID,createHash},'@/lib/supabase/admin':{supabaseAdmin:()=>db},'@/lib/higgsfield/auth.mjs':{getHiggsfieldStatus:auth},'@/lib/higgsfield/mcp.mjs':{callHiggsfieldTool:call},'@/lib/agents/design':{FORMATS:{square:{ratio:'1:1'}}},'@/lib/pause':{isPaused:async()=>paused},'./server':{generationArtwork:artwork,ArtworkError:Error},'./import-core.mjs':imageCore,'./generation-core.mjs':core,'./generation-jobs':jobs};
+  const modules={'server-only':{},'node:crypto':{randomUUID,createHash},'@/lib/supabase/admin':{supabaseAdmin:()=>db},'@/lib/higgsfield/auth.mjs':{getHiggsfieldStatus:auth},'@/lib/higgsfield/mcp.mjs':{callHiggsfieldTool:call},'@/lib/agents/design':{FORMATS:{square:{ratio:'1:1'}}},'@/lib/pause':{isPaused:async()=>paused},'./server':{generationArtwork:artwork,ArtworkError:Error},'./import-core.mjs':imageCore,'./generation-core.mjs':core,'./generation-jobs':jobs,'./brand-logo':{currentBrandLogo:async()=>({sha256:'a'.repeat(64),bytes:Buffer.from('logo')}),applyBrandLogo:async bytes=>bytes},'./provider-decision':{selectedProviderForRequest:async()=>null}};
   const exports={};new Function('exports','require',code)(exports,name=>{assert.ok(name in modules,`Unexpected import ${name}`);return modules[name];});
   const worker=exports.createGenerationWorker({call,auth,artwork,publicUrl:async value=>value,fetch:async(_url,init)=>init.method==='PUT'?new Response('',{status:200}):new Response(image,{headers:{'content-type':options.mime||'image/png'}})});
   return{run:()=>worker(db,job),start:extra=>exports.startAutomaticArtwork({source:'design',id:base.item_id,userId:base.requested_by,...extra}),calls,get job(){return job;}};

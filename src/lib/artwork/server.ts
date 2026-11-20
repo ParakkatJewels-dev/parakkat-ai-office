@@ -10,6 +10,8 @@ import { designImageById } from '@/lib/connectors/drive';
 import { shopifyArtworkPrice } from '@/lib/connectors/shopify';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
 import { boundedFormData, validId, validOrigin, validateArtwork, zipFiles } from './import-core.mjs';
+import { applyBrandLogo, brandLogoInstruction, currentBrandLogo } from './brand-logo';
+import { selectedProviderForRequest } from './provider-decision';
 
 export class ArtworkError extends Error { constructor(message:string, public status=400) {super(message);} }
 export type ArtworkProvider = 'chatgpt' | 'higgsfield';
@@ -39,10 +41,18 @@ export async function accessArtwork(context:ArtworkContext,options:{pendingOnly?
   return {session,source:source as Source,id,row:item};
 }
 type Access = Awaited<ReturnType<typeof accessArtwork>>;
+async function requiredLogo() {
+  try { return await currentBrandLogo(); }
+  catch (error) { throw new ArtworkError(error instanceof Error ? error.message : 'The approved brand logo is unavailable.', 409); }
+}
 
 async function packetFor(access:Access):Promise<any> {
   const {row,source,id} = access, admin = supabaseAdmin();
-  if(row.artwork_handoff?.packet?.requestId===row.artwork_request_id) return row.artwork_handoff;
+  const logo = await requiredLogo();
+  if(row.artwork_handoff?.packet?.requestId===row.artwork_request_id) {
+    if(row.artwork_handoff.logoSha256 !== logo.sha256) throw new ArtworkError('The official logo changed. Prepare a new artwork revision before continuing.',409);
+    return row.artwork_handoff;
+  }
   const productIds = (Array.isArray(row.product_ids)?row.product_ids:[]).slice(0,3);
   const productResult = productIds.length ? await admin.from('products').select('id,title,image_url').in('id',productIds) : {data:[],error:null};
   if (productResult.error) throw new ArtworkError('The product photos could not be read. Try again.',503);
@@ -97,22 +107,23 @@ async function packetFor(access:Access):Promise<any> {
   const version=(Array.isArray(row.versions)?row.versions.length:0)+(row.image_path?2:1);
   const prompt=[
     `Create a finished ${f.label.toLowerCase()} for PARAKKAT JEWELS. Produce the image, not a text description.`,
+    brandLogoInstruction,
     `Canvas: ${f.ratio} aspect ratio; target ${f.size}. Language: ${row.language==='ml'?'Malayalam':'English'}.`,
     occasion?`CURRENT TASK OCCASION: ${occasion.toUpperCase()}. The finished artwork must visibly communicate this occasion. Past designs may guide only reusable composition and finish; their seasonal setting and props are not instructions.${occasion==='christmas'?' For Christmas, use an intentional Christmas setting and include a legible Christmas title. Do not use diyas, brass oil lamps, puja objects, marigold garlands or temple architecture as background decorations. Do not invent a discount or sale amount.':''}`:'',
     row.carousel_id?`This is card ${row.carousel_index} of a five-card carousel. Keep the exact same layout grid, product placement and scale, headline zone, brand position, typography, palette, lighting, background and CTA placement on every card. Change only the product and its approved details. Generate this card as a separate finished image, not a collage of all cards.`:series?`This is card ${series.index} of a ${series.total}-card carousel ad. Shared format for the entire series: ${series.direction||'Keep one identical layout, type hierarchy, background, product position and CTA position.'} Only product and approved details change. Generate one finished card, not a collage.`:'',
-    template?`FIXED CAROUSEL TEMPLATE — template-1.png is the first saved poster in this exact set. Match its background, surface texture, colour palette, lighting, margins, product position and scale, wordmark, typography, headline zone, title zone and CTA position as closely as possible. Replace ONLY the template's jewellery and product title with product-1.png and its exact title. The product in template-1.png is not the product for this poster. The official product photo alone controls product identity. This template rule overrides any earlier brief asking for a different background or layout.`:(series&&Number(series.index)===1)||(row.carousel_id&&Number(row.carousel_index)===1)?'This first card establishes the fixed template for the set. Later cards must keep this layout, palette, background, typography and CTA position while changing only the product and its title.':'',
+    template?`FIXED CAROUSEL TEMPLATE — template-1.png is the first saved poster in this exact set. Match its background, surface texture, colour palette, lighting, margins, product position and scale, typography, headline zone, title zone and CTA position as closely as possible. Replace ONLY the template's jewellery and product title with product-1.png and its exact title. Do not copy or redraw any logo or wordmark in the template. The product in template-1.png is not the product for this poster. The official product photo alone controls product identity. This template rule overrides any earlier brief asking for a different background or layout.`:(series&&Number(series.index)===1)||(row.carousel_id&&Number(row.carousel_index)===1)?'This first card establishes the fixed template for the set. Later cards must keep this layout, palette, background, typography and CTA position while changing only the product and its title.':'',
     `Brief: ${row.brief||row.body||'Create premium jewellery artwork with a clear hero product and restrained, readable typography.'}`,
     `Approved headline: ${row.headline||'No headline supplied; do not invent promotional claims.'}`,
     products.length?`PRODUCT IDENTITY — the attached product files are the authoritative sources:\n${products.map((p,i)=>`product-${i+1}.png: ${p.title} (Shopify product ${p.id})`).join('\n')}\nPreserve the exact jewellery silhouette, stone count and colours, setting, motifs, metal tone and proportions. Do not substitute similar jewellery. Avoid cropping or obscuring its distinguishing features.`:'No product photo was selected. Do not invent a product claimed to be in the Parakkat catalogue.',
     priceCopy.length?`OPTIONAL VERIFIED PRICE COPY — use only if it improves the customer-facing hierarchy; preserve the exact value and currency, including "from" for a price range:\n${priceCopy.join('\n')}`:'No current Shopify price was verified for this artwork; omit all prices.',
     refs.length?`BRAND STYLE REFERENCES — attach these actual past designs:\n${refs.map((r:any,i:number)=>`style-${i+1}.png: ${r.name}. ${i===0?'Brand quality benchmark.':'Supporting finish only; do not blend conflicting scenes.'} ${referenceFingerprint(r)}`).join('\n')}\nUse these designs only for transferable composition, product scale, palette relationships, typography, hierarchy, lighting and finish. The current brief and requested occasion control the subject, setting, symbols, decorations and props. A different festival shown or described in a past reference must not appear in this image. The manager brief and dated visual research determine this artwork's composition. Do not copy a past layout literally unless the manager explicitly requested it. For a carousel, hold the newly chosen layout fixed across all cards. Their jewellery, prices, claims and offer badges are not approved content for this image.`:template?'Use template-1.png as the sole visual template. Ignore unrelated past visual directions and do not change its setting or composition.':'No matching saved style reference is available for this product and occasion. Use the official product photo for identity and the brand’s reusable layout principles: one clear hero, a legible headline zone, controlled lighting, generous spacing and a concise CTA. Build a fresh scene for the current brief.',
-    usePreviousArtwork?'The attached previous-artwork.png is the previous version. Preserve its approved product identity and brand treatment except for the requested changes below. Previous wording, festival details and props are not approved for a new occasion; follow the current brief. Do not simply re-export it.':'',
+    usePreviousArtwork?'The attached previous-artwork.png is the previous version. Preserve its approved product identity and visual treatment except for the requested changes below. Do not copy, redraw or duplicate the logo in the previous image. Previous wording, festival details and props are not approved for a new occasion; follow the current brief. Do not simply re-export it.':'',
     row.redo_note?`REQUESTED REVISION (takes priority over earlier art direction): ${row.redo_note}`:'',
-    'Brand: PARAKKAT JEWELS. Keep the brand name accurate and legible as a plain wordmark. Do not invent a P monogram, crown, founding date, purity slogan or other brand mark. Make the product appealing with clear hierarchy, a strong customer hook and a concise shopping CTA. You may use the exact verified Shopify price above, the product title, and an offer only when the manager explicitly supplied that offer in the brief. Do not infer promotions from inspiration pages or invent discounts, certifications or material claims. Produce a polished, cohesive jewellery photograph with clean spacing and controlled detail.',
+    'Brand: PARAKKAT JEWELS. The official uploaded logo will be placed by AI Office after generation. Do not add a separate brand name or logo. Make the product appealing with clear hierarchy, a strong customer hook and a concise shopping CTA. You may use the exact verified Shopify price above, the product title, and an offer only when the manager explicitly supplied that offer in the brief. Do not infer promotions from inspiration pages or invent discounts, certifications or material claims. Produce a polished, cohesive jewellery photograph with clean spacing and controlled detail.',
     'Before returning the image, inspect product fidelity, typography, spelling, brand accuracy and the requested changes. Export the finished image as a still PNG, JPEG or WebP. A person will review it in AI Office before approval.',
     `AI Office artwork request: ${source}/${id} · ${row.artwork_request_id} · intended version ${version}.`,
   ].filter(Boolean).join('\n\n');
-  const bundle={packet:{source,id,requestId:row.artwork_request_id,prompt,headline:row.headline||'',format,version,assets},refs,products,template};
+  const bundle={packet:{source,id,requestId:row.artwork_request_id,prompt,headline:row.headline||'',format,version,assets},refs,products,template,logoSha256:logo.sha256};
   const table=source==='design'?'designs':'creatives';
   const saved=await admin.from(table).update({artwork_handoff:bundle}).eq('id',id).eq('artwork_request_id',row.artwork_request_id).is('artwork_handoff',null).in(source==='design'?'status':'art_status',['awaiting_import','generating']).select('artwork_handoff').maybeSingle();
   if(saved.error)throw new ArtworkError('The artwork brief could not be saved. Refresh Studio and try again.',409);
@@ -152,7 +163,10 @@ async function sourceFiles(access:Access,bundle:any) {
   const signal=AbortSignal.timeout(40_000);
   for(const [index,ref] of refs.entries()) {
     try {const image=await designImageById(ref.drive_id,signal,ref.modified_at);files.push({name:`style-${index+1}.png`,data:await png(image.data)});}
-    catch {throw new ArtworkError(`The saved reference “${ref.name}” could not be verified or read from Drive. Refresh its library folder before continuing.`,409);}
+    catch(error) {
+      if(error instanceof Error && /Google sign-in expired or was revoked/.test(error.message))throw new ArtworkError('Google sign-in expired or was revoked. Reconnect Google in Settings → Connections, then retry this artwork request.',409);
+      throw new ArtworkError(`The saved reference “${ref.name}” could not be verified or read from Drive. Refresh its library folder before continuing.`,409);
+    }
   }
   if(bundle.packet.assets.some((asset:any)=>asset.kind==='previous')) {
     const old=await supabaseAdmin().storage.from('creatives').download(access.row.image_path);
@@ -202,13 +216,19 @@ export async function importArtwork(request:Request,context:ArtworkContext) {
   try {form=await boundedFormData(request);} catch(e) {throw new ArtworkError(e instanceof Error?e.message:'Invalid image upload.',400);}
   const requestId=form.get('requestId'), file=form.get('file'), provider=artworkProvider(form.get('provider'));
   if(!validId(requestId)||requestId!==access.row.artwork_request_id)throw new ArtworkError('This revision request has changed. Refresh Studio before uploading.',409);
+  const selected=await selectedProviderForRequest(access.source,access.id,requestId);
+  if(selected&&selected!==provider)throw new ArtworkError(`This revision chose ${selected}. Prepare a new revision before importing from another provider.`,409);
   if(!(file instanceof File))throw new ArtworkError('Choose the finished image file.');
   let image;
   const bytes=Buffer.from(await file.arrayBuffer());
   try {image=await validateArtwork(bytes,file.type);} catch(e) {throw new ArtworkError((e as Error).message);}
-  const path=`${provider}-imports/${access.source}/${access.id}/${requestId}/${randomUUID()}.${image.extension}`;
+  const bundle=await packetFor(access);
+  const logo=await requiredLogo();
+  if(bundle.logoSha256!==logo.sha256)throw new ArtworkError('The official logo changed. Prepare a new artwork revision.',409);
+  const branded=await applyBrandLogo(bytes,logo);
+  const path=`${provider}-imports/${access.source}/${access.id}/${requestId}/${randomUUID()}.png`;
   const admin=supabaseAdmin(), bucket=admin.storage.from('creatives');
-  const uploaded=await bucket.upload(path,bytes,{contentType:image.mimeType,upsert:false,cacheControl:'31536000'});
+  const uploaded=await bucket.upload(path,branded,{contentType:'image/png',upsert:false,cacheControl:'31536000'});
   if(uploaded.error)throw new ArtworkError('The image could not be stored. Try again.',503);
   // Row lock + request UUID check, version history and review invalidation happen in one transaction.
   const result=await admin.rpc('commit_external_artwork_import',{p_source:access.source,p_id:access.id,p_request_id:requestId,p_path:path,p_user_id:access.session.user.id,p_provider:provider,p_ref_ids:access.row.artwork_handoff?.refs?.map((r:any)=>r.id)||access.row.ref_ids||[]});

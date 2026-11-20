@@ -4,6 +4,8 @@
 
 The supervisor runs as UID/GID 0 inside this isolated container so its control files and narrowly scoped worker credential are inaccessible to the generated-image process. It launches Codex as UID/GID 1000 with a filtered environment. This does not grant host-root access: the container keeps its read-only root, project-only volumes/network, resource limits, dropped capabilities and lack of Docker socket or host mounts.
 
+Apply the artwork provider and worker health migrations before starting this queue. The worker checks its ChatGPT login and disk headroom every 60 seconds and reports a private health status to AI Office. Automatic routing requires a healthy report from the last five minutes; a stopped worker or expired login makes ChatGPT unavailable for new choices.
+
 The override adds only `CHOWN`, `SETUID`, `SETGID`, `DAC_READ_SEARCH` and `KILL`. These allow preparing workspace ownership, dropping the child's identity, reading its output and terminating an overdue child. The runner must retain write access through file ownership/group permissions, because `DAC_READ_SEARCH` does not bypass write permissions. Verify that behavior in the exact image before starting the queue. Do not substitute privileged mode or broad capabilities to conceal a failed permission check.
 
 ## Private configuration

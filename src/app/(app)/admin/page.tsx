@@ -14,8 +14,9 @@ import { OpportunityRefresh } from './OpportunityRefresh';
 import { latestSeoJob } from '@/lib/agents/seo-status.mjs';
 import { SettingsDraftGuard } from './SettingsDraftGuard';
 import { SettingsAnchor } from './SettingsAnchor';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import styles from './Settings.module.css';
-import { setRole, setHead, addCompetitor, syncNow, togglePause, saveBrandBook, addLesson, retireLesson, findOpportunitiesNow } from './actions';
+import { setRole, setHead, addCompetitor, syncNow, togglePause, saveBrandBook, saveBrandLogo, addLesson, retireLesson, findOpportunitiesNow } from './actions';
 
 export const maxDuration = 300;
 const ROLES: AppRole[] = ['super_admin', 'creative_head', 'ecom_manager', 'perf_marketer', 'viewer'];
@@ -265,9 +266,18 @@ async function Competitors({ db, sp }: { db: Db; sp: Record<string, string | und
 
 async function Brand({ db }: { db: Db }) {
   const { data: book, error } = await db.from('brand_book').select('voice, always, never, notes, updated_at').eq('id', 1).maybeSingle();
+  const admin = supabaseAdmin();
+  const logoRow = await admin.from('brand_logo').select('path,updated_at').eq('id', 1).maybeSingle();
+  const logoUrl = logoRow.data?.path ? (await admin.storage.from('creatives').createSignedUrl(logoRow.data.path, 3600)).data?.signedUrl : null;
   const saved = !!(book?.voice || book?.always || book?.never || book?.notes);
   if (error) return <p className="flash" role="alert">Brand guidance could not be loaded. Reload before editing so existing guidance is preserved.</p>;
   return <>
+    <section className="card"><div className="card-head"><div><h3>Official creative logo</h3><p className="sub">Upload the approved mark once. New artwork reserves a brand area and AI Office places these exact logo pixels on each saved creative.</p></div><span className={`pill ${logoRow.data ? 'good' : 'warn'}`}>{logoRow.data ? 'Configured' : 'Required for new artwork'}</span></div>
+      {logoRow.error && <p className="flash" role="alert">Logo settings could not be loaded. Apply the latest database migration and reload.</p>}
+      {logoUrl && <div className={styles.logoPreview}><img src={logoUrl} alt="Current official brand logo" /><span className="sm">Current logo · updated {when(logoRow.data!.updated_at)}</span></div>}
+      <form action={saveBrandLogo} className={styles.logoForm}><label className="field">{logoRow.data ? 'Replace official logo' : 'Upload official logo'}<input name="logo" type="file" accept="image/png,image/webp,image/jpeg" required /><span className="sm">PNG, WebP or JPEG, up to 5 MiB. A transparent PNG works best.</span></label><Submit icon="spark" pending="Saving logo…">Save logo</Submit></form>
+      <p className="sm">Generation waits until a logo is saved. Every new generated or imported image receives the uploaded mark and still needs human visual review for stray marks.</p>
+    </section>
     <section className="card"><div className="card-head"><div><h3>The Parakkat brand book</h3><p className="sub">Shared guidance for every agent, applied from their next job.</p></div><span className={`pill ${saved ? 'good' : ''}`}>{saved ? 'Configured' : 'Ready to set up'}</span></div>
       <Locked key={book?.updated_at || 'new'} action={saveBrandBook} saved={saved} className={styles.brandForm} label="Save brand guidance" savedNote={book?.updated_at ? `Last saved ${when(book.updated_at)}` : 'Saved'}>
         <div className={styles.formGrid}>

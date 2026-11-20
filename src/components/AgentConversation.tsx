@@ -60,11 +60,11 @@ export default function AgentConversation({ agentId, agentName, initialActivity,
       if (document.visibilityState === 'hidden' || sendingRef.current) { timer = setTimeout(update, 5000); return; }
       try { await load(threadId, controller.signal); }
       catch (e) { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'The conversation could not be loaded.'); }
-      finally { if (!controller.signal.aborted) { setLoading(false); timer = setTimeout(update, 5000); } }
+      finally { if (!controller.signal.aborted) { setLoading(false); timer = setTimeout(update, isBusy(snapshot.thread) ? 5000 : 20000); } }
     };
     void update();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [load, threadId, refresh, selectionVersion]);
+  }, [load, threadId, refresh, selectionVersion, snapshot.thread?.status]);
 
   const latestMessage = snapshot.messages.at(-1)?.id;
   useEffect(() => { if (follow.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }, [latestMessage, tab]);

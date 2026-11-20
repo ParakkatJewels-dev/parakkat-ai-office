@@ -21,6 +21,7 @@ function harness({role='super_admin',paused=false,systemError=null,data={}}={}){
   const modules={
     'next/link':{default:'Link'},'next/navigation':{redirect:href=>{throw new Redirect(href);}},'@/lib/auth/session':{requireUser:async()=>({db,role})},
     '@/lib/roles':{ROLE_LABEL:{super_admin:'Super admin',viewer:'Viewer'}},'@/lib/agents/campaign':{liveRuns:async()=>{calls.liveRuns++;return new Set();},runSteps:()=>({steps:[],pill:['Done','good']})},
+    '@/lib/supabase/admin':{supabaseAdmin:()=>({from:db.from,storage:{from:()=>({createSignedUrl:async()=>({data:null,error:null})})}})},
     '@/office/roster.mjs':{BUILDINGS:[]},'@/components/Icon':{Icon:'Icon'},
     '@/components/ui':{PageHead:'PageHead',Avatar:'Avatar',Stepper:'Stepper',Pager:'Pager',pageOf:(sp,key)=>Math.max(1,Number(sp[key])||1),rangeOf:(page,size)=>[(page-1)*size,page*size-1],when:String},
     './Integrations':{Integrations:()=>{calls.business++;return {type:'BusinessProviders',props:{}};},AIIntegrations:()=>{calls.ai++;return {type:'AIProviders',props:{}};}},
@@ -28,7 +29,7 @@ function harness({role='super_admin',paused=false,systemError=null,data={}}={}){
     './HiggsfieldCard':{HiggsfieldCard:()=>({type:'HiggsfieldCard',props:{}})},
     '@/lib/agents/publish-core.mjs':{publicationBlock:()=>null,hasConfirmedPublication:()=>false},'./SyncButton':{SyncButton:'SyncButton'},'@/components/forms':{Locked:'Locked',Submit:'Submit'},
     './OpportunityRefresh':{OpportunityRefresh:'OpportunityRefresh'},'@/lib/agents/seo-status.mjs':{latestSeoJob:()=>null},'./SettingsDraftGuard':{SettingsDraftGuard:'SettingsDraftGuard'},'./SettingsAnchor':{SettingsAnchor:'SettingsAnchor'},
-    './Settings.module.css':{default:new Proxy({},{get:(_,key)=>String(key)})},'./actions':Object.fromEntries(['setRole','setHead','addCompetitor','runCampaign','nextStep','syncNow','togglePause','publishAgain','saveBrandBook','addLesson','retireLesson','findOpportunitiesNow'].map(name=>[name,name])),
+    './Settings.module.css':{default:new Proxy({},{get:(_,key)=>String(key)})},'./actions':Object.fromEntries(['setRole','setHead','addCompetitor','runCampaign','nextStep','syncNow','togglePause','publishAgain','saveBrandBook','saveBrandLogo','addLesson','retireLesson','findOpportunitiesNow'].map(name=>[name,name])),
   };
   const Admin=load('../src/app/(app)/admin/page.tsx',modules).default;
   return {queries,calls,render:async(sp={})=>expand(await Admin({searchParams:Promise.resolve(sp)}))};
@@ -67,7 +68,8 @@ test('each settings section loads only its intended workspace and highlights the
 
 test('brand guidance and learning memory have independent reads, controls and retained filter pagination',async()=>{
   const brand=harness({data:{brand_book:{voice:'Warm and clear',updated_at:'2026-10-27'}}}),brandTree=await brand.render({tab:'brand'});
-  assert.deepEqual(tables(brand),['system_state','brand_book']);assert.deepEqual(selectedNav(brandTree),['/admin?tab=brand']);
+  assert.deepEqual(tables(brand),['system_state','brand_book','brand_logo']);assert.deepEqual(selectedNav(brandTree),['/admin?tab=brand']);
+  assert.equal(nodes(brandTree,n=>n.type==='form'&&n.props.action==='saveBrandLogo').length,1);
   assert.deepEqual(nodes(brandTree,n=>n.type==='textarea').map(n=>n.props.name),['voice','always','never','notes']);assert.equal(nodes(brandTree,n=>n.type==='Locked')[0].props.action,'saveBrandBook');
   const memory=harness(),sp={tab:'memory',dept:'creative',lp:'2'},memoryTree=await memory.render(sp);
   assert.deepEqual(tables(memory),['system_state','lessons','departments']);assert.deepEqual(selectedNav(memoryTree),['/admin?tab=memory']);

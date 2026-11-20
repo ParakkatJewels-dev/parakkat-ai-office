@@ -12,7 +12,7 @@ export async function main(env=process.env) {
   const root=env.CHATGPT_IMAGE_WORKER_DIRECTORY||'/work';
   const owner={uid:Number(env.CHATGPT_IMAGE_CODEX_UID||1000),gid:Number(env.CHATGPT_IMAGE_CODEX_GID||1000)};
   if(process.getuid?.()!==0||!Number.isInteger(owner.uid)||owner.uid<1||!Number.isInteger(owner.gid)||owner.gid<1||secretInfo.uid!==0)throw new Error('Run the supervisor as root with a root-owned credential file and an unprivileged Codex child.');
-  const interval=Number(env.CHATGPT_IMAGE_POLL_SECONDS||900)*1000;
+  const interval=Number(env.CHATGPT_IMAGE_POLL_SECONDS||60)*1000;
   if(!Number.isFinite(interval)||interval<30_000||interval>24*60*60_000)throw new Error('Invalid polling interval.');
   const api=createApi({url:env.CHATGPT_IMAGE_WORKER_URL,secret});
   const log=message=>console.log(`${new Date().toISOString()} ${message}`);

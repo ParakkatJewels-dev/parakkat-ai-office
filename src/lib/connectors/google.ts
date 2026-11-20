@@ -34,7 +34,9 @@ export async function googleAdsReady() {
 export async function accessToken(refresh?: string) {
   const res = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body: new URLSearchParams({
     client_id: env('GOOGLE_OAUTH_CLIENT_ID'), client_secret: env('GOOGLE_OAUTH_CLIENT_SECRET'), refresh_token: refresh || (await cfg()).refresh, grant_type: 'refresh_token' }) });
-  const d = await res.json(); if (!res.ok) throw new Error(`Google OAuth ${res.status}: ${d.error_description || d.error}`);
+  const d = await res.json();
+  if (!res.ok && d.error === 'invalid_grant') throw new Error('Google sign-in expired or was revoked. Reconnect Google in Settings → Connections.');
+  if (!res.ok) throw new Error(`Google OAuth ${res.status}: ${d.error_description || d.error}`);
   return d.access_token as string;
 }
 

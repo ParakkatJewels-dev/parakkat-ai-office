@@ -43,7 +43,7 @@ export function StudioForm({ products, more: firstMore, formats, handoff = false
 
   return (
     <form action={orderDesign} className={`card studio-form ${styles.designForm}`}>
-      <div className="card-head"><div><h3>{handoff ? 'Generate a design' : 'Order a design'}</h3><p className="sub">{handoff ? 'Choose the official product photos and describe the artwork. AI Office uses the connected Higgsfield account and its credits to generate the image, then saves it here for human review. Generation waits if the account is disconnected or credits are insufficient.' : 'The Banner Designer makes social and web designs; the Print Designer makes posters. Their AI team lead checks each one against the real product photos.'}</p></div></div>
+      <div className="card-head"><div><h3>{handoff ? 'Generate a design' : 'Order a design'}</h3><p className="sub">{handoff ? 'Choose the official product photos and describe the artwork. AI Office checks ChatGPT and Higgsfield, selects an available provider for the creative, and saves the result here for human review. If neither provider is ready, the request stays saved without starting an image.' : 'The Banner Designer makes social and web designs; the Print Designer makes posters. Their AI team lead checks each one against the real product photos.'}</p></div></div>
 
       <fieldset className="fmts"><legend className="eyebrow">Format</legend>
         {formats.map(f => (

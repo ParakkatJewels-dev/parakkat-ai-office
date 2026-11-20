@@ -18,6 +18,7 @@ function harness(rows, { role = 'super_admin', asks = [] } = {}) {
   const modules={
     'react/jsx-runtime':jsx,'next/link':{default:'Link'},'../agents/Workspace.module.css':{default:{}},'./Studio.module.css':{default:new Proxy({},{get:(_,key)=>key})},'next/navigation':{redirect:url=>{throw new Error(url);}},
     '@/lib/auth/session':{requireUser:async()=>({db,role})},
+    '@/lib/supabase/admin':{supabaseAdmin:()=>db},
     '@/lib/agents/design':{FORMATS:{portrait:{label:'Portrait',ratio:'4:5',size:'1080 × 1350'}},LANGS:{en:'English'},canDesign:async()=>true,canUseStudio:async()=>true},
     '@/components/Icon':{Icon:'Icon'},'@/components/ui':{PageHead:'PageHead',Tile:'Tile',Pager:'Pager',pageOf:()=>1,rangeOf:()=>[0,17],when:String},
     '@/lib/limits':{PRODUCT_PAGE:20},'./StudioForm':{StudioForm:'StudioForm'},
@@ -99,8 +100,8 @@ test('ChatGPT revision forms and pending cards retain saved provider while allow
   const ready=await harness([row({status:'ready',image_path:'chatgpt.png',artwork_origin:'chatgpt_import'})])();
   const form=nodes(ready,n=>n.type==='form'&&n.props.action==='redesign')[0];
   const picker=nodes(form,n=>n.type==='select'&&n.props.name==='provider')[0];
-  assert.equal(picker.props.defaultValue,'chatgpt');assert.deepEqual(nodes(picker,n=>n.type==='option').map(n=>n.props.value),['chatgpt','higgsfield']);
-  assert.match(text(form),/ChatGPT prepares a brief for manual generation and import/);
+  assert.equal(picker.props.defaultValue,'');assert.deepEqual(nodes(picker,n=>n.type==='option').map(n=>n.props.value),['','chatgpt','higgsfield']);
+  assert.match(text(form),/Auto checks both connections/);
   const pending=await harness([row({artwork_origin:'chatgpt_import',image_path:'chatgpt.png'})])();
   assert.equal(nodes(pending,n=>n.type==='ChatGPTArtwork')[0].props.initialProvider,'chatgpt');
 });

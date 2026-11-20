@@ -25,27 +25,11 @@ import { pickRefs } from './library';
 import { researchArtwork, creativeResearchBrief } from './creative-research';
 import { artworkRevisionIntent, conversationDesignRevision } from './conversation-artwork.mjs';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
-import { startAutomaticArtwork } from '@/lib/artwork/generation';
-import { chatGPTRevisionMessage, requestedArtworkProvider, revisionArtworkProvider, type ArtworkProvider, type RevisionArtwork } from '@/lib/artwork/provider-routing.mjs';
+import { routeArtworkBatch } from '@/lib/artwork/automatic-routing';
+import { requestedArtworkProvider, type ArtworkProvider, type RevisionArtwork } from '@/lib/artwork/provider-routing.mjs';
 
 async function requestArtworkGeneration(items: RevisionArtwork[], userId: string, role: string, projectScope: string, selected?: ArtworkProvider | null) {
-  if (process.env.CHATGPT_IMAGE_WORKER_ENABLED === 'true' && selected !== 'higgsfield') {
-    const { queueChatGPTArtworkBatch } = await import('@/lib/artwork/request-chatgpt');
-    return queueChatGPTArtworkBatch('design', items, userId, role);
-  }
-  let started = 0, reason = '', manual = 0;
-  for (const item of items) {
-    if (revisionArtworkProvider(selected,item.artwork_origin) === 'chatgpt') { manual++; continue; }
-    const id = item.id;
-    try {
-      const result = await startAutomaticArtwork({source:'design',id,userId,role,projectScope});
-      if (result.started && result.job?.state !== 'blocked') started++;
-      if (result.reason) reason = result.reason;
-    } catch { reason = 'Automatic generation could not be confirmed. Check the saved request’s status before trying again.'; }
-  }
-  const automatic = started ? `Higgsfield generation is queued for ${started} image${started === 1 ? '' : 's'} using the connected account and its credits. Finished images will appear here and in Studio for human review.${reason ? ` ${reason}` : ''}`
-    : manual < items.length ? `The artwork request${items.length - manual === 1 ? ' is' : 's are'} saved. ${reason || 'Check the Higgsfield connection and credit balance in Studio to start generation.'} No image is complete yet.` : '';
-  return [manual ? chatGPTRevisionMessage(manual) : '',automatic].filter(Boolean).join(' ');
+  return routeArtworkBatch('design',items,userId,role,selected,projectScope);
 }
 
 const TASK_MS = 270_000;

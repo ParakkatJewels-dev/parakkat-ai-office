@@ -446,8 +446,8 @@ Shape: {"name":"...","occasion":"...","headline":"max 5 words","sub":"max 8 word
         const automationUser = automaticCampaignArtworkUser(en);
         if (automationUser) {
           try {
-            const { startChatGPTArtwork } = await import('@/lib/artwork/chatgpt-worker');
-            const result = await startChatGPTArtwork({source:'creative',id:en.id,userId:automationUser,requestId:en.artwork_request_id});
+            const { routeAndStartArtwork } = await import('@/lib/artwork/automatic-routing');
+            const result = await routeAndStartArtwork({source:'creative',item:{id:en.id},userId:automationUser,role:'creative_head'});
             if (result.started) throw artworkWaiting(en.id,'generation');
             if (result.reason) await emit(db,run.id,'feedback','designer',`Automatic image preparation needs attention: ${result.reason}`,'creativeHead');
           } catch (error) {

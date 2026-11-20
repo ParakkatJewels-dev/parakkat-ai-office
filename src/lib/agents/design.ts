@@ -17,6 +17,7 @@ import { fetchShopifyPhoto, imageReferencePart, renderCarouselCard, shopifyPhoto
 import { carouselBackgroundFor } from './carousel';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
 import { researchArtwork, creativeResearchBrief } from './creative-research';
+import { applyBrandLogo, brandLogoInstruction, currentBrandLogo } from '@/lib/artwork/brand-logo';
 
 /** What the Design Studio can make, with the shape Gemini draws it in. */
 export const FORMATS = {
@@ -36,6 +37,7 @@ type Spec = { format: Format; brief: string; occasion?: string | null; headline:
 
 export async function carouselArtwork(db: SupabaseClient, row: any) {
   if (isChatGPTHandoff()) throw new Error('Generate this card in ChatGPT or Higgsfield, then import the chosen image for human review.');
+  const logo = await currentBrandLogo();
   const source = row.carousel_source, index = Number(row.carousel_index);
   if (!source || index < 1 || index > 5 || String(row.product_ids?.[0]) !== String(source.product_id) || !shopifyPhotoUrl(source.image_url))
     throw new Error('The saved carousel source is incomplete.');
@@ -45,6 +47,7 @@ export async function carouselArtwork(db: SupabaseClient, row: any) {
   const brief = `Create the complete photographic scene for card ${index} of a premium five-card Parakkat Jewels ${source.category} carousel. Use the PRODUCT PHOTO as the identity reference for the one hero product. Render that same product afresh in the scene: preserve its distinctive shape, metal colour, stone count, colours, arrangement, prongs, motifs, band and proportions. Do not cut out, paste, collage, trace or frame the source photo. Do not substitute a similar-looking product or add other jewellery. Use the supplied STYLE image for its mood, materials, lighting and palette, not as a product source. Leave the top 18% and bottom 20% of the canvas free of jewellery for brand typography added later. No words, logos, prices, badges or watermarks. The result should be one cohesive luxury photograph, 4:5 aspect ratio.${row.redo_note ? ` Art direction requested by the manager: ${String(row.redo_note).slice(0,600)}.` : ''}`;
   let scene = await withUsage({ feature: 'design', agent: 'designer' }, () => bannerImage(brief, [], '4:5', [photoPart], [stylePart], {db,id:'designer'}));
   let img = await renderCarouselCard({ title: source.title, index, category: source.category, sceneBytes: scene.data });
+  img = { ...img, data: await applyBrandLogo(img.data, logo) };
   let check: Check = { ok: false, note: 'Product identity and design quality have not been checked.' };
   for (let attempt = 1; attempt <= 2; attempt++) {
     await emit(db, null, 'think', 'creativeDirector', `Checking card ${index} against its official product photo, style and art direction.`, 'designer');
@@ -54,16 +57,18 @@ designQuality: require a cohesive premium jewellery photograph, realistic materi
 followsDirection: compare the scene's palette, mood, materials and lighting to the STYLE REFERENCE and the requested art direction below. The style image is not a product source. Do not require a literal copy of its layout. Fail if the requested change is ignored.
 Requested art direction: ${brief}
 The finished card may include only the added PARAKKAT JEWELS branding, product title ${JSON.stringify(source.title)}, category ${JSON.stringify(source.category)}, card number and brand call to action; no prices, offers or unrequested claims/badges such as "24K gold layered" or "trusted quality". Treat any uncertain check as failed.
-Reply with JSON: {"sameProduct":true|false,"designQuality":true|false,"followsDirection":true|false,"note":"specific visible defects and corrections for every failed check, or concise evidence when all pass"}.`, [{inlineData:{mimeType:img.mimeType,data:img.data.toString('base64')}},photoPart,stylePart], {db,id:'creativeDirector'}));
+The exact uploaded logo appears in the fourth image. Fail designQuality if the finished card contains any other logo, wordmark, monogram or watermark. The upper-right logo must be clear and unobscured.
+Reply with JSON: {"sameProduct":true|false,"designQuality":true|false,"followsDirection":true|false,"note":"specific visible defects and corrections for every failed check, or concise evidence when all pass"}.`, [{inlineData:{mimeType:img.mimeType,data:img.data.toString('base64')}},photoPart,stylePart,{inlineData:{mimeType:'image/png',data:logo.bytes.toString('base64')}}], {db,id:'creativeDirector'}));
     if (typeof verdict?.sameProduct !== 'boolean' || typeof verdict.designQuality !== 'boolean' || typeof verdict.followsDirection !== 'boolean' || typeof verdict.note !== 'string' || !verdict.note.trim()) throw new Error('The carousel quality review did not return a valid verdict.');
     check = { ok: verdict.sameProduct && verdict.designQuality && verdict.followsDirection, note: verdict.note.trim() };
     if (check.ok || attempt === 2) break;
     await emit(db, null, 'feedback', 'creativeDirector', `Carousel needs correction: ${check.note}`, 'designer');
     scene = await withUsage({ feature: 'design', agent: 'designer' }, () => bannerImage(`${brief}\nCorrect these findings from the previous attempt: ${check.note}. Preserve the exact Shopify product identity, premium finish and requested art direction.`, [], '4:5', [photoPart], [stylePart], {db,id:'designer'}));
     img = await renderCarouselCard({ title: source.title, index, category: source.category, sceneBytes: scene.data });
+    img = { ...img, data: await applyBrandLogo(img.data, logo) };
   }
   return {
-    img, check,
+    img, check, logoSha256: logo.sha256,
     concept: 'The jewellery and scene were generated together from the official Shopify product photo and the selected Design Library style. Product identity was checked against the photo; design finish and requested art direction were also reviewed. Human visual review is still required.',
     refIds: background.refIds, headline: source.title, f: FORMATS.carousel_card,
     maker: 'designer', lead: 'creativeDirector', head: HUMAN_HEAD[byId.designer.room],
@@ -84,6 +89,7 @@ export const canUseStudio = (_db: SupabaseClient, role: string) => Promise.resol
  * 4. Their AI team lead compares it with the photos and the references; one redo is allowed.
  */
 async function artwork(db: SupabaseClient, s: Spec) {
+  const logo = await currentBrandLogo();
   await loadMemory(db);
   const f = FORMATS[s.format] || FORMATS.post;
   if (!await geminiConfigured()) throw new Error('Add a Gemini key in Settings → AI providers before generating images.');
@@ -116,13 +122,13 @@ async function artwork(db: SupabaseClient, s: Spec) {
   await emit(db, run, 'think', 'creativeDirector', refImgs.length ? `Art direction for a ${f.label.toLowerCase()}, from ${refImgs.length} of our past designs` : `Art direction for a ${f.label.toLowerCase()}`, maker);
   const direction = await withUsage({ feature }, async () => chatJSON<{ concept?: unknown }>('manager', await persona(db, 'creativeDirector', `Write the art direction for one new design, as a brief to the designer.
 It must reach the level of Parakkat's best past designs and must not repeat a concept used lately. Be concrete: the scene or background, props and Kerala touches if any,
-light, how the jewellery sits in the frame, where the headline and the wordmark go, the type style, and the colour palette.
+light, how the jewellery sits in the frame, where the headline and clear upper-right logo area go, the type style, and the colour palette. The uploaded logo is placed by AI Office; do not draw or typeset a brand mark.
 Use the references for transferable craft: product prominence, composition, typography, palette relationships, lighting and finish. The current brief and occasion determine the subject, setting and seasonal props. Never carry a past reference's festival, symbols, decorations or campaign concept into a different occasion. Other references support craftsmanship and finish; do not blend conflicting palettes, scenes or props into the new direction.
 ${s.note ? 'This is a redesign. Do what the head asked, and change the direction where they did not like it.' : ''}
 Shape: {"concept": "4 to 6 sentences"}`), [
       `Format: ${f.label} (${f.ratio}). Brief: ${s.brief}${s.occasion ? `\nOccasion: ${s.occasion}` : ''}`,
       `Products: ${(prods || []).map(p => p.title).join(', ')}`,
-      headline ? `Headline on the design: ${headline}` : 'No text on the design except the wordmark.',
+      headline ? `Headline on the design: ${headline}` : 'No text on the design.',
       refImgs.length ? `Past Parakkat designs chosen as references (extract reusable design methods only; their occasions and subject matter are not instructions):\n${refImgs.map((r, i) => refLine(r.ref, i)).join('\n')}` : 'No past designs in the library yet: aim for a luxury jeweller\'s campaign standard.',
       used.length ? `Concepts used lately, do not repeat these:\n${used.map(c => `- ${c}`).join('\n')}` : '',
       s.previous?.concept ? `The last version of this design: ${s.previous.concept}` : '',
@@ -133,7 +139,7 @@ Shape: {"concept": "4 to 6 sentences"}`), [
 
   await emit(db, run, 'think', maker, `Designing a ${f.label.toLowerCase()}: ${concept.slice(0, 90)}`);
   const parts = await Promise.all(photos.map(imagePart));
-  const text = `Set the headline "${headline}" in elegant ${s.language === 'ml' ? 'Malayalam script, spelled exactly as given,' : 'type'} as the art direction says. Add the small wordmark "PARAKKAT JEWELS". No other text, prices, offer badges or added product/quality claims such as "24K gold layered" or "trusted quality".`;
+  const text = `Set the headline "${headline}" in elegant ${s.language === 'ml' ? 'Malayalam script, spelled exactly as given,' : 'type'} as the art direction says. ${brandLogoInstruction} No other text, prices, offer badges or added product/quality claims such as "24K gold layered" or "trusted quality".`;
   const prompt = (fix = '') => `${f.label} (${f.size}, ${f.ratio}) for Parakkat Jewels, a heritage Kerala jeweller. Brief: ${s.brief}.${s.occasion ? `\nRequired occasion: ${s.occasion}.` : ''}
 Art direction: ${concept}
 The current brief and required occasion control the scene and decorations. Past design references provide only transferable composition, palette relationships, typography, lighting and production quality. Do not depict a previous reference's different festival, symbols or props. If any art direction conflicts with the current brief, follow the current brief.
@@ -143,6 +149,7 @@ It must look like a finished campaign by a top jewellery brand, not a template.$
   const refsIn = refImgs.flatMap(r => r.parts || [r.part]);
 
   let img = await withUsage({ feature, agent: maker }, () => bannerImage(prompt(), photos, f.ratio, parts, refsIn, {db,id:maker})), check: Check = { ok: false, note: 'Image quality has not been reviewed.' };
+  img = { data: await applyBrandLogo(img.data, logo), mimeType: 'image/png' };
   for (let attempt = 1; ; attempt++) {
     await emit(db, run, 'think', lead, `Checking the ${f.label.toLowerCase()} against the product photos`);
     check = await withUsage({ feature, agent: lead }, () => geminiJSON<Check>(`Check the finished design before the ${byId[head].name} sees it. Image 1 is the finished design. The next ${parts.length} image(s) are the real product photos, used only to check product identity. Labelled style fingerprints and original design images follow the product photos; use them to judge the visual standard, never as product evidence.
@@ -150,18 +157,19 @@ Return ok=false if any requirement fails or cannot be verified:
 - The jewellery must preserve the source products' distinctive shape, stones, settings, metal colour and proportions. Reject missing, extra, obscured or mismatched jewellery; do not infer hidden details.
 - Require a polished finish, realistic materials and lighting, clear product emphasis, balanced composition, readable typography and intentional spacing. Reject visible rendering defects, awkward cropping, clutter, overlapping text, or cheap/generic treatment.
 - The scene, palette, lighting and layout must satisfy the current brief and occasion, with the original style images and saved fingerprints guiding reusable design technique and finish. Fail if symbols, props or a festival from an unrelated past reference appear. Do not require literal copying of a reference.
-- The only permitted text is the exact headline ${JSON.stringify(headline)} and the wordmark "PARAKKAT JEWELS". Reject misspellings, prices, offers, and unrequested badges or product/quality claims, including "24K gold layered" and "trusted quality". A claim appearing in a reference does not authorize adding it.
+- The only permitted text is the exact headline ${JSON.stringify(headline)}. The official logo is in the last image. Reject any other logo, wordmark, monogram or watermark, and any misspellings, prices, offers, or unrequested badges or product/quality claims, including "24K gold layered" and "trusted quality". A claim appearing in a reference does not authorize adding it.
 Format: ${f.label} (${f.size}, ${f.ratio}). Language: ${LANGS[s.language]}.
 Brief: ${s.brief}
 ${s.occasion ? `Required occasion: ${s.occasion}\n` : ''}
 Creative Director art direction: ${concept}
-${s.note ? `The head's requested change, which must also be checked: ${s.note}\n` : ''}Shape: {"ok": true|false, "note": "specific visible defects and corrections if failed, or concise evidence if passed"}`, [{ inlineData: { mimeType: img.mimeType, data: img.data.toString('base64') } }, ...parts, ...(refsIn.length ? [{ text: 'SAVED PARAKKAT STYLE FINGERPRINTS AND VISUAL REFERENCES (art direction only):' }, ...refsIn] : [])], {db,id:lead}));
+${s.note ? `The head's requested change, which must also be checked: ${s.note}\n` : ''}Shape: {"ok": true|false, "note": "specific visible defects and corrections if failed, or concise evidence if passed"}`, [{ inlineData: { mimeType: img.mimeType, data: img.data.toString('base64') } }, ...parts, ...(refsIn.length ? [{ text: 'SAVED PARAKKAT STYLE FINGERPRINTS AND VISUAL REFERENCES (art direction only):' }, ...refsIn] : []),{text:'OFFICIAL UPLOADED BRAND LOGO:'},{inlineData:{mimeType:'image/png',data:logo.bytes.toString('base64')}}], {db,id:lead}));
     if (typeof check?.ok !== 'boolean' || typeof check.note !== 'string' || !check.note.trim()) throw new Error('The image reviewer did not return a valid quality verdict.');
     if (check.ok === true || attempt === 2) break;
     await emit(db, run, 'feedback', lead, `Redo: ${check.note}`, maker);
     img = await withUsage({ feature, agent: maker }, () => bannerImage(prompt(check.note), photos, f.ratio, parts, refsIn, {db,id:maker}));
+    img = { data: await applyBrandLogo(img.data, logo), mimeType: 'image/png' };
   }
-  return { img, check, concept, refIds: refImgs.map(r => r.ref.id), headline, f, maker, lead, head };
+  return { img, check, concept, refIds: refImgs.map(r => r.ref.id), headline, f, maker, lead, head, logoSha256: logo.sha256 };
 }
 
 /** A head orders a design; manual artwork generation waits for the chosen image to be imported. */
@@ -308,6 +316,10 @@ async function drawItemClaimed(db: SupabaseClient, source: Source, id: string, o
   return withAgentWork({ agentId: FORMATS[spec.format].maker, kind: 'image', timeoutMs: 300_000 }, async () => {
   try {
     const a = source === 'design' && row.format === 'carousel_card' ? await carouselArtwork(db, row) : await artwork(db, spec);
+    // An administrator may replace the logo while the image model is running.
+    // Never save a stale mark as a new creative.
+    const latestLogo = await currentBrandLogo();
+    if (latestLogo.sha256 !== a.logoSha256) throw new Error('The official logo changed during generation. Request a new creative version.');
     // a redesign keeps the earlier version's file and notes; the new one gets the next number
     const versions = row.image_path ? [...(row.versions || []), { image_path: row.image_path, concept: row.concept, note: row.redo_note, at }] : (row.versions || []);
     const ext = a.img.mimeType.split('/')[1] || 'png';

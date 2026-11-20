@@ -51,6 +51,18 @@ function harness(options={}) {
     './creative-research':{researchArtwork:async()=>({observedAt:'2026-11-02T00:00:00Z',direction:{layout:'clean grid',palette:'warm ivory',typography:'editorial serif',imagery:'soft light',customerHook:'giftable'},sources:[{title:'Pinterest visual',url:'https://www.pinterest.com/pin/123/'}]}),creativeResearchBrief:research=>research?'Current visual research: clean grid, warm ivory.':''},
     '@/lib/artwork/generation':{startAutomaticArtwork:async args=>{state.generations.push(args);return options.generation||{started:true,job:{id:'job',state:'queued'}};}},
     '@/lib/artwork/request-chatgpt':{queueChatGPTArtworkBatch:async(...args)=>{state.chatgptBatches.push(args);return `ChatGPT image generation queued for ${args[1].length} images.`;}},
+    '@/lib/artwork/automatic-routing':{routeArtworkBatch:async(source,items,userId,role,selected,projectScope)=>{
+      if(process.env.CHATGPT_IMAGE_WORKER_ENABLED==='true'&&!selected){state.chatgptBatches.push([source,items,userId,role,projectScope]);return `ChatGPT image generation queued for ${items.length} images.`;}
+      let generated=0,manual=0,issue='';
+      for(const item of items){
+        const provider=selected||providerRouting.revisionArtworkProvider(null,item.artwork_origin);
+        if(provider==='chatgpt'){manual++;continue;}
+        state.generations.push({source,id:item.id,userId,role,projectScope});
+        const result=options.generation||{started:true};
+        if(result.started)generated++;else issue=result.reason||'Generation unavailable.';
+      }
+      return [generated?'Higgsfield generation is queued for '+generated+' image'+(generated===1?'':'s')+'.':'',manual?providerRouting.chatGPTRevisionMessage(manual):'',issue?'The artwork request is saved. '+issue+' No image is complete yet.':''].filter(Boolean).join(' ');
+    }},
     '@/lib/artwork/provider-routing.mjs':providerRouting,
     './carousel':{
       queueCarouselRedesign:async(_admin,_reader,options)=>{state.carouselRevisions.push(options);return {cards:state.designs.filter(row=>row.carousel_id===options.carouselId)};},

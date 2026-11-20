@@ -6,6 +6,8 @@ import { isPaused } from '@/lib/pause';
 import { authorizeGenerationPreparation } from './generation-jobs';
 import { ArtworkError, generationArtwork } from './server';
 import { MAX_IMAGE_BYTES, validId, validateArtwork } from './import-core.mjs';
+import { applyBrandLogo, currentBrandLogo } from './brand-logo';
+import { selectedProviderForRequest } from './provider-decision';
 
 type Source = 'design' | 'creative';
 type JobState = 'queued' | 'preparing' | 'generating' | 'succeeded' | 'blocked' | 'uncertain' | 'cancelled';
@@ -21,7 +23,26 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const MAX_JSON_BYTES = Math.ceil(MAX_IMAGE_BYTES / 3) * 4 + 64 * 1024;
 const MAX_BUNDLE_BYTES = 80 * 1024 * 1024;
 const sha256 = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
+export function preflightFailureKind(error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+  if (/Add the approved brand logo/i.test(message)) return 'logo_missing';
+  if (/official logo changed/i.test(message)) return 'logo_changed';
+  if (/brand logo could not be (checked|loaded)|approved brand logo changed unexpectedly/i.test(message)) return 'logo_unavailable';
+  if (/Google sign-in expired or was revoked/i.test(message)) return 'google_login';
+  if (/product photo|style reference|Design Library|carousel template|reference bundle|previous artwork/i.test(message)) return 'references';
+  return 'preflight';
+}
 export const chatGPTImageWorkerEnabled = () => process.env.CHATGPT_IMAGE_WORKER_ENABLED === 'true';
+
+export async function chatGPTWorkerRoutingAvailability() {
+  if (!chatGPTImageWorkerEnabled() || (process.env.CHATGPT_IMAGE_WORKER_SECRET || '').length < 32)
+    return {ready:false,reason:'The ChatGPT image worker is not configured.'};
+  const {data,error}=await supabaseAdmin().from('chatgpt_image_worker_health').select('ready,checked_at').eq('id',true).maybeSingle();
+  if(error || !data) return {ready:false,reason:'The ChatGPT image worker has not reported a healthy login.'};
+  if(!data.ready || Date.now()-Date.parse(data.checked_at)>5*60_000)
+    return {ready:false,reason:'The ChatGPT image worker login or heartbeat is unavailable.'};
+  return {ready:true,reason:''};
+}
 
 /** No worker token, input pixels, signed URLs or private lease appears in UI status. */
 export const publicChatGPTImageJob = (job: ChatGPTImageJob | null) => job ? {
@@ -51,6 +72,8 @@ export async function startChatGPTArtwork(options: { source: Source; id: string;
   const { data: row, error } = await db.from(options.source === 'design' ? 'designs' : 'creatives').select('artwork_request_id').eq('id', options.id).maybeSingle();
   if (error || !row || !validId(row.artwork_request_id)) throw new ArtworkError('Prepare an artwork request before generating.', 409);
   if (options.requestId && options.requestId !== row.artwork_request_id) throw new ArtworkError('The artwork request changed. Refresh before generating.', 409);
+  const selected=await selectedProviderForRequest(options.source,options.id,row.artwork_request_id);
+  if(selected&&selected!=='chatgpt')throw new ArtworkError('This revision chose Higgsfield. Prepare a new revision before changing image providers.',409);
   const existing = await chatGPTWorkerJobForArtwork(db, options.source, options.id, row.artwork_request_id);
   if (!existing) {
     await authorizeGenerationPreparation(db, { source: options.source, id: options.id, requestId: row.artwork_request_id, userId: options.userId });
@@ -115,7 +138,7 @@ async function claim(db: SupabaseClient, input: any) {
       return { job: { jobId: job.id, holder, source: job.source, itemId: job.item_id, requestId: job.request_id, packet: bundle.packet, files } };
     } catch (error) {
       console.error('ChatGPT image preflight failed:', error instanceof Error ? `${error.name}: ${error.message.slice(0, 240)}` : 'unknown error');
-      await rpc(db, 'fail_chatgpt_image_job', { p_id: job.id, p_holder: holder, p_kind: 'preflight' }).catch(() => {});
+      await rpc(db, 'fail_chatgpt_image_job', { p_id: job.id, p_holder: holder, p_kind: preflightFailureKind(error) }).catch(() => {});
       throw new ArtworkError('The saved image references could not be prepared. No generation was dispatched.', 409);
     }
   }
@@ -134,25 +157,36 @@ async function complete(db: SupabaseClient, input: any) {
   const job = data as ChatGPTImageJob | null;
   if (error) throw new ArtworkError('The saved image job could not be read. Retry this same output.', 503);
   if (!job || job.lease_holder !== input.holder || !job.dispatched_at || !['generating', 'uncertain', 'succeeded'].includes(job.state)) throw new ArtworkError('The saved image job or lease changed.', 409);
-  const path = `chatgpt-imports/${job.source}/${job.item_id}/${job.request_id}/${job.id}.${image.extension}`;
+  const artwork = await db.from(job.source === 'design' ? 'designs' : 'creatives').select('artwork_handoff').eq('id', job.item_id).maybeSingle();
+  const logo = await currentBrandLogo();
+  if (artwork.error || artwork.data?.artwork_handoff?.logoSha256 !== logo.sha256) throw new ArtworkError('The official logo changed. Prepare a new artwork revision.',409);
+  const branded = await applyBrandLogo(bytes, logo);
+  const brandedHash = sha256(branded);
+  const path = `chatgpt-imports/${job.source}/${job.item_id}/${job.request_id}/${job.id}.png`;
   if (job.state !== 'succeeded') {
     const bucket = db.storage.from('creatives');
-    const saved = await bucket.upload(path, bytes, { contentType: image.mimeType, upsert: false, cacheControl: '31536000' });
+    const saved = await bucket.upload(path, branded, { contentType: 'image/png', upsert: false, cacheControl: '31536000' });
     if (saved.error) {
       const prior = await bucket.download(path);
-      if (prior.error || !prior.data || sha256(Buffer.from(await prior.data.arrayBuffer())) !== output.sha256) throw new ArtworkError('The generated image could not be stored. Retry this same output without generating again.', 503);
+      if (prior.error || !prior.data || sha256(Buffer.from(await prior.data.arrayBuffer())) !== brandedHash) throw new ArtworkError('The generated image could not be stored. Retry this same output without generating again.', 503);
     }
   }
   // Keep immutable output after ambiguous network failure; retrying this exact
   // path/hash is idempotent and must never trigger another image generation.
   const result = await rpc<Record<string, unknown>>(db, 'complete_chatgpt_image_job', {
-    p_id: job.id, p_holder: input.holder, p_path: path, p_sha256: output.sha256,
+    p_id: job.id, p_holder: input.holder, p_path: path, p_sha256: brandedHash,
   });
   return { status: 'succeeded', result };
 }
 
 export async function handleChatGPTImageWorker(input: any) {
   const db = supabaseAdmin();
+  if (input.action === 'health') {
+    if(typeof input.ready!=='boolean')throw new ArtworkError('Invalid worker health status.');
+    const {error}=await db.from('chatgpt_image_worker_health').upsert({id:true,ready:input.ready,checked_at:new Date().toISOString()});
+    if(error)throw new ArtworkError('The image worker health check could not be saved.',503);
+    return {ok:true};
+  }
   if (input.action === 'claim') return claim(db, input);
   if (!validId(input.jobId) || !validId(input.holder)) throw new ArtworkError('Invalid image job or lease.');
   const args = { p_id: input.jobId, p_holder: input.holder };
@@ -167,7 +201,7 @@ export async function handleChatGPTImageWorker(input: any) {
   }
   if (input.action === 'complete') return complete(db, input);
   if (input.action === 'fail') {
-    if (!['preflight', 'uncertain'].includes(input.kind)) throw new ArtworkError('Unknown image worker failure.');
+    if (!['preflight', 'uncertain', 'references', 'google_login', 'worker_login', 'worker_setup'].includes(input.kind)) throw new ArtworkError('Unknown image worker failure.');
     const job = await rpc<ChatGPTImageJob>(db, 'fail_chatgpt_image_job', { ...args, p_kind: input.kind });
     return { ok: true, state: job.state };
   }

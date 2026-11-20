@@ -14,27 +14,11 @@ import { withLibraryFolderEdit } from './library-folder-edit';
 import { readLibraryFolderPages } from './library-status.mjs';
 import { queueSalesCarousel, queueCarouselRedesign } from '@/lib/agents/carousel';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
-import { startAutomaticArtwork } from '@/lib/artwork/generation';
-import { chatGPTRevisionMessage, revisionArtworkProvider, type ArtworkProvider, type RevisionArtwork } from '@/lib/artwork/provider-routing.mjs';
+import { routeArtworkBatch } from '@/lib/artwork/automatic-routing';
+import { revisionArtworkProvider, type ArtworkProvider, type RevisionArtwork } from '@/lib/artwork/provider-routing.mjs';
 
 async function startRequestedArtwork(source: Source, items: RevisionArtwork[], userId: string, role: string, selected?: ArtworkProvider | null) {
-  if (process.env.CHATGPT_IMAGE_WORKER_ENABLED === 'true' && selected !== 'higgsfield') {
-    const { queueChatGPTArtworkBatch } = await import('@/lib/artwork/request-chatgpt');
-    return queueChatGPTArtworkBatch(source, items, userId, role);
-  }
-  let started = 0, reason = '', manual = 0;
-  for (const item of items) {
-    if (revisionArtworkProvider(selected,item.artwork_origin) === 'chatgpt') { manual++; continue; }
-    const id = item.id;
-    try {
-      const result = await startAutomaticArtwork({ source, id, userId, role });
-      if (result.started) started++;
-      else if (result.reason) reason = result.reason;
-    } catch { reason = 'Automatic generation could not be confirmed. Open the request to check its status before trying again.'; }
-  }
-  const automatic = started ? `Higgsfield generation queued for ${started} image${started === 1 ? '' : 's'}. Finished images will appear here for human review.${reason ? ` ${reason}` : ''}`
-    : manual < items.length ? `Artwork request${items.length - manual === 1 ? '' : 's'} saved. ${reason || 'Open the request to check the Higgsfield connection and credits.'}` : '';
-  return [manual ? chatGPTRevisionMessage(manual) : '',automatic].filter(Boolean).join(' ');
+  return routeArtworkBatch(source,items,userId,role,selected);
 }
 
 /** An explicit Studio order can start one Higgsfield job using the connected account. */

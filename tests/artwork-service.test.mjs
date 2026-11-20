@@ -9,7 +9,7 @@ const id='11111111-1111-4111-8111-111111111111', requestId='22222222-2222-4222-8
 const code=ts.transpileModule(readFileSync(new URL('../src/lib/artwork/server.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
 function harness(options={}) {
   const calls={uploaded:[],removed:[],committed:[],signed:[],provider:0,adminReads:[]};
-  const row={id,status:'awaiting_import',art_status:'awaiting_import',artwork_request_id:requestId,requested_by:'owner',versions:[],image_path:null,ref_ids:[],...options.row};
+  const row={id,status:'awaiting_import',art_status:'awaiting_import',artwork_request_id:requestId,artwork_handoff:{packet:{requestId},refs:[],logoSha256:'a'.repeat(64)},requested_by:'owner',versions:[],image_path:null,ref_ids:[],...options.row};
   const query=(admin)=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:options.invisible&&!admin?null:admin?{...row,image_path:options.committedPath?calls.uploaded[0]:null,versions:options.superseded?[{image_path:calls.uploaded[0]}]:row.versions}:row,error:options.checkError&&admin?{}:null})});
   const bucket={upload:async(path)=>{calls.uploaded.push(path);return{error:null};},remove:async(paths)=>{calls.removed.push(...paths);return{error:null};},createSignedUrl:async(path)=>{calls.signed.push(path);return{data:{signedUrl:'https://storage.test/image'},error:null};}};
   const admin={from:name=>{calls.adminReads.push(name);return query(true);},storage:{from:()=>bucket},rpc:async(name,args)=>{calls.committed.push({name,args});return options.rpcError?{error:{message:'stale'},data:null}:{data:{version:1},error:null};}};
@@ -20,6 +20,8 @@ function harness(options={}) {
     '@/lib/agents/design':{FORMATS:{}},'@/lib/agents/library-core.mjs':{},'@/lib/agents/carousel-card.mjs':{},'@/lib/connectors/drive':{},
     '@/lib/connectors/shopify':{shopifyArtworkPrice:async()=>null},
     '@/lib/artwork-mode.mjs':{isChatGPTHandoff:()=>true},'./import-core.mjs':core,
+    './brand-logo':{currentBrandLogo:async()=>({sha256:'a'.repeat(64),bytes:Buffer.from('logo')}),applyBrandLogo:async bytes=>bytes,brandLogoInstruction:'Only approved logo'},
+    './provider-decision':{selectedProviderForRequest:async()=>null},
   };
   const exports={};new Function('exports','require',code)(exports,name=>{assert.ok(name in modules,`Unexpected import ${name}`);return modules[name];});
   return {api:exports,calls};

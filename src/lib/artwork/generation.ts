@@ -7,6 +7,8 @@ import { FORMATS, type Source } from '@/lib/agents/design';
 import { isPaused } from '@/lib/pause';
 import { accessArtwork, generationArtwork, ArtworkError, type ArtworkContext } from './server';
 import { validId, validateArtwork } from './import-core.mjs';
+import { applyBrandLogo, currentBrandLogo } from './brand-logo';
+import { selectedProviderForRequest } from './provider-decision';
 import { HIGGSFIELD_IMAGE_MODELS, generationParams, quoteCredits, availableCredits, publicMediaUrl, readImageResponse, receiptQuality, fetchPublicMedia, validProviderId } from './generation-core.mjs';
 import { reserveGenerationJob, claimGenerationJob, updateGenerationJob, completeGenerationJob, dueGenerationJobs, generationJobForArtwork, authorizeGenerationPreparation, renewGenerationLease, beginGenerationProject, commitGenerationProject, failGenerationProject, type GenerationJob } from './generation-jobs';
 
@@ -32,6 +34,15 @@ async function catalog(status:any,ratio:string) {
   return value;
 }
 
+/** Read-only admission check for automatic provider routing; no media upload or generation. */
+export async function higgsfieldRoutingAvailability(format:string) {
+  const status=await getHiggsfieldStatus();
+  if(!status.connected||!status.accountId)return {ready:false,models:[] as string[],reason:'Higgsfield is disconnected.'};
+  const info=await catalog(status,ratioFor(format));
+  const models=info.models.filter((item:any)=>item.available&&typeof item.credits==='number'&&info.balance.credits!==null&&info.balance.credits>=item.credits).map((item:any)=>item.id as string);
+  return {ready:models.length>0,models,reason:models.length?'':'Higgsfield has no verified model and credit balance for this format.'};
+}
+
 export async function artworkGenerationStatus(context:ArtworkContext) {
   const access=await accessArtwork(context,{pendingOnly:false}),status=await getHiggsfieldStatus();
   const db=supabaseAdmin();
@@ -53,6 +64,8 @@ export async function startAutomaticArtwork(options:{source:Source;id:string;use
   const {data:row,error}=await db.from(options.source==='design'?'designs':'creatives').select('artwork_request_id').eq('id',options.id).maybeSingle();
   if(error||!row||!validId(row.artwork_request_id))throw new ArtworkError('Prepare an artwork request before generating.',409);
   if(options.requestId&&options.requestId!==row.artwork_request_id)throw new ArtworkError('This revision request changed. Refresh before generating.',409);
+  const selected=await selectedProviderForRequest(options.source,options.id,row.artwork_request_id);
+  if(selected&&selected!=='higgsfield')throw new ArtworkError('This revision chose ChatGPT. Prepare a new revision before changing image providers.',409);
   const preparation=await authorizeGenerationPreparation(db,{source:options.source,id:options.id,requestId:row.artwork_request_id,userId:options.userId});
   const existing=await generationJobForArtwork(db,options.source,options.id,row.artwork_request_id);
   if(!existing)await generationArtwork({source:options.source,item_id:options.id,request_id:row.artwork_request_id});
@@ -165,11 +178,14 @@ export function createGenerationWorker(deps:{call?:typeof callHiggsfieldTool;aut
       try{image=await validateArtwork(bytes,type);}catch{
         await update({state:'failed',errorCode:'invalid_output',error:'Higgsfield returned an incomplete or unsupported image. The original job is preserved; no replacement was submitted.'});return 'failed';
       }
-      const path=`higgsfield-generations/${job.source}/${job.item_id}/${job.request_id}/${job.id}.${image.extension}`;
-      const bucket=db.storage.from('creatives'),saved=await bucket.upload(path,bytes,{contentType:image.mimeType,upsert:false,cacheControl:'31536000'});
+      const logo=await currentBrandLogo();
+      if(bundle.logoSha256!==logo.sha256)throw new Error('The official logo changed. Prepare a new artwork revision.');
+      const branded=await applyBrandLogo(bytes,logo);
+      const path=`higgsfield-generations/${job.source}/${job.item_id}/${job.request_id}/${job.id}.png`;
+      const bucket=db.storage.from('creatives'),saved=await bucket.upload(path,branded,{contentType:'image/png',upsert:false,cacheControl:'31536000'});
       if(saved.error){
         const existing=await bucket.download(path);
-        if(existing.error||!existing.data||createHash('sha256').update(Buffer.from(await existing.data.arrayBuffer())).digest('hex')!==createHash('sha256').update(bytes).digest('hex'))throw new Error('The completed image could not be saved.');
+        if(existing.error||!existing.data||createHash('sha256').update(Buffer.from(await existing.data.arrayBuffer())).digest('hex')!==createHash('sha256').update(branded).digest('hex'))throw new Error('The completed image could not be saved.');
       }
       await completeGenerationJob(db,{id:job.id,holder,path,refIds:bundle.refs.map((r:any)=>r.id)});
       return 'succeeded';

@@ -149,7 +149,7 @@ test('a missing ChatGPT login blocks before dispatch without calling any generat
   const root=await temp(t),calls=[];let generated=0;
   const worker=createWorker({root,checkLogin:async()=>{throw new Error('not signed in');},api:async body=>{calls.push(body);return {};},generate:async()=>{generated++;}});
   assert.equal(await worker.processJob(job()),'blocked');assert.equal(generated,0);
-  assert.ok(!calls.some(call=>call.action==='dispatch'));assert.equal(calls.at(-1).kind,'preflight');
+  assert.ok(!calls.some(call=>call.action==='dispatch'));assert.equal(calls.at(-1).kind,'worker_login');
 });
 
 test('explicit preflight retry reuses frozen inputs with the new server lease holder',async t=>{
@@ -197,14 +197,23 @@ test('an obsolete request rejects import without regenerating or retaining a ret
 
 test('an empty queue makes no generation request',async t=>{
   const root=await temp(t);let generated=0;
-  const worker=createWorker({root,api:async body=>{assert.equal(body.action,'claim');return {job:null};},generate:async()=>{generated++;}});
+  const actions=[];
+  const worker=createWorker({root,diskAvailable:async()=>10**12,api:async body=>{actions.push(body);return {job:null};},generate:async()=>{generated++;}});
   assert.equal((await worker.tick()).result,'idle');assert.equal(generated,0);
+  assert.deepEqual(actions,[{action:'health',ready:true},{action:'claim'}]);
+});
+
+test('worker login failure reports unhealthy and leaves queue untouched',async t=>{
+  const root=await temp(t),actions=[];
+  const worker=createWorker({root,diskAvailable:async()=>10**12,checkLogin:async()=>{throw new Error('expired');},api:async body=>{actions.push(body);return {};},generate:async()=>{throw new Error('must not generate');}});
+  assert.equal((await worker.tick()).result,'worker_login_required');
+  assert.deepEqual(actions,[{action:'health',ready:false}]);
 });
 
 test('low disk headroom stops new claims without deleting other project data',async t=>{
-  const root=await temp(t);let called=0;
-  const worker=createWorker({root,diskAvailable:async()=>1024,api:async()=>{called++;return {job:job()};},generate:async()=>{throw new Error('must not generate');}});
-  assert.equal((await worker.tick()).result,'disk_headroom_required');assert.equal(called,0);
+  const root=await temp(t),actions=[];
+  const worker=createWorker({root,diskAvailable:async()=>1024,api:async body=>{actions.push(body);return {};},generate:async()=>{throw new Error('must not generate');}});
+  assert.equal((await worker.tick()).result,'disk_headroom_required');assert.deepEqual(actions,[{action:'health',ready:false}]);
 });
 
 test('subprocess timeout terminates the process and is reported as uncertain',async t=>{

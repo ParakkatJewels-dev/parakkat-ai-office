@@ -20,6 +20,8 @@ import { errText } from '@/lib/errors';
 import { checkPause, setPaused } from '@/lib/pause';
 import { runOpportunityReview } from '@/lib/agents/opportunities';
 import { withUsage } from '@/lib/usage';
+import { normalizeBrandLogo } from '@/lib/artwork/brand-logo';
+import { createHash, randomUUID } from 'node:crypto';
 
 async function admin() {
   const u = await requireUser();
@@ -115,6 +117,26 @@ export async function saveBrandBook(form: FormData) {
   const f = (k: string) => String(form.get(k) || '').trim().slice(0, 4000);
   const { error } = await supabaseAdmin().from('brand_book').upsert({ id: 1, voice: f('voice'), always: f('always'), never: f('never'), notes: f('notes'), updated_at: new Date().toISOString(), updated_by: user.id });
   if (error) await fail(error); await done('Brand book saved. Every agent reads it from the next job.');
+}
+export async function saveBrandLogo(form: FormData) {
+  const { user } = await admin();
+  const file = form.get('logo');
+  if (!(file instanceof File) || !file.size) await fail('Choose the approved logo file.');
+  const selected = file as File;
+  let bytes: Buffer;
+  try { bytes = await normalizeBrandLogo(Buffer.from(await selected.arrayBuffer())); }
+  catch (error) { await fail(error); }
+  const db = supabaseAdmin();
+  const path = `brand/logo/${randomUUID()}.png`;
+  const uploaded = await db.storage.from('creatives').upload(path, bytes!, { contentType: 'image/png', upsert: false });
+  if (uploaded.error) await fail('The brand logo could not be uploaded. Try again.');
+  const sha256 = createHash('sha256').update(bytes!).digest('hex');
+  const saved = await db.from('brand_logo').upsert({ id: 1, path, sha256, updated_by: user.id, updated_at: new Date().toISOString() });
+  if (saved.error) {
+    await db.storage.from('creatives').remove([path]);
+    await fail('The brand logo could not be saved. Apply the latest database migration and try again.');
+  }
+  await done('Brand logo saved. New creatives will use this exact uploaded logo.');
 }
 export async function addLesson(form: FormData) {
   const { role } = await admin();

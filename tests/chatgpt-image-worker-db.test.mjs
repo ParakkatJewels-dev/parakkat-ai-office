@@ -29,7 +29,7 @@ before(async()=>{
  create table image_reviews(source text,item_id uuid,verdict text,note text,reviewer uuid,reviewer_role app_role,updated_at timestamptz default now(),primary key(source,item_id));
  create table design_refs(id uuid primary key,status text,hidden boolean);
  create table carousel_sets(id uuid primary key,background_status text check(background_status in ('queued','making','ready','failed')),background_path text,started_at timestamptz);`);
- for(const file of ['20261027000400_carousel_cards.sql','20261026000500_campaign_artwork_freeze.sql','20261028000300_chatgpt_artwork_import.sql','20261028000400_higgsfield_artwork_import.sql','20261028000500_higgsfield_generation.sql','20261029000600_chatgpt_image_worker.sql'])
+ for(const file of ['20261027000400_carousel_cards.sql','20261026000500_campaign_artwork_freeze.sql','20261028000300_chatgpt_artwork_import.sql','20261028000400_higgsfield_artwork_import.sql','20261028000500_higgsfield_generation.sql','20261029000600_chatgpt_image_worker.sql','20261120000001_chatgpt_preflight_reasons.sql'])
   await db.exec(readFileSync(new URL(`../supabase/migrations/${file}`,import.meta.url),'utf8'));
 });
 after(async()=>db?.close());
@@ -93,6 +93,18 @@ test('failure after dispatch is always uncertain; preflight alone can explicitly
  let job=await claim(await reserve());assert.equal((await fail(job)).state,'blocked');
  job=await reserve();assert.equal(job.state,'queued');job=await dispatch(await claim(job));
  assert.equal((await fail(job,'preflight')).state,'uncertain');assert.equal((await reserve()).state,'uncertain');
+});
+test('preflight records a safe repair reason, while dispatched jobs remain uncertain',async()=>{
+ for(const [kind,phrase] of [['logo_missing','Add the approved logo'],['logo_changed','logo changed'],['logo_unavailable','migration'],['references','reference is unavailable'],['google_login','Reconnect Google'],['worker_login','not signed in'],['worker_setup','worker logs']]) {
+  const job=await claim(await reserve());
+  const blocked=await fail(job,kind);
+  assert.equal(blocked.state,'blocked');assert.equal(blocked.error_code,kind);assert.match(blocked.error,new RegExp(phrase,'i'));
+  await db.query('delete from chatgpt_image_jobs where id=$1',[job.id]);
+  await db.query("update designs set status='awaiting_import' where id=$1",[ids.design]);
+ }
+ const dispatched=await dispatch(await claim(await reserve()));
+ const uncertain=await fail(dispatched,'worker_login');
+ assert.equal(uncertain.state,'uncertain');assert.equal(uncertain.error_code,'uncertain');
 });
 test('wrong paths and missing dispatch cannot commit, and all work remains private',async()=>{
  let job=await claim(await reserve());await assert.rejects(complete(job),/not dispatched/);

@@ -12,7 +12,7 @@ services:
       CHATGPT_IMAGE_WORKER_DIRECTORY: /work
       CHATGPT_IMAGE_CODEX_UID: "1000"
       CHATGPT_IMAGE_CODEX_GID: "1000"
-      CHATGPT_IMAGE_POLL_SECONDS: "900"
+      CHATGPT_IMAGE_POLL_SECONDS: "60"
       CHATGPT_IMAGE_SANDBOX: workspace-write
     secrets:
       - source: image-worker

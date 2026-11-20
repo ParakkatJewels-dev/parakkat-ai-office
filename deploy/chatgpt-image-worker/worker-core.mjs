@@ -264,13 +264,15 @@ export function createWorker({root,api,generate=runCodex,checkLogin=verifyChatGP
   }
   async function processJob(job) {
     let prepared;
-    try{prepared=await prepareJob(root,job,{owner});}catch(error){await api({action:'fail',jobId:job?.jobId,holder:job?.holder,kind:'preflight'}).catch(()=>{});throw error;}
+    try{prepared=await prepareJob(root,job,{owner});}catch(error){await api({action:'fail',jobId:job?.jobId,holder:job?.holder,kind:/reference|prompt|input file/i.test(error.message||'')?'references':'worker_setup'}).catch(()=>{});throw error;}
     const {directory}=prepared;let state=prepared.state;
     if(state.phase!=='prepared')return resume(directory,state);
-    let heartbeat,heartbeatRunning=false,dispatched=false;
+    let heartbeat,heartbeatRunning=false,dispatched=false,preflightStage='setup';
     try {
       await api({action:'heartbeat',jobId:job.jobId,holder:job.holder});
+      preflightStage='login';
       await checkLogin({directory,env:childEnv,owner});
+      preflightStage='ready';
       // Persist uncertainty BEFORE sending dispatch; a lost response cannot trigger a second run.
       state={...state,phase:'dispatching'};await save(directory,state);
       await api({action:'dispatch',jobId:job.jobId,holder:job.holder,manifestHash:prepared.manifestHash});
@@ -282,7 +284,7 @@ export function createWorker({root,api,generate=runCodex,checkLogin=verifyChatGP
     } catch(error) {
       if(dispatched||state.phase==='dispatching')return resume(directory,state);
       state={...state,phase:'blocked'};await save(directory,state);
-      await api({action:'fail',jobId:job.jobId,holder:job.holder,kind:'preflight'}).catch(()=>{});
+      await api({action:'fail',jobId:job.jobId,holder:job.holder,kind:preflightStage==='login'?'worker_login':'preflight'}).catch(()=>{});
       return 'blocked';
     } finally {clearInterval(heartbeat);}
   }
@@ -299,8 +301,12 @@ export function createWorker({root,api,generate=runCodex,checkLogin=verifyChatGP
   }
   async function tick() {
     const recovered=await recover();
-    if(recovered.some(result=>result.result==='pending_import'))return {result:'pending_import',recovered};
-    if(await diskAvailable(root)<minimumFreeBytes)return {result:'disk_headroom_required',recovered};
+    if(recovered.some(result=>result.result==='pending_import')){await api({action:'health',ready:false});return {result:'pending_import',recovered};}
+    if(await diskAvailable(root)<minimumFreeBytes){await api({action:'health',ready:false});return {result:'disk_headroom_required',recovered};}
+    let ready=false;
+    try {await checkLogin({directory:root,env:childEnv,owner});ready=true;} catch { /* A failed login is reported without claiming a job. */ }
+    await api({action:'health',ready});
+    if(!ready)return {result:'worker_login_required',recovered};
     const result=await api({action:'claim'}),job=result?.job;
     if(!job)return {result:'idle',recovered};
     return {jobId:job.jobId,result:await processJob(job),recovered};

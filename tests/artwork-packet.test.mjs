@@ -70,8 +70,10 @@ function harness(options = {}) {
     '@/lib/agents/design': { FORMATS: { post: { label: 'Post', ratio: '1:1', size: '1080 × 1080' }, portrait: { label: 'Portrait', ratio: '4:5', size: '1080 × 1350' }, carousel_card: { label: 'Carousel card', ratio: '4:5', size: '1080 × 1350' }, web_banner: { label: 'Web banner', ratio: '16:9', size: '1920 × 1080' } } },
     '@/lib/agents/library-core.mjs': { rankDesignReferences, referenceFingerprint, requestedDesignOccasion },
     '@/lib/agents/carousel-card.mjs': { shopifyPhotoUrl, fetchShopifyPhoto: async url => { state.photoReads.push(url); return url === photo(2) ? images[1] : images[0]; } },
-    '@/lib/connectors/drive': { designImageById: async (driveId,signal,expected) => { state.driveReads.push({ driveId, signal, expected }); if (options.driveError) throw new Error('Changed Drive original'); return { data: images[3] }; } },
+    '@/lib/connectors/drive': { designImageById: async (driveId,signal,expected) => { state.driveReads.push({ driveId, signal, expected }); if (options.driveError) throw options.driveError instanceof Error ? options.driveError : new Error('Changed Drive original'); return { data: images[3] }; } },
     '@/lib/connectors/shopify': { shopifyArtworkPrice: async () => options.price || null },
+    './brand-logo': { currentBrandLogo: async () => ({ path:'brand/logo/current.png', sha256:'a'.repeat(64), bytes:images[0] }), applyBrandLogo: async bytes => bytes, brandLogoInstruction:'Use the uploaded official logo only.' },
+    './provider-decision': { selectedProviderForRequest: async () => null },
     '@/lib/artwork-mode.mjs': { isChatGPTHandoff: () => true }, './import-core.mjs': core,
   };
   const api = {};
@@ -110,6 +112,11 @@ test('packet and pack keep selected product order, actual source pixels and prev
   assert.equal(h.state.saves,1);
   assert.ok(h.state.writes.every(write => Object.keys(write.values).length === 1 && write.values.artwork_handoff));
   assert.equal(JSON.stringify(h.state.row.artwork_handoff).includes('base64'),false);
+});
+test('expired Google access gives the manager the reconnect action before generation', async () => {
+  const h=harness({driveError:new Error('Google sign-in expired or was revoked. Reconnect Google in Settings → Connections.')});
+  await assert.rejects(h.pack(),/Reconnect Google in Settings → Connections/);
+  assert.equal(h.state.storageWrites,0);
 });
 
 test('a carousel keeps its shared format and only displays a live verified price', async () => {
@@ -222,7 +229,7 @@ test('saved request metadata keeps the brief and product files stable across lat
 });
 
 test('a concurrent packet CAS loser uses the saved winner instead of returning its own reference choices', async () => {
-  const winner = { packet: { source: 'design', id, requestId, prompt: 'The first saved brief wins.', assets: [], version: 1 }, refs: [], products: [] };
+  const winner = { packet: { source: 'design', id, requestId, prompt: 'The first saved brief wins.', assets: [], version: 1 }, refs: [], products: [], logoSha256:'a'.repeat(64) };
   const h = harness({ beforeSave(state) { state.row.artwork_handoff = structuredClone(winner); } });
   assert.deepEqual(await h.packet(),{...winner.packet,provider:'chatgpt'});
   assert.equal(h.state.writes[0].matched,0);

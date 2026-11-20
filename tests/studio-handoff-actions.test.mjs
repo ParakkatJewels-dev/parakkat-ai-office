@@ -46,6 +46,19 @@ function harness(options = {}) {
     },
     '@/lib/artwork-mode.mjs': { isChatGPTHandoff: () => options.handoff !== false },
     '@/lib/artwork/generation': { startAutomaticArtwork: async args => { h.generated.push(args); if (options.generationError) throw options.generationError; return options.generation || { started: true, job: { id: 'job', state: 'queued' } }; } },
+    '@/lib/artwork/automatic-routing': { routeArtworkBatch: async (source, items, userId, role, selected) => {
+      let generated = 0, manual = 0, issue = '';
+      for (const item of items) {
+        const provider = selected || providerRouting.revisionArtworkProvider(null, item.artwork_origin);
+        if (provider === 'chatgpt') { manual++; continue; }
+        h.generated.push({ source, id: item.id, userId, role });
+        if (options.generationError) { issue = 'Artwork request saved. Generation could not be confirmed.'; continue; }
+        const result = options.generation || { started: true };
+        if (result.started) generated++;
+        else issue = `Artwork request saved. ${result.reason || 'Generation unavailable.'}`;
+      }
+      return [generated ? `Higgsfield generation queued for ${generated} image${generated === 1 ? '' : 's'}.` : '', manual ? providerRouting.chatGPTRevisionMessage(manual) : '', issue].filter(Boolean).join(' ');
+    } },
     '@/lib/artwork/provider-routing.mjs': providerRouting,
   };
   const exports = {};

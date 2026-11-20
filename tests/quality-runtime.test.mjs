@@ -6,7 +6,7 @@ import ts from 'typescript';
 import * as quality from '../src/lib/agents/quality-core.mjs';
 import * as checkpoints from '../src/lib/agents/campaign-checkpoint-core.mjs';
 import {PEOPLE} from '../src/office/roster.mjs';
-const load=(file,modules)=>{const compiled=ts.transpileModule(readFileSync(new URL(`../src/lib/agents/${file}.ts`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const exports={};new Function('exports','require',compiled)(exports,id=>modules[id]||(id==='@/lib/artwork-mode.mjs'?{isChatGPTHandoff:()=>false}:id==='./campaign-checkpoint-core.mjs'?checkpoints:id==='./agent-work'?{withAgentWork:(_scope,fn)=>fn()}:{}));return exports;};
+const load=(file,modules)=>{const compiled=ts.transpileModule(readFileSync(new URL(`../src/lib/agents/${file}.ts`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const exports={};new Function('exports','require',compiled)(exports,id=>modules[id]||(id==='@/lib/artwork-mode.mjs'?{isChatGPTHandoff:()=>false}:id==='@/lib/artwork/brand-logo'?{currentBrandLogo:async()=>({sha256:'a'.repeat(64),bytes:Buffer.from('approved-logo')}),applyBrandLogo:async bytes=>bytes,brandLogoInstruction:'Only approved logo'}:id==='./campaign-checkpoint-core.mjs'?checkpoints:id==='./agent-work'?{withAgentWork:(_scope,fn)=>fn()}:{}));return exports;};
 const people={byId:Object.fromEntries(PEOPLE.map(p=>[p.id,p])),teamLead:()=> 'creativeDirector',HUMAN_HEAD:{creative:'creativeHead'},persona:async()=> 'Saved current instructions'};
 const usage={withUsage:(_scope,fn)=>fn(),recordTaskUsageEvent:async()=>{}};
 const budget={isAiBudgetError:e=>e?.code==='ai_budget'};

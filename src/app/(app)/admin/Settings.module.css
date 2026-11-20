@@ -63,6 +63,10 @@
 .brandForm :global(.lockable){display:block}
 .brandForm :global(.lock-act){display:flex;justify-content:flex-end;gap:10px;padding-top:14px;margin-top:12px;border-top:1px solid var(--line);flex-wrap:wrap}
 .brandForm :global(.saved-note){margin-right:auto}
+.logoPreview{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2)}
+.logoPreview img{max-width:220px;max-height:100px;object-fit:contain;background:white;padding:8px;border-radius:4px}
+.logoForm{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap}
+.logoForm label{flex:1;min-width:min(100%,240px)}
 .departmentGroup{border-top:1px solid var(--line)}
 .departmentGroup>summary{padding:14px 0;display:flex;align-items:center;gap:11px;cursor:pointer;list-style:none;font-size:13px}
 .departmentGroup>summary>span{margin-left:auto}

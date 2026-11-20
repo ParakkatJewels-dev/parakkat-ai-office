@@ -51,14 +51,12 @@ export async function renderCarouselCard({ title, index, total = 5, category = '
     <rect x="62" y="46" width="956" height="198" rx="12" fill="#f7f3eb" fill-opacity="0.88"/>
     <rect x="62" y="1091" width="956" height="218" rx="12" fill="#f7f3eb" fill-opacity="0.9"/>
     <rect x="31" y="31" width="1018" height="1288" rx="14" fill="none" stroke="#d3c3a3" stroke-width="2"/>
-    <text x="85" y="113" font-family="DejaVu Serif,serif" font-size="39" letter-spacing="6" fill="#173e33">PARAKKAT</text>
-    <text x="87" y="145" font-family="DejaVu Sans,sans-serif" font-size="16" letter-spacing="7" fill="#8b7447">JEWELS</text>
-    <text x="991" y="112" text-anchor="end" font-family="DejaVu Sans,sans-serif" font-size="19" letter-spacing="3" fill="#8b7447">${String(index).padStart(2, '0')} / 05</text>
+    <text x="85" y="113" font-family="DejaVu Sans,sans-serif" font-size="19" letter-spacing="3" fill="#8b7447">${String(index).padStart(2, '0')} / 05</text>
     <line x1="85" y1="178" x2="995" y2="178" stroke="#c8b38d" stroke-width="2"/>
     <text x="86" y="226" font-family="DejaVu Sans,sans-serif" font-size="17" letter-spacing="4" fill="#8b7447">THE ${categoryLabel} EDIT</text>
     <line x1="85" y1="1110" x2="995" y2="1110" stroke="#c8b38d" stroke-width="2"/>
     ${titleSvg}
-    <text x="995" y="1301" text-anchor="end" font-family="DejaVu Sans,sans-serif" font-size="17" letter-spacing="2" fill="#8b7447">EXPLORE AT PARAKKAT JEWELS</text>
+    <text x="995" y="1301" text-anchor="end" font-family="DejaVu Sans,sans-serif" font-size="17" letter-spacing="2" fill="#8b7447">EXPLORE THE COLLECTION</text>
   </svg>`);
   const data = await sharp(scene).composite([{ input: overlay, left: 0, top: 0 }]).png({ compressionLevel: 9 }).toBuffer();
   return { data, mimeType: 'image/png', width: WIDTH, height: HEIGHT };

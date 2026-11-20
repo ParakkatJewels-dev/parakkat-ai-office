@@ -117,7 +117,7 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
   useEffect(() => {
     if (!office) return;
     const tick = () => { setStats(office.stats()); setNow(Date.now()); };
-    tick(); const t = setInterval(tick, 1500); return () => clearInterval(t);
+    tick(); const t = setInterval(tick, 5000); return () => clearInterval(t);
   }, [office]);
 
   // Actual server work is independent of short speech animations and historical events.
@@ -214,7 +214,7 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
         }
       } finally {
         pollRunning = false;
-        if (!controller.signal.aborted) timer = setTimeout(() => { void catchUp().catch(() => {}); }, pollAgain ? 0 : 6000);
+        if (!controller.signal.aborted) timer = setTimeout(() => { void catchUp().catch(() => {}); }, pollAgain ? 0 : 15000);
         pollAgain = false;
       }
     };
@@ -276,7 +276,7 @@ export default function OfficeClient({ me, role, initial, seen: seen0, observedA
           }
         } catch { /* the next poll recovers without interrupting the office */ }
       }
-      if (!controller.signal.aborted) timer = setTimeout(update, 10000);
+      if (!controller.signal.aborted) timer = setTimeout(update, currentMeetings.current.some(m => m.status === 'running' || m.status === 'planned') ? 10000 : 30000);
     };
     void update();
     return () => { controller.abort(); clearTimeout(timer); };

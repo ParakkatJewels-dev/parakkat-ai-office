@@ -13,6 +13,7 @@ function harness(verdicts, changes = {}) {
   const parts = { photo: { inlineData: { mimeType: 'image/png', data: 'source-photo' } }, style: { inlineData: { mimeType: 'image/png', data: 'style-scene' } } };
   const modules = {
     '@/lib/artwork-mode.mjs': { isChatGPTHandoff: () => false },
+    '@/lib/artwork/brand-logo': { currentBrandLogo: async () => ({ sha256:'a'.repeat(64), bytes:Buffer.from('official-logo') }), applyBrandLogo: async bytes => bytes, brandLogoInstruction:'Use the uploaded official logo only.' },
     'server-only': {},
     './carousel-card.mjs': {
       shopifyPhotoUrl: value => value,
