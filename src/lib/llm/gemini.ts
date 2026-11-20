@@ -18,22 +18,22 @@ const TEXT = () => opt('GEMINI_TEXT_MODEL', 'gemini-3.8-flash');
 type Part = { text?: string; thought?: boolean; inlineData?: { mimeType: string; data: string } };
 type TextOptions = {maxOutputTokens?:number;onUsage?:(value:{inputTokens?:number;outputTokens?:number;usageKnown?:boolean})=>void;config?:GeminiConfig};
 
-async function generate(model: string, parts: Part[], imageOut: boolean, aspectRatio?: string, json = false, system?: string, signal?: AbortSignal,options:TextOptions={}) {
-  if (isChatGPTHandoff()) throw new Error('Gemini calls are disabled. Create artwork in ChatGPT or Higgsfield and import it in Design Studio.');
+async function generate(model: string, parts: Part[], imageOut: boolean, aspectRatio?: string, json = false, system?: string, signal?: AbortSignal,options:TextOptions={},libraryStudy=false) {
+  if (isChatGPTHandoff() && !(libraryStudy && !imageOut)) throw new Error('Gemini artwork calls are disabled. Create artwork in ChatGPT or Higgsfield and import it in Design Studio.');
   await checkPause();
   signal?.throwIfAborted();
   const config=options.config||await getGeminiConfig();
   return withModelWork(system||'',{kind:imageOut?'image':json?'review':'text',timeoutMs:180_000,signal},()=>{
-    if(imageOut)return runAiBudgetedImage(()=>generateWork(model,parts,true,aspectRatio,json,system,signal,{...options,config}));
+    if(imageOut)return runAiBudgetedImage(()=>generateWork(model,parts,true,aspectRatio,json,system,signal,{...options,config},libraryStudy));
     // Hash media into the request identity; never put base64 into a prompt ledger/cache key input.
     const user=JSON.stringify(parts.map(p=>p.inlineData?{mimeType:p.inlineData.mimeType,sha256:createHash('sha256').update(p.inlineData.data).digest('hex')}:{text:p.text||''}));
     const imageCount=parts.filter(p=>p.inlineData).length;
-    return runAiBudgetedText({provider:'gemini',accountKey:createHash('sha256').update(config.apiKey).digest('hex'),model,system:system||'',user,signal,timeoutMs:180000,extraInputTokens:imageCount*8192,maxOutputTokens:options.maxOutputTokens},run=>generateWork(model,parts,false,aspectRatio,json,system,run.signal,{...options,config,maxOutputTokens:run.maxOutputTokens,onUsage:usage=>{run.reportUsage(usage);options.onUsage?.(usage);}}));
+    return runAiBudgetedText({provider:'gemini',accountKey:createHash('sha256').update(config.apiKey).digest('hex'),model,system:system||'',user,signal,timeoutMs:180000,extraInputTokens:imageCount*8192,maxOutputTokens:options.maxOutputTokens},run=>generateWork(model,parts,false,aspectRatio,json,system,run.signal,{...options,config,maxOutputTokens:run.maxOutputTokens,onUsage:usage=>{run.reportUsage(usage);options.onUsage?.(usage);}},libraryStudy));
   });
 }
 
-async function generateWork(model: string, parts: Part[], imageOut: boolean, aspectRatio?: string, json = false, system?: string, signal?: AbortSignal,options:TextOptions={}) {
-  if (isChatGPTHandoff()) throw new Error('Gemini calls are disabled. Create artwork in ChatGPT or Higgsfield and import it in Design Studio.');
+async function generateWork(model: string, parts: Part[], imageOut: boolean, aspectRatio?: string, json = false, system?: string, signal?: AbortSignal,options:TextOptions={},libraryStudy=false) {
+  if (isChatGPTHandoff() && !(libraryStudy && !imageOut)) throw new Error('Gemini artwork calls are disabled. Create artwork in ChatGPT or Higgsfield and import it in Design Studio.');
   await checkPause();
   const config = options.config || await getGeminiConfig(), t0 = Date.now();
   const generationConfig = imageOut ? geminiImageGenerationConfig(config, aspectRatio) : { ...(json ? { responseMimeType: 'application/json' } : {}),...(options.maxOutputTokens?{maxOutputTokens:options.maxOutputTokens}:{}) };
@@ -108,9 +108,9 @@ export async function geminiText(prompt: string): Promise<string> {
 }
 
 /** Ask Gemini about images (a finished design next to the product photos) and get JSON back. */
-export async function geminiJSON<T>(prompt: string, images: Part[], agent: AgentPromptContext): Promise<T> {
+export async function geminiJSON<T>(prompt: string, images: Part[], agent: AgentPromptContext, purpose?: 'library_study'): Promise<T> {
   const system = await agentPrompt(agent.db,agent.id,`${prompt}\nReply with one JSON object only.`,{signal:agent.signal});
-  const parts = await generate(TEXT(), [{ text: 'Complete the image review described in the current task. Reply with one JSON object only.' }, ...images], false, undefined, true, system, agent.signal);
+  const parts = await generate(TEXT(), [{ text: 'Complete the image review described in the current task. Reply with one JSON object only.' }, ...images], false, undefined, true, system, agent.signal,{},purpose==='library_study');
   const text = parts.map(p => p.text || '').join('').trim();
   try { return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as T; } catch { throw new GeminiError('Gemini returned an invalid review. Try again.', 'invalid_json'); }
 }

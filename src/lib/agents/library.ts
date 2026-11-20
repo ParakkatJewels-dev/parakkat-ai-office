@@ -12,7 +12,6 @@ import { isDesignFile, searchWords, referenceFingerprint, designReferenceQueries
 import { changedDesigns, discoverLibrary, libraryAbortable, libraryDescription, libraryRetryAt, libraryStudyBlock, LIBRARY_LIMITS, sameLibraryRevision } from './library-scan-core.mjs';
 import { emit } from './events';
 import { withAgentWork } from './agent-work';
-import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
 
 export type Ref = { id:string;name:string;drive_id?:string;modified_at?:string|null;image_path:string|null;fingerprint:Record<string, unknown>|null;occasion:string|null;style:string|null;palette:string|null;layout:string|null;typography:string|null;kind:string|null };
 type Folder={id:string;root_id:string;name:string;page_token:string|null;scanned_at:string|null;files:number};
@@ -48,7 +47,6 @@ async function recoverClaims(db:SupabaseClient,claims:Claim[],check:()=>Promise<
 
 /** Manual action: continue unfinished discovery; only restart completed trees. Failed studies retry only by this explicit action. */
 export async function resetLibraryScan(db:SupabaseClient):Promise<{busy:boolean;summary:string}> {
-  const handoff=isChatGPTHandoff();
   const holder=randomUUID(),deadline=AbortSignal.timeout(20_000),{check,signal}=guard(db,holder,deadline);
   const lock=checked(await db.rpc('acquire_job_lock',{p_name:LOCK,p_holder:holder,p_seconds:30}).abortSignal(signal()),'could not reserve the library.');
   if(!lock.data)return {busy:true,summary:'The library is already running. Its folder progress is being preserved.'};
@@ -62,12 +60,10 @@ export async function resetLibraryScan(db:SupabaseClient):Promise<{busy:boolean;
     checked(cursor,'could not read scan progress.');checked(pending,'could not check unfinished folders.');checked(unfinished,'could not check unfinished studies.');
     await recoverClaims(db,Array.isArray(cursor.data?.state?.claims)?cursor.data.state.claims:[],check,signal);await check();
     if(cursor.data?.state?.version!==2)checked(await db.from('design_library_folders').update({page_token:null,scanned_at:null,files:0}).not('page_token','is',null).abortSignal(signal()),'could not reset legacy incremental-query cursors.');
-    if(pending.count||(!handoff&&unfinished.count))checked(await db.from('design_library_folders').update({scanned_at:null,error:null}).not('error','is',null).abortSignal(signal()),'could not queue failed folders.');
+    if(pending.count||unfinished.count)checked(await db.from('design_library_folders').update({scanned_at:null,error:null}).not('error','is',null).abortSignal(signal()),'could not queue failed folders.');
     else checked(await db.from('design_library_folders').update({scanned_at:null,page_token:null,files:0,error:null}).not('id','is',null).abortSignal(signal()),'could not queue the full rescan.');
-    if(!handoff)checked(await db.from('design_refs').update({status:'new',error:null}).eq('status','failed').abortSignal(signal()),'could not queue the requested retries.');
-    const summary=handoff
-      ? pending.count?'Queued a continuation of unfinished folders. Image study remains disabled.':'Queued a full folder inventory. Image study remains disabled; saved reference notes are preserved.'
-      : pending.count||unfinished.count?'Queued a continuation of unfinished folders/studies and an explicit retry of failed designs.':'Queued a full folder inventory and an explicit retry of failed designs. Unchanged completed designs will not be studied again.';
+    checked(await db.from('design_refs').update({status:'new',error:null}).eq('status','failed').abortSignal(signal()),'could not queue the requested retries.');
+    const summary=pending.count||unfinished.count?'Queued a continuation of unfinished folders/studies and an explicit retry of failed designs.':'Queued a full folder inventory and an explicit retry of failed designs. Unchanged completed designs will not be studied again.';
     await check();
     checked(await db.from('sync_cursors').upsert({name:LOCK,updated_at:new Date().toISOString(),state:{...(cursor.data?.state||{}),version:2,state:'queued',holder:null,activeFolderName:null,claims:[],studyBlock:null,folderRetries:{},lastResult:summary}}).abortSignal(signal()),'could not save the queued scan.');
     checked(await db.from('autopilot_jobs').upsert({name:'library',last_run_at:null,last_result:summary}).abortSignal(signal()),'could not queue the background job.');
@@ -77,8 +73,7 @@ export async function resetLibraryScan(db:SupabaseClient):Promise<{busy:boolean;
 
 /** Discovery uses Drive metadata only; study is independently capped at twelve images and four concurrent calls. */
 export async function scanLibrary(db:SupabaseClient,options:Options={}):Promise<string> {
-  const handoff = isChatGPTHandoff();
-  const discoverOnly = options.discoverOnly || handoff;
+  const discoverOnly = !!options.discoverOnly;
   const holder=randomUUID(),deadline=AbortSignal.timeout(LIBRARY_LIMITS.workMs),{check,signal}=guard(db,holder,deadline);
   const lock=checked(await db.rpc('acquire_job_lock',{p_name:LOCK,p_holder:holder,p_seconds:LIBRARY_LIMITS.leaseSeconds}).abortSignal(signal()),'could not reserve the library.');
   if(!lock.data)return 'The library is already running; no duplicate scan or image study was started.';
@@ -139,8 +134,7 @@ export async function scanLibrary(db:SupabaseClient,options:Options={}):Promise<
         state!.lastResult=`Folder remains unfinished: ${folder.name}. ${errText(error).slice(0,180)}`;await save();
       },
     }));
-    state.activeFolderName=null;let studyBlocked=handoff?'':state.studyBlock?.reason||'';
-    if(handoff)state.studyBlock=null;
+    state.activeFolderName=null;let studyBlocked=state.studyBlock?.reason||'';
     if(!discoverOnly&&!studyBlocked) {
       const agent=checked(await db.from('agents').select('enabled').eq('id','designer').abortSignal(signal()).maybeSingle(),'could not check whether the Banner Designer is enabled.');
       if(!agent.data?.enabled)studyBlocked='The Banner Designer is disabled; discovered designs remain queued.';
@@ -155,8 +149,8 @@ export async function scanLibrary(db:SupabaseClient,options:Options={}):Promise<
     ]);
     checked(waiting,'could not count waiting designs.');checked(failed,'could not count failed designs.');checked(pending,'could not check unfinished folders.');
     state.counts.waiting=waiting.count||0;state.counts.failed=failed.count||0;state.counts.pendingFolders=pending.count||0;
-    outcome=`${state.counts.pages} folder pages read; ${state.counts.discovered} new or changed designs recorded; ${state.counts.studied} studied. ${state.counts.pendingFolders} folders unfinished; ${state.counts.waiting} ${handoff?'indexed without AI study notes':'designs waiting'}; ${state.counts.failed} ${handoff?'previous study failures':'need an explicit retry'}.${discovery.failures?` ${discovery.failures} folder reads failed and retain their checkpoints.`:''}${studyBlocked?` ${studyBlocked}`:''}${discoverOnly?' Discovery only; no image analysis was requested.':''}${handoff?' Manual artwork mode uses saved references; Gemini study is disabled.':''}`;
-    state.state=studyBlocked&&state.counts.waiting?'blocked':state.counts.pendingFolders||(!handoff&&state.counts.waiting)?'queued':!handoff&&state.counts.failed?'failed':'idle';state.lastResult=outcome;state.lastFinishedAt=new Date().toISOString();await save();
+    outcome=`${state.counts.pages} folder pages read; ${state.counts.discovered} new or changed designs recorded; ${state.counts.studied} studied. ${state.counts.pendingFolders} folders unfinished; ${state.counts.waiting} designs waiting; ${state.counts.failed} need an explicit retry.${discovery.failures?` ${discovery.failures} folder reads failed and retain their checkpoints.`:''}${studyBlocked?` ${studyBlocked}`:''}${discoverOnly?' Discovery only; no image analysis was requested.':''}`;
+    state.state=studyBlocked&&state.counts.waiting?'blocked':state.counts.pendingFolders||state.counts.waiting?'queued':state.counts.failed?'failed':'idle';state.lastResult=outcome;state.lastFinishedAt=new Date().toISOString();await save();
     if(state.counts.studied)await libraryAbortable(emit(db,null,'say','designer',`Studied ${state.counts.studied} past Parakkat designs from Drive; ${state.counts.waiting} waiting, ${state.counts.failed} need an explicit retry.`),signal());
     return outcome;
   } catch(error) {
@@ -195,7 +189,7 @@ async function studyNew(db:SupabaseClient,state:Progress,limit:number,deadline:A
 keep is false if it is not a finished marketing design (a raw product photo, screenshot, logo file or document page).
 kind is post, story, banner, poster or other. occasion is the festival, season or theme, or general. quality is 1 to 5.
 Shape: {"keep":true,"kind":"post","occasion":"general","style":"two sentences on mood, background, props, lighting and jewellery treatment","palette":"main colours","layout":"positions of product, headline, logo and space","typography":"type style and treatment","tags":["five to eight short words"],"quality":3,"fingerprint":{"visualBrief":"what makes this visual recognizable","composition":"placement, scale, depth, crop and negative space","palette":"specific colours and contrast","lighting":"light sources, direction and shadows","materials":"background surfaces, props and textures","typography":"font character, hierarchy and alignment","productionNotes":"step-by-step description of how to recreate this art direction with a different product","avoid":"what must not be copied literally, including jewellery and text"}}`,
-          [{inlineData:{mimeType:img.mimeType,data:img.data.toString('base64')}}],{db,id:'designer',signal:step})),step));
+          [{inlineData:{mimeType:img.mimeType,data:img.data.toString('base64')}}],{db,id:'designer',signal:step},'library_study')),step));
         step.throwIfAborted();if(!d.keep){await clearOldPreview();await finish({status:'skipped',error:'Not a finished design',kind:d.kind,image_path:null,fingerprint:null});return;}
         if(!await current())return;
         await clearOldPreview();

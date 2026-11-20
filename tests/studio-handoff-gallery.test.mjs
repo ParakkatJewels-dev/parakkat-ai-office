@@ -62,13 +62,13 @@ test('imported artwork shows human-review provenance, suppresses historical AI c
   assert.equal(nodes(form,node=>node.type==='input'&&node.props.name==='request_id')[0].props.value,'current-request');
 });
 
-test('the library explains discovery-only scanning and does not offer to resume paid image study',async()=>{
+test('the library explains design study even when ChatGPT or Higgsfield generates artwork',async()=>{
   const tree=await harness([])({tab:'library'});
   const library=nodes(tree,node=>typeof node.type==='function'&&node.type.name==='Library')[0];assert.ok(library);
   const expanded=await library.type(library.props);
-  assert.match(text(expanded),/Gemini image study is disabled/);
-  assert.match(text(expanded),/Folder scans discover files/);
-  assert.doesNotMatch(text(expanded),/Resume study|AI Office studies each design/);
+  assert.match(text(expanded),/AI Office studies each design/);
+  assert.match(text(expanded),/Waiting to be studied/);
+  assert.doesNotMatch(text(expanded),/image study is disabled/);
 });
 
 test('Higgsfield artwork shows accurate provenance and keeps imported output subject to human review',async()=>{

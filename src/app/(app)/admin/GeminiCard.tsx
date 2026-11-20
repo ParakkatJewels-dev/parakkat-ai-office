@@ -12,10 +12,10 @@ export async function GeminiCard() {
     <div className="integr-top">
       <span className="tile-ic"><Icon name="spark" size={18} /></span>
       <div className="grow"><b>Artwork through Higgsfield</b><span className="sm">Generate in AI Office, then review</span></div>
-      <span className="pill">Gemini image API disabled</span>
+      <span className="pill">Gemini artwork generation disabled</span>
     </div>
     <p className="sm">Connect Higgsfield to generate artwork in Studio with subscription credits. AI Office prepares the product photos and design references, saves the finished image, and keeps it ready for review. ChatGPT remains a manual import option.</p>
-    <p className="sm">The Gemini image API is disabled. Higgsfield credits and model availability apply. All artwork requires human review before approval.</p>
+    <p className="sm">Gemini artwork generation is disabled. The Design Library can still use the configured Gemini key to study past Drive designs and save visual notes. Higgsfield credits and model availability apply to new artwork. All artwork requires human review before approval.</p>
     <a href="/studio" className="btn ghost sm-btn">Open Design Studio</a>
   </li>;
   const [configuration, budget] = await Promise.allSettled([getGeminiStatus(), getImageBudgetStatus()]);

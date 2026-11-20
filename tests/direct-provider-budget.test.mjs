@@ -75,6 +75,6 @@ test('existing Flash image accounting is unchanged',async()=>{
 
 test('ChatGPT handoff blocks every Gemini generation entry before admission or network',async()=>{
  const h=geminiHarness(true), agent={db:{},id:'designer'};
- for(const work of [()=>h.api.geminiText('x'),()=>h.api.geminiChat('worker','x','x'),()=>h.api.geminiJSON('x',[],agent),()=>h.api.generateGeminiTestImage(),()=>h.api.bannerImage('x',[],'1:1',[],[],agent),()=>h.api.carouselStyleBackground([{text:'style'}],agent)]) await assert.rejects(work,/Gemini calls are disabled/);
+ for(const work of [()=>h.api.geminiText('x'),()=>h.api.geminiChat('worker','x','x'),()=>h.api.geminiJSON('x',[],agent),()=>h.api.generateGeminiTestImage(),()=>h.api.bannerImage('x',[],'1:1',[],[],agent),()=>h.api.carouselStyleBackground([{text:'style'}],agent)]) await assert.rejects(work,/Gemini artwork calls are disabled/);
  assert.equal(h.state.requests.length,0);assert.equal(h.state.reservations.length,0);assert.equal(h.state.imageReservations,0);
 });

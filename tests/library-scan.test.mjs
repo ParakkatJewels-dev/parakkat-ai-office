@@ -145,14 +145,16 @@ test('resuming queued or failed image studies does not reset completed folder in
     await h.resetLibraryScan(h.db);assert.equal(h.tables.design_library_folders[0].scanned_at,'2026-10-26T01:00:00Z');assert.equal(h.tables.design_library_folders[0].files,8);assert.equal(h.tables.design_refs[0].status,'new');
   }
 });
-test('manual artwork mode rereads completed folders even with unstudied designs and never retries image study',async()=>{
-  const h=harness({handoff:true,folders:[folder('done',{scanned_at:'2026-10-26T01:00:00Z',files:8})],refs:[{id:'new',drive_id:'new',status:'new',modified_at:null},{id:'failed',drive_id:'failed',status:'failed',modified_at:null}]});
+test('manual artwork mode resumes queued image study without rereading completed folders',async()=>{
+  const scannedAt=new Date().toISOString();
+  const h=harness({handoff:true,folders:[folder('done',{scanned_at:scannedAt,files:8})],refs:[{id:'new',drive_id:'new',status:'new',modified_at:null},{id:'failed',drive_id:'failed',status:'failed',modified_at:null}]});
   const result=await h.resetLibraryScan(h.db);
-  assert.match(result.summary,/full folder inventory/);
-  assert.equal(h.tables.design_library_folders[0].scanned_at,null);
-  assert.equal(h.tables.design_refs[0].status,'new');assert.equal(h.tables.design_refs[1].status,'failed');
+  assert.match(result.summary,/continuation/);
+  assert.equal(h.tables.design_library_folders[0].scanned_at,scannedAt);
+  assert.equal(h.tables.design_refs[0].status,'new');assert.equal(h.tables.design_refs[1].status,'new');
   await h.scanLibrary(h.db,{trigger:'manual'});
-  assert.deepEqual(h.calls.drive,[['done',null]]);assert.equal(h.calls.model,0);
+  assert.deepEqual(h.calls.drive,[]);assert.equal(h.calls.model,2);
+  assert.equal(h.tables.design_refs.filter(ref=>ref.status==='ready').length,2);
   assert.equal(h.tables.sync_cursors[0].state.state,'idle');
 });
 test('interrupted paid claims become explicit failures, while completed references are preserved',async()=>{
@@ -183,8 +185,8 @@ test('paused worker makes no discovery, model call, or progress reset',async()=>
   const h=harness({pause:true});assert.match(await h.scanLibrary(h.db,{trigger:'manual'}),/paused/);assert.equal(h.calls.model,0);assert.equal(h.calls.drive.length,0);assert.deepEqual(h.calls.writes,[]);
 });
 
-test('ChatGPT handoff discovers new references without any Gemini study',async()=>{
+test('ChatGPT artwork mode still studies new Drive references without generating an image',async()=>{
  const h=harness({handoff:true,pages:{'root:':{files:[{id:'new-photo',name:'chain.jpg',mimeType:'image/jpeg',modifiedTime:'2026-10-28T00:00:00Z'}],next:null}}});
  const result=await h.scanLibrary(h.db,{trigger:'manual'});
- assert.match(result,/Gemini study is disabled/);assert.equal(h.calls.model,0);assert.equal(h.calls.upload,0);assert.equal(h.tables.design_refs.length,1);assert.equal(h.tables.design_refs[0].status,'new');
+ assert.match(result,/1 studied/);assert.equal(h.calls.model,1);assert.equal(h.calls.upload,0);assert.equal(h.tables.design_refs.length,1);assert.equal(h.tables.design_refs[0].status,'ready');
 });

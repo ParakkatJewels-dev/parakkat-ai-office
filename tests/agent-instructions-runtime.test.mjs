@@ -126,7 +126,8 @@ test('every current agent chat call uses fresh persona or an explicitly composed
 test('image generation, image review, library study and classification carry explicit fresh agent context',()=>{
   const design=source('agents/design.ts'),library=source('agents/library.ts'),campaign=source('agents/campaign.ts');
   for(const call of calls(design,'bannerImage'))assert.equal(call.arguments.length,6);
-  for(const text of [design,library])for(const call of calls(text,'geminiJSON'))assert.equal(call.arguments.length,3);
+  for(const call of calls(design,'geminiJSON'))assert.equal(call.arguments.length,3);
+  for(const call of calls(library,'geminiJSON')){assert.equal(call.arguments.length,4);assert.equal(call.arguments[3].getText(),"'library_study'");}
   for(const call of calls(campaign,'classify'))assert.equal(call.arguments.length,3);
   const gemini=source('llm/gemini.ts'),jev=source('llm/jev.ts');
   assert.ok(calls(gemini,'agentPrompt').length>=2);assert.equal(calls(jev,'agentPrompt').length,1);

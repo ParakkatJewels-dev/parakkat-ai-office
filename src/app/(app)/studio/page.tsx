@@ -245,7 +245,6 @@ type Db = Awaited<ReturnType<typeof requireUser>>['db'];
 /** Past Parakkat designs from Drive that the designers take their standard from. */
 async function Library({ db, sp, role }: { db: Db; sp: Record<string, string | undefined>; role: AppRole }) {
   const admin=role==='super_admin';
-  const handoff=isChatGPTHandoff();
   const show = (sp.lib && sp.lib in REFS ? sp.lib : 'all') as keyof typeof REFS, q = (sp.q || '').trim().slice(0, 80);
   const lp = pageOf(sp, 'lp'), [l0, l1] = rangeOf(lp, LIBRARY);
   let list = db.from('design_refs').select('id, drive_id, name, status, error, kind, occasion, style, palette, layout, typography, fingerprint, tags, quality, pinned, hidden, uses, folder_id', { count: 'exact' });
@@ -273,7 +272,7 @@ async function Library({ db, sp, role }: { db: Db; sp: Record<string, string | u
   const picked = roots.filter(f => f.id === f.root_id);
   const sub = (root: string) => roots.filter(f => f.root_id === root);
   const countsError=[ready,hidden,waiting,failed,skipped,pendingFolders,folderErrors,folderCount,indexed].some(result=>result.error || result.count==null);
-  const status=libraryDisplayState(runtime,{pendingFolders:pendingFolders.count,waiting:waiting.count,failed:failed.count,folderErrors:folderErrors.count,readError:countsError},{discoveryOnly:handoff});
+  const status=libraryDisplayState(runtime,{pendingFolders:pendingFolders.count,waiting:waiting.count,failed:failed.count,folderErrors:folderErrors.count,readError:countsError});
   const rootCounts=new Map(await Promise.all(picked.map(async root=>{
     if(!folders.complete)return [root.id,null] as const;
     const ids=sub(root.id).map(folder=>folder.id),chunks=[];
@@ -285,13 +284,12 @@ async function Library({ db, sp, role }: { db: Db; sp: Record<string, string | u
   const back = qs({ lp: lp > 1 ? String(lp) : null });
   return <>
     <LibraryProgress status={status}/>
-    {handoff && <p className={studioStyles.handoffNotice}>Gemini image study is disabled. Folder scans discover files; saved reference notes remain available for artwork packs.</p>}
     {!folders.complete && <p className="flash" role="alert">The full folder list could not be loaded. Folder totals below may be incomplete; refresh to try again.</p>}
     <div className={studioStyles.librarySetup}>
       <section className="card">
-        <div className="card-head"><div><h3>Where the past designs come from</h3><p className="sub">Selected Drive folders and their subfolders. {handoff ? 'Saved notes on each design guide which references are picked. Original reference images are read for generation or a downloaded artwork pack.' : 'AI Office studies each design, saves notes on its look, and removes the imported preview from AI Office storage.'} Original Drive files stay in Drive.</p></div>
-          <form action={scanNow}><Submit ghost small icon="sync" pending="Queuing…" disabled={status.active || countsError}>{(pendingFolders.count || 0)>0?'Resume scan':!handoff && (waiting.count || 0)>0?'Resume study':'Read folders again'}{!handoff && (failed.count || 0)>0?' and retry failures':''}</Submit></form></div>
-        <p className="sm">{handoff ? 'Scans discover supported images, PDFs, Photoshop and Illustrator files. New image studies remain disabled.' : 'The library studies available image previews of supported images, PDFs, Photoshop and Illustrator files.'} A PDF or design-file preview does not cover every page or layer. Unsupported formats are excluded.</p>
+        <div className="card-head"><div><h3>Where the past designs come from</h3><p className="sub">Selected Drive folders and their subfolders. AI Office studies each design, saves notes on its look, and removes the imported preview from AI Office storage. Original Drive files stay in Drive.</p></div>
+          <form action={scanNow}><Submit ghost small icon="sync" pending="Queuing…" disabled={status.active || countsError}>{(pendingFolders.count || 0)>0?'Resume scan':(waiting.count || 0)>0?'Resume study':'Read folders again'}{(failed.count || 0)>0?' and retry failures':''}</Submit></form></div>
+        <p className="sm">The library studies available image previews of supported images, PDFs, Photoshop and Illustrator files. A PDF or design-file preview does not cover every page or layer. Unsupported formats are excluded.</p>
         {picked.length ? <ul className={`rows ${studioStyles.folderRows}`}>{picked.map(f => {
           const all = sub(f.id), files=rootCounts.get(f.id), errors=all.filter(x=>x.error),pending=all.filter(x=>!x.scanned_at || x.page_token || x.error).length;
           const lastRead=all.map(x=>x.scanned_at).filter((value):value is string=>!!value).sort().at(-1);
@@ -316,8 +314,8 @@ async function Library({ db, sp, role }: { db: Db; sp: Record<string, string | u
           <div><small>Design files indexed so far</small><b>{indexed.count ?? '—'}</b></div>
           <div><small>Ready to use</small><b>{ready.count ?? '—'}</b></div>
           <div><small>Hidden ready designs</small><b>{hidden.count ?? '—'}</b></div>
-          <div><small>{handoff?'Indexed without AI study notes':'Waiting to be studied'}</small><b>{waiting.count ?? '—'}</b></div>
-          <div><small>{handoff?'Previous study failures':'Failed — can be retried'}</small><b>{failed.count ?? '—'}</b></div>
+          <div><small>Waiting to be studied</small><b>{waiting.count ?? '—'}</b></div>
+          <div><small>Failed — can be retried</small><b>{failed.count ?? '—'}</b></div>
           <div><small>Skipped — not a finished design</small><b>{skipped.count ?? '—'}</b></div>
         </div>
         {(runtime.lastResult || job?.last_result) && <p className="sm">Latest recorded result: {safeLibraryNote(runtime.lastResult || job?.last_result)}</p>}
@@ -328,7 +326,7 @@ async function Library({ db, sp, role }: { db: Db; sp: Record<string, string | u
     <section className={`card ${studioStyles.libraryCard}`}>
       <div className="card-head"><div><h3>Past designs</h3><p className="sub">Pin the ones you want the designers to follow more; hide any that should not be followed. {count || 0} shown.</p></div></div>
       <div className={`seg-row ${studioStyles.filterBar}`}>
-        <div className="seg" role="group" aria-label="Show">{Object.entries(REFS).map(([k, l]) => <a key={k} href={qs({ lib: k, lp: null })} className={show === k ? 'on' : ''} aria-current={show === k ? 'page' : undefined}>{handoff&&k==='waiting'?'No study notes':handoff&&k==='failed'?'Previous failures':l}</a>)}</div>
+        <div className="seg" role="group" aria-label="Show">{Object.entries(REFS).map(([k, l]) => <a key={k} href={qs({ lib: k, lp: null })} className={show === k ? 'on' : ''} aria-current={show === k ? 'page' : undefined}>{l}</a>)}</div>
         <form action="/studio" className="inline"><input type="hidden" name="tab" value="library" />{sp.lib && <input type="hidden" name="lib" value={sp.lib} />}
           <input className="in" type="search" name="q" defaultValue={q} placeholder="Search: Onam, bridal, green…" aria-label="Search the library" /><button className="btn ghost sm-btn" type="submit">Search</button></form>
       </div>

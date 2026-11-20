@@ -99,7 +99,8 @@ test('image settings describe Higgsfield without a paid test or Gemini status re
   };
   const handoff=await load('../src/app/(app)/admin/GeminiCard.tsx',{...base,'@/lib/artwork-mode.mjs':{isChatGPTHandoff:()=>true}}).GeminiCard();
   assert.equal(configReads,0);assert.equal(budgetReads,0);
-  assert.match(text(handoff),/Gemini image API disabled/);
+  assert.match(text(handoff),/Gemini artwork generation disabled/);
+  assert.match(text(handoff),/Design Library can still use the configured Gemini key/);
   assert.match(text(handoff),/human review before approval/);
   assert.equal(nodes(handoff,n=>n.type==='form'||n.type==='Locked'||n.type==='Submit').length,0);
   assert.equal(nodes(handoff,n=>n.type==='a'&&n.props.href==='/studio').length,1);
