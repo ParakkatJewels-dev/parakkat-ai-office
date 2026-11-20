@@ -158,7 +158,7 @@ async function complete(db: SupabaseClient, input: any) {
   if (error) throw new ArtworkError('The saved image job could not be read. Retry this same output.', 503);
   if (!job || job.lease_holder !== input.holder || !job.dispatched_at || !['generating', 'uncertain', 'succeeded'].includes(job.state)) throw new ArtworkError('The saved image job or lease changed.', 409);
   const artwork = await db.from(job.source === 'design' ? 'designs' : 'creatives').select('artwork_handoff').eq('id', job.item_id).maybeSingle();
-  const logo = await currentBrandLogo();
+  const logo = await currentBrandLogo(artwork.data?.artwork_handoff?.logoId);
   if (artwork.error || artwork.data?.artwork_handoff?.logoSha256 !== logo.sha256) throw new ArtworkError('The official logo changed. Prepare a new artwork revision.',409);
   const branded = await applyBrandLogo(bytes, logo);
   const brandedHash = sha256(branded);

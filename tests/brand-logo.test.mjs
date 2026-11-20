@@ -8,10 +8,11 @@ import sharp from 'sharp';
 const code = ts.transpileModule(readFileSync(new URL('../src/lib/artwork/brand-logo.ts', import.meta.url), 'utf8'),
   { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
 
-function load(row, bytes) {
+const logoId = '11111111-1111-4111-8111-111111111111';
+function load(row, bytes, asset = row ? { id: logoId, path: row.path, sha256: row.sha256 } : null) {
   const admin = {
-    from: table => { assert.equal(table, 'brand_logo'); return { select() { return this; }, eq() { return this; }, maybeSingle: async () => ({ data: row, error: null }) }; },
-    storage: { from: bucket => { assert.equal(bucket, 'creatives'); return { download: async path => { assert.equal(path, row.path); return { data: new Blob([bytes]), error: null }; } }; } },
+    from: table => { assert.ok(['brand_logo', 'brand_logo_assets'].includes(table)); const filters = []; return { select() { return this; }, eq(...args) { filters.push(args); return this; }, maybeSingle: async () => ({ data: table === 'brand_logo' ? row : asset && filters.every(([key,value]) => asset[key] === value) ? asset : null, error: null }) }; },
+    storage: { from: bucket => { assert.equal(bucket, 'creatives'); return { download: async path => { assert.equal(path, asset.path); return { data: new Blob([bytes]), error: null }; } }; } },
   };
   const modules = { 'server-only': {}, 'node:crypto': { createHash }, sharp,
     '@/lib/supabase/admin': { supabaseAdmin: () => admin } };
@@ -24,6 +25,8 @@ test('the approved logo is required and its stored digest is verified', async ()
   const logo = await sharp({ create: { width: 200, height: 100, channels: 4, background: '#f00000' } }).png().toBuffer();
   const api = load({ path: 'brand/logo/approved.png', sha256: createHash('sha256').update(logo).digest('hex') }, logo);
   assert.deepEqual((await api.currentBrandLogo()).bytes, logo);
+  assert.equal((await api.currentBrandLogo()).id, logoId);
+  assert.deepEqual((await load(null, logo, { id: logoId, path: 'brand/logo/approved.png', sha256: createHash('sha256').update(logo).digest('hex') }).currentBrandLogo(logoId)).bytes, logo);
   await assert.rejects(load(null, logo).currentBrandLogo(), /Add the approved brand logo/);
   await assert.rejects(load({ path: 'brand/logo/approved.png', sha256: '0'.repeat(64) }, logo).currentBrandLogo(), /changed unexpectedly/);
 });

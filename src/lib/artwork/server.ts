@@ -28,7 +28,7 @@ export async function accessArtwork(context:ArtworkContext,options:{pendingOnly?
   if (!isChatGPTHandoff()) throw new ArtworkError('Artwork import is not enabled.',409);
   const {source,id} = await context.params;
   if (!['design','creative'].includes(source) || !validId(id)) throw new ArtworkError('Artwork not found.',404);
-  const columns: string = source === 'design' ? 'id,format,brief,headline,language,product_ids,image_path,status,review_note,concept,ref_ids,versions,redo_note,artwork_request_id,artwork_origin,artwork_handoff,requested_by,carousel_id,carousel_index,carousel_source' : 'id,kind,format,body,headline,language,product_ids,image_path,art_status,review_note,concept,ref_ids,versions,redo_note,artwork_request_id,artwork_origin,artwork_handoff,campaign_id,campaigns(status,name)';
+  const columns: string = source === 'design' ? 'id,format,brief,headline,language,product_ids,image_path,status,review_note,concept,ref_ids,versions,redo_note,artwork_request_id,artwork_origin,artwork_handoff,artwork_logo_id,requested_by,carousel_id,carousel_index,carousel_source' : 'id,kind,format,body,headline,language,product_ids,image_path,art_status,review_note,concept,ref_ids,versions,redo_note,artwork_request_id,artwork_origin,artwork_handoff,artwork_logo_id,campaign_id,campaigns(status,name)';
   const {data:row,error} = await session.db.from(source === 'design'?'designs':'creatives').select(columns).eq('id',id).maybeSingle();
   if (error || !row) throw new ArtworkError('Artwork not found or unavailable to your account.',404);
   const item = row as any;
@@ -41,15 +41,16 @@ export async function accessArtwork(context:ArtworkContext,options:{pendingOnly?
   return {session,source:source as Source,id,row:item};
 }
 type Access = Awaited<ReturnType<typeof accessArtwork>>;
-async function requiredLogo() {
-  try { return await currentBrandLogo(); }
+async function requiredLogo(logoId?: string | null) {
+  try { return await currentBrandLogo(logoId); }
   catch (error) { throw new ArtworkError(error instanceof Error ? error.message : 'The approved brand logo is unavailable.', 409); }
 }
 
 async function packetFor(access:Access):Promise<any> {
   const {row,source,id} = access, admin = supabaseAdmin();
-  const logo = await requiredLogo();
-  if(row.artwork_handoff?.packet?.requestId===row.artwork_request_id) {
+  const frozen = row.artwork_handoff?.packet?.requestId===row.artwork_request_id;
+  const logo = await requiredLogo(frozen ? row.artwork_handoff.logoId : row.artwork_logo_id);
+  if(frozen) {
     if(row.artwork_handoff.logoSha256 !== logo.sha256) throw new ArtworkError('The official logo changed. Prepare a new artwork revision before continuing.',409);
     return row.artwork_handoff;
   }
@@ -123,7 +124,7 @@ async function packetFor(access:Access):Promise<any> {
     'Before returning the image, inspect product fidelity, typography, spelling, brand accuracy and the requested changes. Export the finished image as a still PNG, JPEG or WebP. A person will review it in AI Office before approval.',
     `AI Office artwork request: ${source}/${id} · ${row.artwork_request_id} · intended version ${version}.`,
   ].filter(Boolean).join('\n\n');
-  const bundle={packet:{source,id,requestId:row.artwork_request_id,prompt,headline:row.headline||'',format,version,assets},refs,products,template,logoSha256:logo.sha256};
+  const bundle={packet:{source,id,requestId:row.artwork_request_id,prompt,headline:row.headline||'',format,version,assets},refs,products,template,logoId:logo.id,logoSha256:logo.sha256};
   const table=source==='design'?'designs':'creatives';
   const saved=await admin.from(table).update({artwork_handoff:bundle}).eq('id',id).eq('artwork_request_id',row.artwork_request_id).is('artwork_handoff',null).in(source==='design'?'status':'art_status',['awaiting_import','generating']).select('artwork_handoff').maybeSingle();
   if(saved.error)throw new ArtworkError('The artwork brief could not be saved. Refresh Studio and try again.',409);
@@ -223,7 +224,7 @@ export async function importArtwork(request:Request,context:ArtworkContext) {
   const bytes=Buffer.from(await file.arrayBuffer());
   try {image=await validateArtwork(bytes,file.type);} catch(e) {throw new ArtworkError((e as Error).message);}
   const bundle=await packetFor(access);
-  const logo=await requiredLogo();
+  const logo=await requiredLogo(bundle.logoId);
   if(bundle.logoSha256!==logo.sha256)throw new ArtworkError('The official logo changed. Prepare a new artwork revision.',409);
   const branded=await applyBrandLogo(bytes,logo);
   const path=`${provider}-imports/${access.source}/${access.id}/${requestId}/${randomUUID()}.png`;

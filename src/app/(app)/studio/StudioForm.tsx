@@ -7,6 +7,7 @@ import styles from './Studio.module.css';
 
 type Product = { id: number; title: string; price: number | null; image_url: string };
 type Fmt = { id: string; label: string; ratio: string; size: string };
+type Logo = { id: string; name: string };
 
 function Submit({ handoff }: { handoff: boolean }) {
   const { pending } = useFormStatus();
@@ -18,7 +19,7 @@ function Submit({ handoff }: { handoff: boolean }) {
 }
 
 /** The order form: format, brief, headline, language, and up to three Shopify products to build around. */
-export function StudioForm({ products, more: firstMore, formats, handoff = false }: { products: Product[]; more: boolean; formats: Fmt[]; handoff?: boolean }) {
+export function StudioForm({ products, more: firstMore, formats, logos = [], activeLogoId = null, handoff = false }: { products: Product[]; more: boolean; formats: Fmt[]; logos?: Logo[]; activeLogoId?: string | null; handoff?: boolean }) {
   const [q, setQ] = useState(''), [picked, setPicked] = useState<number[]>([]), [fmt, setFmt] = useState(formats[0].id);
   // products load a page at a time from /api/products as you search or ask for more; picks are remembered across searches
   const [list, setList] = useState(products), [more, setMore] = useState(firstMore), [page, setPage] = useState(0), [busy, setBusy] = useState(false);
@@ -59,6 +60,10 @@ export function StudioForm({ products, more: firstMore, formats, handoff = false
         <label className="field">Headline (optional)<input name="headline" maxLength={60} placeholder={handoff ? 'Exact words to include in the artwork' : 'Leave empty and the Copywriter writes one'} /></label>
         <label className="field">Language<select name="language" defaultValue="en"><option value="en">English</option><option value="ml">Malayalam</option></select></label>
       </div>
+      {handoff && logos.length > 0 && <label className="field">Approved logo for this creative
+        <select name="logoId" defaultValue={activeLogoId || ''}><option value="">Active default logo</option>{logos.map(logo => <option key={logo.id} value={logo.id}>{logo.name}</option>)}</select>
+        <span className="sm">Exactly one uploaded logo is placed on this creative. You can choose a different approved logo for another design.</span>
+      </label>}
 
       <fieldset className="picker"><legend className="eyebrow">Products to feature <span aria-live="polite">{picked.length}/3 selected</span></legend>
         <input className="in" type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search Shopify products…" aria-label="Search products" />

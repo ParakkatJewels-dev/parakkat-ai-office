@@ -28,8 +28,8 @@ function harness({role='super_admin',paused=false,systemError=null,data={}}={}){
     './ModelRouting':{ModelRouting:()=>({type:'ModelRouting',props:{}})},
     './HiggsfieldCard':{HiggsfieldCard:()=>({type:'HiggsfieldCard',props:{}})},
     '@/lib/agents/publish-core.mjs':{publicationBlock:()=>null,hasConfirmedPublication:()=>false},'./SyncButton':{SyncButton:'SyncButton'},'@/components/forms':{Locked:'Locked',Submit:'Submit'},
-    './OpportunityRefresh':{OpportunityRefresh:'OpportunityRefresh'},'@/lib/agents/seo-status.mjs':{latestSeoJob:()=>null},'./SettingsDraftGuard':{SettingsDraftGuard:'SettingsDraftGuard'},'./SettingsAnchor':{SettingsAnchor:'SettingsAnchor'},
-    './Settings.module.css':{default:new Proxy({},{get:(_,key)=>String(key)})},'./actions':Object.fromEntries(['setRole','setHead','addCompetitor','runCampaign','nextStep','syncNow','togglePause','publishAgain','saveBrandBook','saveBrandLogo','addLesson','retireLesson','findOpportunitiesNow'].map(name=>[name,name])),
+    './OpportunityRefresh':{OpportunityRefresh:'OpportunityRefresh'},'@/lib/agents/seo-status.mjs':{latestSeoJob:()=>null},'./SettingsDraftGuard':{SettingsDraftGuard:'SettingsDraftGuard'},'./SettingsAnchor':{SettingsAnchor:'SettingsAnchor'},'./BrandLogoManager':{BrandLogoManager:'BrandLogoManager'},
+    './Settings.module.css':{default:new Proxy({},{get:(_,key)=>String(key)})},'./actions':Object.fromEntries(['setRole','setHead','addCompetitor','runCampaign','nextStep','syncNow','togglePause','publishAgain','saveBrandBook','addLesson','retireLesson','findOpportunitiesNow'].map(name=>[name,name])),
   };
   const Admin=load('../src/app/(app)/admin/page.tsx',modules).default;
   return {queries,calls,render:async(sp={})=>expand(await Admin({searchParams:Promise.resolve(sp)}))};
@@ -68,8 +68,9 @@ test('each settings section loads only its intended workspace and highlights the
 
 test('brand guidance and learning memory have independent reads, controls and retained filter pagination',async()=>{
   const brand=harness({data:{brand_book:{voice:'Warm and clear',updated_at:'2026-10-27'}}}),brandTree=await brand.render({tab:'brand'});
-  assert.deepEqual(tables(brand),['system_state','brand_book','brand_logo']);assert.deepEqual(selectedNav(brandTree),['/admin?tab=brand']);
-  assert.equal(nodes(brandTree,n=>n.type==='form'&&n.props.action==='saveBrandLogo').length,1);
+  assert.deepEqual(tables(brand),['system_state','brand_book','brand_logo','brand_logo_assets']);assert.deepEqual(selectedNav(brandTree),['/admin?tab=brand']);
+  assert.equal(nodes(brandTree,n=>n.type==='BrandLogoManager').length,1);
+  assert.equal(nodes(brandTree,n=>n.type==='form'&&n.props.action==='saveBrandLogo').length,0);
   assert.deepEqual(nodes(brandTree,n=>n.type==='textarea').map(n=>n.props.name),['voice','always','never','notes']);assert.equal(nodes(brandTree,n=>n.type==='Locked')[0].props.action,'saveBrandBook');
   const memory=harness(),sp={tab:'memory',dept:'creative',lp:'2'},memoryTree=await memory.render(sp);
   assert.deepEqual(tables(memory),['system_state','lessons','departments']);assert.deepEqual(selectedNav(memoryTree),['/admin?tab=memory']);

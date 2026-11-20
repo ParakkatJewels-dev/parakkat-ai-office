@@ -71,10 +71,13 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
   const paths = (items || []).map(d => d.image_path).filter(Boolean) as string[];
   const ids = (items || []).map(d => d.id as string);
   const admin = supabaseAdmin();
-  const [decisions, logo] = await Promise.all([
+  const [decisions, logo, logoAssets] = await Promise.all([
     ids.length ? admin.from('artwork_provider_decisions').select('source,item_id,request_id,provider,basis').in('item_id',ids) : Promise.resolve({data:[],error:null}),
-    role === 'super_admin' ? admin.from('brand_logo').select('id').eq('id',1).maybeSingle() : Promise.resolve({data:null,error:null}),
+    creativeAccess || role === 'super_admin' ? admin.from('brand_logo').select('id,path,sha256').eq('id',1).maybeSingle() : Promise.resolve({data:null,error:null}),
+    creativeAccess ? admin.from('brand_logo_assets').select('id,name,path,sha256').order('created_at',{ascending:true}).limit(100) : Promise.resolve({data:[],error:null}),
   ]);
+  const logoChoices = (logoAssets.data || []).map(item => ({ id: item.id, name: item.name }));
+  const activeLogoId = (logoAssets.data || []).find(item => item.path === logo.data?.path && item.sha256 === logo.data?.sha256)?.id || null;
   const providerFor = (d:{source:string;id:string;artwork_request_id?:string|null}) => decisions.data?.find(choice=>choice.source===d.source&&choice.item_id===d.id&&choice.request_id===d.artwork_request_id)?.provider as 'chatgpt'|'higgsfield'|undefined;
   const [[views, downloads], asked] = await Promise.all([
     paths.length ? Promise.all([
@@ -124,7 +127,7 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
 
       {tab === 'library' ? <Library db={db} sp={sp} role={role} /> : tab === 'order' ? (
         <div className={`studio one ${studioStyles.orderLayout}`}>
-          <StudioForm handoff={handoff} products={products as any} more={(prod.count || 0) > products.length} formats={Object.entries(FORMATS).filter(([id]) => id !== 'carousel_card').map(([id, f]) => ({ id, label: f.label, ratio: f.ratio, size: f.size }))} />
+          <StudioForm handoff={handoff} products={products as any} more={(prod.count || 0) > products.length} logos={logoChoices} activeLogoId={activeLogoId} formats={Object.entries(FORMATS).filter(([id]) => id !== 'carousel_card').map(([id, f]) => ({ id, label: f.label, ratio: f.ratio, size: f.size }))} />
           <form action={orderCarousel} className={`card studio-form ${studioStyles.carouselForm}`}>
             <div className="card-head"><div><h3>Five-card best-seller carousel</h3><p className="sub">Uses the latest complete 30-day Shopify category ranking, positive preferred stock and official product photos. {handoff ? 'Auto checks both image providers and chooses one for each separate 4:5 card. Each finished card is saved for human review.' : 'Five separate 4:5 cards arrive in the gallery for review.'}</p></div></div>
             <label className="field">Shopify product category<select name="category" defaultValue="Ring"><option value="Ring">Rings</option><option value="Earrings">Earrings</option><option value="Necklace">Necklaces</option><option value="Pendant">Pendants</option><option value="Bangle">Bangles</option><option value="Bracelet">Bracelets</option><option value="Chain">Chains</option><option value="Anklet">Anklets</option></select></label>
@@ -211,6 +214,7 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
                         <input type="hidden" name="source" value={d.source} /><input type="hidden" name="id" value={d.id} /><input type="hidden" name="back" value={`${back}#d-${d.id}`} />
                         {handoff && awaitingImport && <input type="hidden" name="prepare_only" value="1" />}
                         {handoff && !awaitingImport && <label className="field">Revision provider<select name="provider" defaultValue=""><option value="">Auto — choose for this creative</option><option value="chatgpt">{automaticChatGPT ? 'ChatGPT — generate automatically using your plan' : 'ChatGPT — create outside AI Office and import'}</option><option value="higgsfield">Higgsfield — generate here using credits</option></select></label>}
+                        {handoff && logoChoices.length > 0 && <label className="field">Logo for this revision<select name="logoId" defaultValue=""><option value="">Keep this creative’s current logo</option><option value="default">Use the active default logo</option>{logoChoices.map(choice => <option key={choice.id} value={choice.id}>{choice.name}</option>)}</select></label>}
                         {handoff && !awaitingImport && <p className="sm">Auto checks both connections, considers the creative brief and saves one provider for this revision. Every replacement is saved for human review.</p>}
                         {(handoff || d.kind !== 'carousel_card') && <textarea name="note" className="in" rows={2} maxLength={600} placeholder="What to change (optional). Preserve the exact product and required text." aria-label="What to change" />}
                         {handoff && awaitingImport && <p className="sm">This replaces the current brief without starting generation. Existing artwork stays available. If a previous submission is uncertain, check its saved generation before starting another image.</p>}

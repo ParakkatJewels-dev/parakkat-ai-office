@@ -67,6 +67,13 @@
 .logoPreview img{max-width:220px;max-height:100px;object-fit:contain;background:white;padding:8px;border-radius:4px}
 .logoForm{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap}
 .logoForm label{flex:1;min-width:min(100%,240px)}
+.logoManager{display:grid;gap:14px}
+.logoLibrary{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:12px}
+.logoTile{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);min-width:0}
+.logoTile img{width:100%;height:120px;object-fit:contain;padding:10px;background:#fff;border-radius:5px}
+.logoTile>div{display:grid;gap:3px;min-width:0;overflow-wrap:anywhere}
+.logoTile strong{font-size:13px}
+.logoTile>button,.logoTile>.pill{margin-top:auto}
 .departmentGroup{border-top:1px solid var(--line)}
 .departmentGroup>summary{padding:14px 0;display:flex;align-items:center;gap:11px;cursor:pointer;list-style:none;font-size:13px}
 .departmentGroup>summary>span{margin-left:auto}

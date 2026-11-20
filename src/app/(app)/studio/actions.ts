@@ -31,6 +31,7 @@ export async function orderDesign(form: FormData) {
     id = await queueDesign(supabaseAdmin(), {
       format: String(form.get('format')) as Format, brief: String(form.get('brief') || '').trim(), headline: String(form.get('headline') || '').trim(),
       language: lang in LANGS ? lang : 'en', productIds: form.getAll('product').map(Number).filter(Boolean), userId: user.id,
+      logoId: form.get('logoId') ? String(form.get('logoId')) : null,
     });
   } catch (e) {
     redirect(`/studio?tab=order&error=${encodeURIComponent(errText(e))}`);
@@ -148,7 +149,8 @@ export async function redesign(form: FormData) {
       origin = c.artwork_origin;
       if (['approved', 'publishing', 'publish_review', 'live'].includes((c.campaigns as any)?.status)) throw new Error('This campaign is approved. Its banner and copy are frozen.');
     }
-    await queueRedesign(supabaseAdmin(), source as Source, id, String(form.get('note') || ''));
+    const logoChoice = String(form.get('logoId') || '');
+    await queueRedesign(supabaseAdmin(), source as Source, id, String(form.get('note') || ''), logoChoice === 'default' ? null : logoChoice || undefined);
   } catch (e) {
     redirect(to('error', errText(e)));
   }

@@ -172,29 +172,40 @@ ${s.note ? `The head's requested change, which must also be checked: ${s.note}\n
   return { img, check, concept, refIds: refImgs.map(r => r.ref.id), headline, f, maker, lead, head, logoSha256: logo.sha256 };
 }
 
+async function approvedLogoId(db: SupabaseClient, logoId: string | null | undefined) {
+  if (logoId == null) return null;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(logoId)) throw new Error('Choose an approved brand logo.');
+  const { data, error } = await db.from('brand_logo_assets').select('id').eq('id', logoId).maybeSingle();
+  if (error || !data) throw new Error('That approved logo is unavailable. Reload Studio and choose another.');
+  return logoId;
+}
+
 /** A head orders a design; manual artwork generation waits for the chosen image to be imported. */
-export async function queueDesign(db: SupabaseClient, o: { format: Format; brief: string; headline: string; language: keyof typeof LANGS; productIds: number[]; userId: string; refIds?: string[]; carouselSource?: Record<string,unknown> }) {
+export async function queueDesign(db: SupabaseClient, o: { format: Format; brief: string; headline: string; language: keyof typeof LANGS; productIds: number[]; userId: string; logoId?: string | null; refIds?: string[]; carouselSource?: Record<string,unknown> }) {
   if (!FORMATS[o.format]) throw new Error('Pick a format.');
   if (o.format === 'carousel_card') throw new Error('Use the five-card carousel order for this format.');
   if (!o.brief.trim()) throw new Error('Describe what the design is for.');
   const handoff = isChatGPTHandoff();
   if (!handoff && !await geminiConfigured()) throw new Error('Add a Gemini key in Settings → AI providers before generating images.');
   if (!o.productIds.length) throw new Error('Pick at least one product that has a photo in Shopify.');
+  const logoId = await approvedLogoId(db, o.logoId);
   const research = o.carouselSource === undefined ? await researchArtwork('jewellery artwork', o.brief) : null;
   const brief = research ? `${o.brief}\n\n${creativeResearchBrief(research)}` : o.brief;
   const { data, error } = await db.from('designs').insert({ requested_by: o.userId, format: o.format, brief, headline: o.headline || null, language: o.language,
     product_ids: o.productIds.slice(0, 3), status: handoff ? 'awaiting_import' : 'queued', queued_at: handoff ? null : new Date().toISOString(),
-    artwork_request_id: handoff ? randomUUID() : null, artwork_handoff: null, ref_ids: o.refIds || [], carousel_source: o.carouselSource || (research ? {research} : null) }).select('id').single();
+    artwork_request_id: handoff ? randomUUID() : null, artwork_handoff: null, artwork_logo_id: logoId, ref_ids: o.refIds || [], carousel_source: o.carouselSource || (research ? {research} : null) }).select('id').single();
   if (error) throw error;
   return data.id as string;
 }
 
 /** A head asks for a new version of any AI image, with an optional note on what to change. */
-export async function queueRedesign(db: SupabaseClient, source: Source, id: string, note: string) {
+export async function queueRedesign(db: SupabaseClient, source: Source, id: string, note: string, logoId?: string | null) {
   // A saved note also distinguishes an explicit request for a campaign's first
   // image from an initial row left queued by an interrupted campaign stage.
   const at = new Date().toISOString(), redo_note = note.trim().slice(0, 600) || (source === 'creative' ? 'Try a different direction using the existing brief.' : null);
-  const handoff = isChatGPTHandoff(), request = { queued_at: handoff ? null : at, artwork_request_id: handoff ? randomUUID() : null, artwork_handoff: null, redo_note };
+  const selectedLogoId = logoId === undefined ? undefined : await approvedLogoId(db, logoId);
+  const handoff = isChatGPTHandoff(), request = { queued_at: handoff ? null : at, artwork_request_id: handoff ? randomUUID() : null, artwork_handoff: null, redo_note,
+    ...(selectedLogoId === undefined ? {} : { artwork_logo_id: selectedLogoId }) };
   const q = source === 'design'
     ? db.from('designs').update({ status: handoff ? 'awaiting_import' : 'queued', ...request, error: null }).eq('id', id).not('status', 'in', '(queued,making,generating)')
     : db.from('creatives').update({ art_status: handoff ? 'awaiting_import' : 'queued', ...request, art_error: null }).eq('id', id).or('art_status.is.null,art_status.not.in.(queued,making,generating)');

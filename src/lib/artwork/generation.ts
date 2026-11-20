@@ -178,7 +178,7 @@ export function createGenerationWorker(deps:{call?:typeof callHiggsfieldTool;aut
       try{image=await validateArtwork(bytes,type);}catch{
         await update({state:'failed',errorCode:'invalid_output',error:'Higgsfield returned an incomplete or unsupported image. The original job is preserved; no replacement was submitted.'});return 'failed';
       }
-      const logo=await currentBrandLogo();
+      const logo=await currentBrandLogo(bundle.logoId);
       if(bundle.logoSha256!==logo.sha256)throw new Error('The official logo changed. Prepare a new artwork revision.');
       const branded=await applyBrandLogo(bytes,logo);
       const path=`higgsfield-generations/${job.source}/${job.item_id}/${job.request_id}/${job.id}.png`;

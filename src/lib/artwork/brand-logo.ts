@@ -4,18 +4,22 @@ import sharp from 'sharp';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 const bucket = () => supabaseAdmin().storage.from('creatives');
-export type BrandLogo = { path: string; sha256: string; bytes: Buffer };
+export type BrandLogo = { id: string; path: string; sha256: string; bytes: Buffer };
 
-export async function currentBrandLogo(): Promise<BrandLogo> {
+export async function currentBrandLogo(logoId?: string | null): Promise<BrandLogo> {
   const db = supabaseAdmin();
-  const { data, error } = await db.from('brand_logo').select('path,sha256').eq('id', 1).maybeSingle();
+  const { data, error } = logoId
+    ? await db.from('brand_logo_assets').select('id,path,sha256').eq('id', logoId).maybeSingle()
+    : await db.from('brand_logo').select('path,sha256').eq('id', 1).maybeSingle();
   if (error) throw new Error('The brand logo could not be checked. Try again.');
-  if (!data) throw new Error('Add the approved brand logo in Settings → Brand guidance before creating artwork.');
+  if (!data) throw new Error(logoId ? 'The selected approved logo is unavailable. Choose another logo in Studio.' : 'Add the approved brand logo in Settings → Brand guidance before creating artwork.');
+  const asset = logoId ? { data: { id: logoId }, error: null } : await db.from('brand_logo_assets').select('id').eq('path', data.path).eq('sha256', data.sha256).maybeSingle();
+  if (asset.error || !asset.data) throw new Error('The active brand logo is missing from the approved library. Select it again in Settings.');
   const file = await bucket().download(data.path);
   if (file.error || !file.data) throw new Error('The approved brand logo could not be loaded. Upload it again in Brand guidance.');
   const bytes = Buffer.from(await file.data.arrayBuffer());
   if (createHash('sha256').update(bytes).digest('hex') !== data.sha256) throw new Error('The approved brand logo changed unexpectedly. Upload it again.');
-  return { path: data.path, sha256: data.sha256, bytes };
+  return { id: asset.data.id, path: data.path, sha256: data.sha256, bytes };
 }
 
 export async function normalizeBrandLogo(input: Buffer): Promise<Buffer> {
