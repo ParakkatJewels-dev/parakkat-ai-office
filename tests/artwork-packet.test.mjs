@@ -74,6 +74,7 @@ function harness(options = {}) {
     '@/lib/connectors/shopify': { shopifyArtworkPrice: async () => options.price || null },
     './brand-logo': { currentBrandLogo: async () => ({ path:'brand/logo/current.png', sha256:'a'.repeat(64), bytes:images[0] }), applyBrandLogo: async bytes => bytes, brandLogoInstruction:'Use the uploaded official logo only.' },
     './provider-decision': { selectedProviderForRequest: async () => null },
+    './design-direction': { planArtwork: async input => `Chosen original concept for ${input.products.join(', ')}. Stage the exact product in a sculptural still life with precise side lighting and one upper-right logo. Library lessons: ${input.libraryLessons.join(' | ')}` },
     '@/lib/artwork-mode.mjs': { isChatGPTHandoff: () => true }, './import-core.mjs': core,
   };
   const api = {};
@@ -106,16 +107,18 @@ test('packet and pack keep selected product order, actual source pixels and prev
   assert.deepEqual(h.state.photoReads,[photo(2),photo(1)]);
   assert.deepEqual([...await sharp(files.get('product-1.png')).extract({ left: 0, top: 0, width: 1, height: 1 }).raw().toBuffer()],[0,0,255]);
   assert.deepEqual([...await sharp(files.get('product-2.png')).extract({ left: 0, top: 0, width: 1, height: 1 }).raw().toBuffer()],[255,0,0]);
-  assert.ok(files.has('style-1.png')); assert.ok(files.has('previous-artwork.png'));
-  assert.equal(h.state.driveReads[0].expected,revision); assert.ok(h.state.driveReads[0].signal instanceof AbortSignal);
+  assert.ok(files.has('official-logo.png')); assert.ok(files.has('previous-artwork.png'));
+  assert.equal(files.has('style-1.png'),false); assert.deepEqual(h.state.driveReads,[]);
   assert.deepEqual(h.state.previousReads,['previous-v2.png']); assert.equal(h.state.storageWrites,0);
   assert.equal(h.state.saves,1);
   assert.ok(h.state.writes.every(write => Object.keys(write.values).length === 1 && write.values.artwork_handoff));
   assert.equal(JSON.stringify(h.state.row.artwork_handoff).includes('base64'),false);
 });
-test('expired Google access gives the manager the reconnect action before generation', async () => {
+test('Drive originals are not needed to generate a fresh concept', async () => {
   const h=harness({driveError:new Error('Google sign-in expired or was revoked. Reconnect Google in Settings → Connections.')});
-  await assert.rejects(h.pack(),/Reconnect Google in Settings → Connections/);
+  const pack=await h.pack();
+  assert.ok(unzip(pack.bytes).has('official-logo.png'));
+  assert.deepEqual(h.state.driveReads,[]);
   assert.equal(h.state.storageWrites,0);
 });
 
@@ -128,7 +131,7 @@ test('a carousel keeps its shared format and only displays a live verified price
   assert.match(packet.prompt,/card 2 of a 3-card carousel ad/);
   assert.match(packet.prompt,/Warm ivory grid; fixed product position/);
   assert.match(packet.prompt,/FIXED CAROUSEL TEMPLATE/);
-  assert.deepEqual(packet.assets.map(asset=>asset.kind),['product','template']);
+  assert.deepEqual(packet.assets.map(asset=>asset.kind),['product','logo','template']);
   assert.match(packet.prompt,/from ₹1,299/);
   assert.match(packet.prompt,/offer only when the manager explicitly supplied/);
   const files=unzip((await priced.pack()).bytes);
@@ -145,10 +148,10 @@ test('normal revisions rerank prior irrelevant references using product category
     reference('ivory','Chain in ivory studio'),
     reference('plain','Fine chain minimalist', { style: 'minimal ivory studio', quality: 2 }),
   ] });
-  const packet = await h.packet(), styles = packet.assets.filter(asset => asset.kind === 'style');
-  assert.ok(['Chain in ivory studio','Fine chain minimalist'].includes(styles[0].title), 'explicit ivory direction beats the popular dark chain');
-  assert.equal(styles.some(asset => asset.title === 'Idol wedding gifting'),false);
-  assert.equal(styles.length,3); assert.match(packet.prompt,/REQUESTED REVISION.*No ceremonial props/s);
+  const packet = await h.packet();
+  assert.match(packet.prompt,/Chain in ivory studio|Fine chain minimalist/, 'explicit ivory direction selects relevant written lessons');
+  assert.doesNotMatch(packet.prompt,/Idol wedding gifting/);
+  assert.equal(packet.assets.some(asset => asset.kind === 'style'),false); assert.match(packet.prompt,/REQUESTED REVISION.*No ceremonial props/s);
 });
 
 test('a Christmas request treats Diwali artwork as design technique, not scene content', async () => {
@@ -157,10 +160,9 @@ test('a Christmas request treats Diwali artwork as design technique, not scene c
     reference('general','Fine chain studio',{occasion:'general',style:'Ivory studio lighting'}),
   ] });
   const packet=await h.packet();
-  assert.equal(packet.assets.find(asset=>asset.kind==='style').title,'Fine chain studio');
-  assert.equal(packet.assets.filter(asset=>asset.kind==='style').length,1);
-  assert.match(packet.prompt,/current brief and requested occasion control the subject, setting, symbols, decorations and props/);
-  assert.match(packet.prompt,/different festival shown or described in a past reference must not appear/);
+  assert.match(packet.prompt,/Fine chain studio/);
+  assert.equal(packet.assets.filter(asset=>asset.kind==='style').length,0);
+  assert.match(packet.prompt,/current brief and requested occasion control the scene/);
   assert.match(packet.prompt,/CURRENT TASK OCCASION: CHRISTMAS/);
 });
 
@@ -173,15 +175,15 @@ test('Christmas necklace posters with only Diwali necklace references attach no 
   const packet=await h.packet();
   assert.deepEqual(packet.assets.filter(asset=>asset.kind==='style'),[]);
   assert.match(packet.prompt,/Do not use diyas, brass oil lamps/);
-  assert.match(packet.prompt,/No matching saved style reference/);
+  assert.match(packet.prompt,/No matching saved design lesson/);
 });
 
 test('a fresh theme correction can omit the previous contaminated artwork',async()=>{
   const h=harness({row:{product_ids:[1],brief:'Christmas necklace poster',image_path:'old-diwali.png',redo_note:'Start from the official product photo. Do not use previous artwork. Make a fresh Christmas scene.'},products:[product(1)],refs:[reference('diwali','Diwali chain',{occasion:'Diwali',tags:['chain']})]});
   const packet=await h.packet();
-  assert.deepEqual(packet.assets.map(asset=>asset.kind),['product']);
+  assert.deepEqual(packet.assets.map(asset=>asset.kind),['product','logo']);
   const files=unzip((await h.pack()).bytes);
-  assert.deepEqual([...files.keys()],['brief.txt','README.txt','product-1.png']);
+  assert.deepEqual([...files.keys()],['brief.txt','README.txt','product-1.png','official-logo.png']);
   assert.deepEqual(h.state.previousReads,[]);
 });
 
@@ -190,13 +192,13 @@ test('packets keep all product photos while fitting the image tool reference lim
     reference('a','Fine chain design A'),reference('b','Fine chain design B'),reference('c','Fine chain design C'),
   ]};
   const fresh=harness(options),packet=await fresh.packet();
-  assert.equal(packet.assets.length,5);
+  assert.equal(packet.assets.length,4);
   assert.deepEqual(packet.assets.filter(asset=>asset.kind==='product').map(asset=>asset.name),['product-1.png','product-2.png','product-3.png']);
-  assert.deepEqual(packet.assets.filter(asset=>asset.kind==='style').map(asset=>asset.name),['style-1.png','style-2.png']);
-  assert.doesNotMatch(packet.prompt,/style-3\.png/);
+  assert.deepEqual(packet.assets.filter(asset=>asset.kind==='style'),[]);
+  assert.match(packet.prompt,/DESIGN LIBRARY LEARNINGS/);
   const revision=harness({...options,row:{...options.row,image_path:'previous-v1.png'}}),revisionPacket=await revision.packet();
   assert.equal(revisionPacket.assets.length,5);
-  assert.equal(revisionPacket.assets.filter(asset=>asset.kind==='style').length,1);
+  assert.equal(revisionPacket.assets.filter(asset=>asset.kind==='style').length,0);
   assert.equal(revisionPacket.assets.at(-1).name,'previous-artwork.png');
 });
 
@@ -205,7 +207,8 @@ test('explicit carousel references outside the general bound are preserved and m
   const refs = Array.from({ length: 1000 }, (_,i) => reference(`candidate-${String(i).padStart(4,'0')}`,'Chain design'));
   const h = harness({ row: { format: 'carousel_card', carousel_id: 'set', carousel_index: 1, ref_ids: [chosen.id] }, refs: [...refs,chosen] });
   const packet = await h.packet();
-  assert.deepEqual(packet.assets.filter(asset => asset.kind === 'style').map(asset => asset.title),['Chosen ring design']);
+  assert.match(packet.prompt,/Chosen ring design/);
+  assert.deepEqual(packet.assets.filter(asset => asset.kind === 'style'),[]);
   assert.match(packet.prompt,/card 1 of a five-card carousel/);
   for (const selected of [[],[{ ...chosen, hidden: true }],[{ ...chosen, modified_at: null }]]) {
     const missing = harness({ row: { carousel_id: 'set', carousel_index: 1, ref_ids: [chosen.id] }, refs: [reference('other','Other chain'),...selected] });
@@ -238,20 +241,20 @@ test('a concurrent packet CAS loser uses the saved winner instead of returning i
   assert.deepEqual(h.state.photoReads,[]); assert.deepEqual(h.state.driveReads,[]);
 });
 
-test('a changed revision during snapshot save is rejected and cached references must retain their verified revision', async () => {
+test('a changed revision during snapshot save is rejected and saved design lessons remain stable', async () => {
   const changed = harness({ beforeSave(state) { state.row.artwork_request_id = randomUUID(); state.row.artwork_handoff = null; } });
   await assert.rejects(changed.packet(),/artwork request changed/);
   const h = harness(); await h.packet(); h.state.refs[0].modified_at = '2026-10-29T00:00:00.000Z';
-  await assert.rejects(h.pack(),/saved style reference has changed/);
+  assert.ok(unzip((await h.pack()).bytes).has('official-logo.png'));
   assert.deepEqual(h.state.driveReads,[]);
   const unreadable = harness({ driveError: true });
-  await assert.rejects(unreadable.pack(),/could not be verified or read from Drive/);
+  assert.ok(unzip((await unreadable.pack()).bytes).has('official-logo.png'));
   assert.equal(unreadable.state.storageWrites,0);
 });
 
 test('a valid empty library remains usable while a library read error stops packet creation', async () => {
   const empty = harness({ refs: [] });
-  assert.match((await empty.packet()).prompt,/No matching saved style reference/);
+  assert.match((await empty.packet()).prompt,/No matching saved design lesson/);
   const failed = harness({ libraryError: true });
   await assert.rejects(failed.packet(),/Design Library could not be read/);
   assert.equal(failed.state.saves,0);

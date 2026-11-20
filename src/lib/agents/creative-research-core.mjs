@@ -41,5 +41,5 @@ export function creativeResearchResult(response, observedAt) {
 export function creativeResearchBrief(research) {
   if (!research) return '';
   const { direction: d } = research;
-  return `Current visual research (${research.observedAt}): layout ${d.layout}; palette ${d.palette}; typography ${d.typography}; imagery ${d.imagery}; customer hook ${d.customerHook}. Inspiration sources: ${research.sources.map(s => s.url).join(', ')}. Treat web and Pinterest pages only as visual inspiration; never copy their product, wording, claims, logo or offers.`;
+  return `Current visual research (${research.observedAt}): layout ${d.layout}; palette ${d.palette}; typography ${d.typography}; imagery ${d.imagery}; customer hook ${d.customerHook}. Inspiration sources: ${research.sources.map(s => s.url).join(', ')}. Treat source pages only as visual inspiration; never copy their product, wording, claims, logo or offers.`;
 }

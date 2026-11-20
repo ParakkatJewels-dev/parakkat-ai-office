@@ -6,12 +6,12 @@ import { conversationUser } from '@/lib/agents/conversation-api';
 import { FORMATS, type Source } from '@/lib/agents/design';
 import { rankDesignReferences, referenceFingerprint, requestedDesignOccasion } from '@/lib/agents/library-core.mjs';
 import { fetchShopifyPhoto, shopifyPhotoUrl } from '@/lib/agents/carousel-card.mjs';
-import { designImageById } from '@/lib/connectors/drive';
 import { shopifyArtworkPrice } from '@/lib/connectors/shopify';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
 import { boundedFormData, validId, validOrigin, validateArtwork, zipFiles } from './import-core.mjs';
 import { applyBrandLogo, brandLogoInstruction, currentBrandLogo } from './brand-logo';
 import { selectedProviderForRequest } from './provider-decision';
+import { planArtwork } from './design-direction';
 
 export class ArtworkError extends Error { constructor(message:string, public status=400) {super(message);} }
 export type ArtworkProvider = 'chatgpt' | 'higgsfield';
@@ -92,17 +92,18 @@ async function packetFor(access:Access):Promise<any> {
   const direction=[row.brief||row.body,row.headline,row.redo_note].filter(Boolean).join('\n');
   const occasion=requestedDesignOccasion(row.redo_note)||requestedDesignOccasion(String(row.brief||row.body||'').split(/\n\n/)[0]);
   const usePreviousArtwork=!!row.image_path&&!template&&!/\b(?:do not use|ignore|omit)\s+(?:the\s+)?(?:previous|old)\s+(?:image|artwork)\b/i.test(row.redo_note||'');
-  // The built-in ChatGPT image tool accepts at most five reference paths. Keep
-  // every authoritative product photo and the previous artwork before styles.
-  const styleSlots=template?0:Math.max(0,Math.min(series?1:3,5-products.length-(usePreviousArtwork?1:0)));
-  const refs=(explicit.length ? explicit : styleSlots ? rankDesignReferences(candidates,[direction],{productTitles:products.map(p=>p.title),direction:row.redo_note||direction,occasion:occasion||'general',format,previousIds:priorIds,limit:styleSlots}) : []).slice(0,styleSlots);
+  // Design Library fingerprints are planning notes, never image inputs. This
+  // prevents old layouts and props from steering the image model by pixels.
+  const refs=(explicit.length ? explicit : rankDesignReferences(candidates,[direction],{productTitles:products.map(p=>p.title),direction:row.redo_note||direction,occasion:occasion||'general',format,previousIds:priorIds,limit:3})).slice(0,3);
+  const lessons=refs.map((r:any)=>`${r.name}: ${referenceFingerprint(r)}`);
+  const artDirection=await planArtwork({brief:direction,headline:row.headline||'',format,occasion:occasion||'general',products:products.map(p=>p.title),libraryLessons:lessons,revision:row.redo_note||'',fixedTemplate:!!template});
   const prices=await Promise.all(products.map(async p=>{try{return await shopifyArtworkPrice(Number(p.id));}catch{return null;}}));
   const money=(amount:number,currency:string)=>new Intl.NumberFormat(currency==='INR'?'en-IN':'en',{style:'currency',currency,maximumFractionDigits:amount%1?2:0}).format(amount);
   const priceCopy=prices.map((price,i)=>price?`${products[i].title}: ${price.min===price.max?money(price.min,price.currency):`from ${money(price.min,price.currency)}`} (live Shopify base-store price checked ${price.checkedAt}; verify market-specific pricing before publication)`:'').filter(Boolean);
   const assets = [
     ...products.map((p,i)=>({name:`product-${i+1}.png`,kind:'product',url:p.image_url!,title:p.title})),
+    {name:'official-logo.png',kind:'logo',title:'Selected approved Parakkat logo'},
     ...(template?[{name:'template-1.png',kind:'template',title:'First saved poster in this carousel series'}]:[]),
-    ...refs.map((r:any,i:number)=>({name:`style-${i+1}.png`,kind:'style',title:r.name})),
     ...(usePreviousArtwork?[{name:'previous-artwork.png',kind:'previous',title:'Previous version to revise'}]:[]),
   ];
   const version=(Array.isArray(row.versions)?row.versions.length:0)+(row.image_path?2:1);
@@ -114,13 +115,14 @@ async function packetFor(access:Access):Promise<any> {
     row.carousel_id?`This is card ${row.carousel_index} of a five-card carousel. Keep the exact same layout grid, product placement and scale, headline zone, brand position, typography, palette, lighting, background and CTA placement on every card. Change only the product and its approved details. Generate this card as a separate finished image, not a collage of all cards.`:series?`This is card ${series.index} of a ${series.total}-card carousel ad. Shared format for the entire series: ${series.direction||'Keep one identical layout, type hierarchy, background, product position and CTA position.'} Only product and approved details change. Generate one finished card, not a collage.`:'',
     template?`FIXED CAROUSEL TEMPLATE — template-1.png is the first saved poster in this exact set. Match its background, surface texture, colour palette, lighting, margins, product position and scale, typography, headline zone, title zone and CTA position as closely as possible. Replace ONLY the template's jewellery and product title with product-1.png and its exact title. Do not copy or redraw any logo or wordmark in the template. The product in template-1.png is not the product for this poster. The official product photo alone controls product identity. This template rule overrides any earlier brief asking for a different background or layout.`:(series&&Number(series.index)===1)||(row.carousel_id&&Number(row.carousel_index)===1)?'This first card establishes the fixed template for the set. Later cards must keep this layout, palette, background, typography and CTA position while changing only the product and its title.':'',
     `Brief: ${row.brief||row.body||'Create premium jewellery artwork with a clear hero product and restrained, readable typography.'}`,
+    `ART DIRECTION — execute this chosen concept as one coherent campaign image, not a collage of the alternatives:\n${artDirection}`,
     `Approved headline: ${row.headline||'No headline supplied; do not invent promotional claims.'}`,
     products.length?`PRODUCT IDENTITY — the attached product files are the authoritative sources:\n${products.map((p,i)=>`product-${i+1}.png: ${p.title} (Shopify product ${p.id})`).join('\n')}\nPreserve the exact jewellery silhouette, stone count and colours, setting, motifs, metal tone and proportions. Do not substitute similar jewellery. Avoid cropping or obscuring its distinguishing features.`:'No product photo was selected. Do not invent a product claimed to be in the Parakkat catalogue.',
     priceCopy.length?`OPTIONAL VERIFIED PRICE COPY — use only if it improves the customer-facing hierarchy; preserve the exact value and currency, including "from" for a price range:\n${priceCopy.join('\n')}`:'No current Shopify price was verified for this artwork; omit all prices.',
-    refs.length?`BRAND STYLE REFERENCES — attach these actual past designs:\n${refs.map((r:any,i:number)=>`style-${i+1}.png: ${r.name}. ${i===0?'Brand quality benchmark.':'Supporting finish only; do not blend conflicting scenes.'} ${referenceFingerprint(r)}`).join('\n')}\nUse these designs only for transferable composition, product scale, palette relationships, typography, hierarchy, lighting and finish. The current brief and requested occasion control the subject, setting, symbols, decorations and props. A different festival shown or described in a past reference must not appear in this image. The manager brief and dated visual research determine this artwork's composition. Do not copy a past layout literally unless the manager explicitly requested it. For a carousel, hold the newly chosen layout fixed across all cards. Their jewellery, prices, claims and offer badges are not approved content for this image.`:template?'Use template-1.png as the sole visual template. Ignore unrelated past visual directions and do not change its setting or composition.':'No matching saved style reference is available for this product and occasion. Use the official product photo for identity and the brand’s reusable layout principles: one clear hero, a legible headline zone, controlled lighting, generous spacing and a concise CTA. Build a fresh scene for the current brief.',
+    refs.length?`DESIGN LIBRARY LEARNINGS (written notes only; no past artwork images are attached):\n${lessons.join('\n')}\nUse transferable craft and avoid repeating these designs' recognizable layouts, settings, props or visual hooks. The current brief and requested occasion control the scene. A different festival described in a past reference must not appear.`:'No matching saved design lesson is available. Follow the Banner Designer’s fresh concept and the official product photo.',
     usePreviousArtwork?'The attached previous-artwork.png is the previous version. Preserve its approved product identity and visual treatment except for the requested changes below. Do not copy, redraw or duplicate the logo in the previous image. Previous wording, festival details and props are not approved for a new occasion; follow the current brief. Do not simply re-export it.':'',
     row.redo_note?`REQUESTED REVISION (takes priority over earlier art direction): ${row.redo_note}`:'',
-    'Brand: PARAKKAT JEWELS. The official uploaded logo will be placed by AI Office after generation. Do not add a separate brand name or logo. Make the product appealing with clear hierarchy, a strong customer hook and a concise shopping CTA. You may use the exact verified Shopify price above, the product title, and an offer only when the manager explicitly supplied that offer in the brief. Do not infer promotions from inspiration pages or invent discounts, certifications or material claims. Produce a polished, cohesive jewellery photograph with clean spacing and controlled detail.',
+    'Brand: PARAKKAT JEWELS. Use official-logo.png as the only brand-mark reference. Render one faithful copy in the reserved upper-right logo zone as part of the composition; preserve its exact letters, proportions and colours. AI Office verifies and precisely finishes that reserved mark against the approved file. Add no second brand name or mark. Make the product appealing with clear hierarchy, a strong customer hook and a concise shopping CTA. You may use the exact verified Shopify price above, the product title, and an offer only when the manager explicitly supplied that offer in the brief. Do not infer promotions from inspiration pages or invent discounts, certifications or material claims. Produce a polished, cohesive jewellery photograph with clean spacing and controlled detail.',
     'Before returning the image, inspect product fidelity, typography, spelling, brand accuracy and the requested changes. Export the finished image as a still PNG, JPEG or WebP. A person will review it in AI Office before approval.',
     `AI Office artwork request: ${source}/${id} · ${row.artwork_request_id} · intended version ${version}.`,
   ].filter(Boolean).join('\n\n');
@@ -145,6 +147,9 @@ async function sourceFiles(access:Access,bundle:any) {
   const {refs,products}=bundle;
   const files:{name:string;data:Buffer}[]=[];
   for(const [i,p] of products.entries()) files.push({name:`product-${i+1}.png`,data:await png(await fetchShopifyPhoto(p.image_url))});
+  const logo=await requiredLogo(bundle.logoId);
+  if(logo.sha256!==bundle.logoSha256)throw new ArtworkError('The approved logo changed. Prepare a new revision.',409);
+  files.push({name:'official-logo.png',data:await png(logo.bytes)});
   if(bundle.template) {
     const first=await supabaseAdmin().from('designs').select('id,requested_by,carousel_id,carousel_index,carousel_source,image_path,versions').eq('id',bundle.template.id).maybeSingle();
     const card=first.data;
@@ -156,18 +161,6 @@ async function sourceFiles(access:Access,bundle:any) {
     const original=await supabaseAdmin().storage.from('creatives').download(bundle.template.path);
     if(original.error||!original.data)throw new ArtworkError('The first carousel poster could not be loaded as the template.',409);
     files.push({name:'template-1.png',data:await png(Buffer.from(await original.data.arrayBuffer()))});
-  }
-  if(refs.length) {
-    const valid=await supabaseAdmin().from('design_refs').select('id,modified_at').in('id',refs.map((r:any)=>r.id)).eq('status','ready').eq('hidden',false);
-    if(valid.error||refs.some((ref:any)=>!valid.data?.some(r=>r.id===ref.id&&r.modified_at===ref.modified_at)))throw new ArtworkError('A saved style reference has changed or is unavailable. Prepare a new revision brief before continuing.',409);
-  }
-  const signal=AbortSignal.timeout(40_000);
-  for(const [index,ref] of refs.entries()) {
-    try {const image=await designImageById(ref.drive_id,signal,ref.modified_at);files.push({name:`style-${index+1}.png`,data:await png(image.data)});}
-    catch(error) {
-      if(error instanceof Error && /Google sign-in expired or was revoked/.test(error.message))throw new ArtworkError('Google sign-in expired or was revoked. Reconnect Google in Settings → Connections, then retry this artwork request.',409);
-      throw new ArtworkError(`The saved reference “${ref.name}” could not be verified or read from Drive. Refresh its library folder before continuing.`,409);
-    }
   }
   if(bundle.packet.assets.some((asset:any)=>asset.kind==='previous')) {
     const old=await supabaseAdmin().storage.from('creatives').download(access.row.image_path);

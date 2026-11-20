@@ -84,6 +84,9 @@ test('reference bundles reject path traversal, altered bytes, duplicate names an
   const tooMany=job();tooMany.files=Array.from({length:6},(_,i)=>({...tooMany.files[0],name:`style-${i+1}.png`}));assert.throws(()=>validateJob(tooMany),/at most five/);
   const stale=job();stale.packet.requestId=ids.holder;assert.throws(()=>validateJob(stale),/prompt/);
   const checked=validateJob(job());assert.equal(checked.files[0].bytes.length,png.length);assert.match(checked.manifestHash,/^[a-f0-9]{64}$/);
+  const withLogo=job();withLogo.files.push({...withLogo.files[0],name:'official-logo.png'});
+  const logoJob=validateJob(withLogo);
+  assert.match(generationPrompt(logoJob.manifest,'/work/job'),/one approved logo to reproduce faithfully/);
 });
 
 test('a saved first poster is accepted as a fixed carousel template',()=>{

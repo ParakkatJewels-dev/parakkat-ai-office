@@ -36,7 +36,7 @@ export async function normalizeBrandLogo(input: Buffer): Promise<Buffer> {
   } catch { throw new Error('Upload a complete PNG, WebP or JPEG logo, at least 64 pixels on each side. A transparent PNG works best.'); }
 }
 
-/** Exact uploaded pixels are resized and composited; image models never draw the mark. */
+/** The model stages the mark; the approved pixels finish its reserved zone exactly. */
 export async function applyBrandLogo(image: Buffer, logo: BrandLogo): Promise<Buffer> {
   const upright = await sharp(image, { limitInputPixels: 40_000_000 }).rotate().png().toBuffer();
   const base = sharp(upright);
@@ -49,12 +49,12 @@ export async function applyBrandLogo(image: Buffer, logo: BrandLogo): Promise<Bu
   const maxH = Math.max(32, Math.round(height * 0.105));
   const mark = await sharp(logo.bytes).resize(maxW - pad * 2, maxH - pad * 2, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
   const markInfo = await sharp(mark).metadata();
-  const plateW = (markInfo.width || 0) + pad * 2, plateH = (markInfo.height || 0) + pad * 2;
+  const plateW = maxW, plateH = maxH;
   const left = width - margin - plateW, top = margin;
   const plate = Buffer.from(`<svg width="${plateW}" height="${plateH}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" rx="${pad}" fill="#fff" fill-opacity=".94"/></svg>`);
-  const finished = await base.composite([{ input: plate, left, top }, { input: mark, left: left + pad, top: top + pad }]).png({ compressionLevel: 9 }).toBuffer();
+  const finished = await base.composite([{ input: plate, left, top }, { input: mark, left: left + Math.round((plateW-(markInfo.width||0))/2), top: top + Math.round((plateH-(markInfo.height||0))/2) }]).png({ compressionLevel: 9 }).toBuffer();
   if (finished.length > 20 * 1024 * 1024) throw new Error('The branded image is too large. Use a smaller artwork image and try again.');
   return finished;
 }
 
-export const brandLogoInstruction = 'BRAND LOGO RULE: Leave the upper-right brand area clear. Do not draw, recreate, typeset or invent any logo, wordmark, monogram, seal or watermark anywhere in the image. AI Office places the exact administrator-uploaded logo on the finished image. Never use a logo from a style reference, previous image or product photo.';
+export const brandLogoInstruction = 'BRAND LOGO RULE: official-logo.png is the sole approved logo. Study its exact letters, shapes, spacing and colour. Draw one faithful rendition only inside a quiet upper-right brand zone spanning about 26% of canvas width and 10% of canvas height, inset 2.5% from the top and right. Keep all product, headline and ornamentation outside that zone. Do not use any logo from a prior image or product photo. AI Office finishes this one mark from the approved file to ensure exact identity.';

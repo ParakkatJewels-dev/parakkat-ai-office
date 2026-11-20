@@ -22,6 +22,7 @@ function harness(options={}) {
     '@/lib/artwork-mode.mjs':{isChatGPTHandoff:()=>true},'./import-core.mjs':core,
     './brand-logo':{currentBrandLogo:async()=>({sha256:'a'.repeat(64),bytes:Buffer.from('logo')}),applyBrandLogo:async bytes=>bytes,brandLogoInstruction:'Only approved logo'},
     './provider-decision':{selectedProviderForRequest:async()=>null},
+    './design-direction':{planArtwork:async()=>''},
   };
   const exports={};new Function('exports','require',code)(exports,name=>{assert.ok(name in modules,`Unexpected import ${name}`);return modules[name];});
   return {api:exports,calls};
