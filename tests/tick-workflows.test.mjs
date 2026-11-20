@@ -17,6 +17,7 @@ test('a minute tick advances human workflows even when autopilot chose another j
     '@/lib/auth/session':{isCron:()=>true},'@/lib/errors':{errText:error=>String(error)},
     '@/lib/pause':{isPaused:async()=>false},'@/lib/outcomes/service':{refreshOutcomeMonitoring:async()=>({idle:true})},
     '@/lib/automation/runner':{runAutomationQueue:async()=>{called.push('workflow');return {id:'task',status:'queued'};}},
+    '@/lib/artwork/visual-qc':{drainVisualQuality:async()=>({state:'idle'})},
   };
   const api={};new Function('exports','require',compiled)(api,name=>{assert.ok(name in modules,`Unexpected import ${name}`);return modules[name];});
   const result=await api.POST(new Request('https://office.example/api/agents/tick',{method:'POST'}));

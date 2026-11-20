@@ -9,6 +9,7 @@ import { errText } from '@/lib/errors';
 import { isPaused } from '@/lib/pause';
 import { refreshOutcomeMonitoring } from '@/lib/outcomes/service';
 import { runAutomationQueue } from '@/lib/automation/runner';
+import { drainVisualQuality } from '@/lib/artwork/visual-qc';
 
 export const maxDuration = 300;
 
@@ -46,5 +47,7 @@ export async function POST(req: Request) {
   }
   let outcomes:unknown=null;
   if(Date.now()-t0<180000&&!await isPaused(true))try{outcomes=await refreshOutcomeMonitoring(db);}catch{outcomes={error:'Outcome monitoring could not complete; saved evidence is retained.'};}
-  return NextResponse.json({ moved, autopilot, workflows, designs,outcomes });
+  let visualQuality:unknown=null;
+  if(Date.now()-t0<190000&&!await isPaused(true))try{visualQuality=await drainVisualQuality();}catch{visualQuality={error:'Visual quality checking will retry on the next tick.'};}
+  return NextResponse.json({ moved, autopilot, workflows, designs,outcomes,visualQuality });
 }

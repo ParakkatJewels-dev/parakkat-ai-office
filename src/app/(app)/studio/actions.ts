@@ -271,6 +271,14 @@ export async function reviewImage(form: FormData) {
     if (img.status === 'awaiting_import') throw new Error('Save the finished image before reviewing this new artwork request.');
     if (['queued','making','generating'].includes(img.status)) throw new Error('This artwork is still being generated. Review it once the finished image is saved.');
     if (!imagePath || img.image_path !== imagePath || (img.artwork_request_id || null) !== requestId) throw new Error('This artwork has changed since you opened the review. Refresh the page and review the current image.');
+    if(verdict==='good') {
+      const table=source==='design'?'designs':'creatives';
+      const checked=await admin.from(table).select('artwork_handoff').eq('id',id).maybeSingle();
+      if(checked.error)throw new Error('The independent image check could not be read. Refresh before reviewing.');
+      const qc=checked.data?.artwork_handoff?.visualQc;
+      if(qc?.imagePath===imagePath&&qc?.requestId===requestId&&qc.status==='fail'&&note.length<20)
+        throw new Error('The independent image check found a problem. Explain why this image is acceptable, or mark it Bad with a correction note.');
+    }
     if (img.kind === 'carousel_card' && verdict === 'good' && img.status !== 'ready') throw new Error('The product match has not passed. Retry this card before marking it Good.');
     const { error } = await admin.rpc('review_artwork', { p_source: source, p_id: id, p_image_path: imagePath, p_request_id: requestId, p_verdict: verdict, p_note: note || null, p_reviewer: user.id, p_reviewer_role: role });
     if (error) throw error;

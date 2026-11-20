@@ -108,9 +108,9 @@ export async function geminiText(prompt: string): Promise<string> {
 }
 
 /** Ask Gemini about images (a finished design next to the product photos) and get JSON back. */
-export async function geminiJSON<T>(prompt: string, images: Part[], agent: AgentPromptContext, purpose?: 'library_study'): Promise<T> {
+export async function geminiJSON<T>(prompt: string, images: Part[], agent: AgentPromptContext, purpose?: 'library_study' | 'artwork_qc'): Promise<T> {
   const system = await agentPrompt(agent.db,agent.id,`${prompt}\nReply with one JSON object only.`,{signal:agent.signal});
-  const parts = await generate(TEXT(), [{ text: 'Complete the image review described in the current task. Reply with one JSON object only.' }, ...images], false, undefined, true, system, agent.signal,{},purpose==='library_study');
+  const parts = await generate(TEXT(), [{ text: 'Complete the image review described in the current task. Reply with one JSON object only.' }, ...images], false, undefined, true, system, agent.signal,{},purpose==='library_study'||purpose==='artwork_qc');
   const text = parts.map(p => p.text || '').join('').trim();
   try { return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as T; } catch { throw new GeminiError('Gemini returned an invalid review. Try again.', 'invalid_json'); }
 }

@@ -194,7 +194,7 @@ export function ChatGPTArtwork({ source, id, requestId, title, compact = false, 
       link.href = url; link.download = `parakkat-artwork-${id}.zip`;
       document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      setNotice(`Reference pack downloaded. Unzip it and attach the product photos and style references in ${selected.label}.`);
+      setNotice(`Reference pack downloaded. Unzip it and attach the official product photos and selected approved logo in ${selected.label}.`);
     });
   }
 
@@ -243,7 +243,7 @@ export function ChatGPTArtwork({ source, id, requestId, title, compact = false, 
           <button type="button" className="btn ghost sm-btn" disabled={busy !== null} onClick={downloadPack}>{busy === 'pack' ? 'Preparing pack…' : 'Download reference pack'}</button>
         </div>
       </li>
-      <li><b>Generate in {selected.label}</b><p>Unzip the pack, attach its product photos and style references, paste the brief, and {provider === 'higgsfield' ? 'use Nano Banana Pro with Unlimited enabled. Confirm the generate button says Unlimited before generating. Availability depends on the model and resolution.' : 'ask ChatGPT to create the image.'}</p>
+      <li><b>Generate in {selected.label}</b><p>Unzip the pack, attach its official product photos and selected approved logo, paste the brief, and {provider === 'higgsfield' ? 'use Nano Banana Pro with Unlimited enabled. Confirm the generate button says Unlimited before generating. Availability depends on the model and resolution.' : 'ask ChatGPT to create the image.'}</p>
         <a className="btn ghost sm-btn" href={selected.url} target="_blank" rel="noreferrer">Open {selected.label} <span aria-hidden="true">↗</span></a>
       </li>
       <li><b>Import the finished image</b><form className={styles.upload} onSubmit={importArtwork}>

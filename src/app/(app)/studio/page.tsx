@@ -21,6 +21,7 @@ import { byId } from '@/lib/agents/people';
 import { isChatGPTHandoff } from '@/lib/artwork-mode.mjs';
 import { ChatGPTArtwork } from './ChatGPTArtwork';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import type { VisualQc } from '@/lib/artwork/visual-qc';
 
 export const maxDuration = 300;
 const GALLERY = 18, LIBRARY = 24;
@@ -52,10 +53,11 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
   if (from !== 'all') list = list.eq('source', from);
   if (show === 'awaiting') list = list.eq('status', 'awaiting_import');
   else if (show === 'todo') list = list.is('verdict', null).not('image_path','is',null).neq('status','awaiting_import').neq('status','generating'); else if (show !== 'all') list = list.eq('verdict', show);
-  const [{ data: items, count }, { count: total }, { count: todo }, { count: good }, { count: bad }, prod, { count: busy }, { count: library }] = await Promise.all([
+  const [{ data: items, count }, { count: total }, { count: todo }, { count: campaignTodo }, { count: good }, { count: bad }, prod, { count: busy }, { count: library }] = await Promise.all([
     (carousel ? list.order('carousel_index', { ascending: true }) : list.order('created_at', { ascending: false })).range(g0, g1),
     db.from('ai_images').select('id', { count: 'exact', head: true }),
     db.from('ai_images').select('id', { count: 'exact', head: true }).is('verdict', null).not('image_path','is',null).neq('status','awaiting_import').neq('status','generating'),
+    db.from('ai_images').select('id', { count: 'exact', head: true }).eq('source','creative').is('verdict', null).not('image_path','is',null).eq('status','ready'),
     db.from('ai_images').select('id', { count: 'exact', head: true }).eq('verdict', 'good'),
     db.from('ai_images').select('id', { count: 'exact', head: true }).eq('verdict', 'bad'),
     // the order form's first page of products; the picker loads the rest as you search
@@ -71,11 +73,18 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
   const paths = (items || []).map(d => d.image_path).filter(Boolean) as string[];
   const ids = (items || []).map(d => d.id as string);
   const admin = supabaseAdmin();
-  const [decisions, logo, logoAssets] = await Promise.all([
+  const [decisions, logo, logoAssets, designQuality, creativeQuality] = await Promise.all([
     ids.length ? admin.from('artwork_provider_decisions').select('source,item_id,request_id,provider,basis').in('item_id',ids) : Promise.resolve({data:[],error:null}),
     creativeAccess || role === 'super_admin' ? admin.from('brand_logo').select('id,path,sha256').eq('id',1).maybeSingle() : Promise.resolve({data:null,error:null}),
     creativeAccess ? admin.from('brand_logo_assets').select('id,name,path,sha256').order('created_at',{ascending:true}).limit(100) : Promise.resolve({data:[],error:null}),
+    (items||[]).some(item=>item.source==='design') ? admin.from('designs').select('id,artwork_handoff').in('id',(items||[]).filter(item=>item.source==='design').map(item=>item.id)) : Promise.resolve({data:[],error:null}),
+    (items||[]).some(item=>item.source==='creative') ? admin.from('creatives').select('id,artwork_handoff').in('id',(items||[]).filter(item=>item.source==='creative').map(item=>item.id)) : Promise.resolve({data:[],error:null}),
   ]);
+  const quality=new Map<string,VisualQc>();
+  for(const item of [...(designQuality.data||[]).map(row=>({...row,source:'design'})),...(creativeQuality.data||[]).map(row=>({...row,source:'creative'}))]) {
+    const qc=item.artwork_handoff?.visualQc as VisualQc|undefined;
+    if(qc?.imagePath&&(items||[]).some(image=>image.source===item.source&&image.id===item.id&&image.image_path===qc.imagePath&&image.artwork_request_id===qc.requestId))quality.set(`${item.source}:${item.id}`,qc);
+  }
   const logoChoices = (logoAssets.data || []).map(item => ({ id: item.id, name: item.name }));
   const activeLogoId = (logoAssets.data || []).find(item => item.path === logo.data?.path && item.sha256 === logo.data?.sha256)?.id || null;
   const providerFor = (d:{source:string;id:string;artwork_request_id?:string|null}) => decisions.data?.find(choice=>choice.source===d.source&&choice.item_id===d.id&&choice.request_id===d.artwork_request_id)?.provider as 'chatgpt'|'higgsfield'|undefined;
@@ -117,6 +126,7 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
         <a href={qs({ show: 'good', tab: null })}><span>Reviewed good</span><strong>{good || 0}</strong></a>
         {creativeAccess ? <a href="/studio?tab=library"><span>Design references</span><strong>{library || 0}</strong></a> : <div><span>In progress</span><strong>{busy || 0}</strong></div>}
       </section>
+      {(campaignTodo||0)>0 && <p className={studioStyles.handoffNotice} role="status"><b>{campaignTodo} campaign image{campaignTodo===1?'':'s'} awaiting review.</b> Campaign planning waits for a Good/Bad decision. <Link href="/studio?show=todo&from=creative">Open the campaign review queue</Link>.</p>}
       {handoff && <p className={studioStyles.handoffNotice}><b>Human review required.</b> Auto routing checks both connected image providers and saves one choice for each artwork revision. ChatGPT plan limits or Higgsfield credits apply to the selected provider.</p>}
 
       <nav className="tabs" aria-label="Design Studio">
@@ -147,7 +157,7 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
           </div>
           {(items || []).length ? <ul className={`gallery ${studioStyles.galleryGrid}`}>{items!.map(d => {
             const f = FORMATS[d.kind as keyof typeof FORMATS], awaitingImport = d.status === 'awaiting_import', generating = d.status === 'generating', generated = d.artwork_origin === 'higgsfield_oauth', importProvider = d.artwork_origin === 'higgsfield_import' ? 'Higgsfield' : ['chatgpt','chatgpt_import'].includes(d.artwork_origin || '') ? 'ChatGPT' : null;
-            const key = `${d.source}:${d.id}`, isOpen = openKey === key, a = ask.get(key), signed = a?.status === 'approved' && a.image_path === d.image_path;
+            const key = `${d.source}:${d.id}`, isOpen = openKey === key, a = ask.get(key), signed = a?.status === 'approved' && a.image_path === d.image_path, qc=quality.get(key);
             const title = d.headline || (d.brief ? `${d.brief.slice(0,100)}${d.brief.length > 100 ? '…' : ''}` : `${f?.label || KIND[d.kind] || 'Studio'} artwork`);
             const routedProvider = providerFor(d);
             const selectedChatGPT = routedProvider ? routedProvider === 'chatgpt' : automaticChatGPT;
@@ -176,6 +186,7 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
                   <details className={studioStyles.briefDetails}><summary>Brief and requirements</summary><p>{d.brief}</p></details>
                   {(d.error || (!importProvider && !generated && !awaitingImport && !generating && d.lead_note)) && <p className={`sm ${d.error ? 'err' : ''}`}>{d.error ? `${d.image_path ? 'The last revision needs attention: ' : ''}${d.error}` : `${d.kind === 'carousel_card' ? d.concept?.includes('Product identity was checked') ? 'Product check' : 'Earlier method' : 'AI lead'}: ${d.lead_note}`}</p>}
                   {routedProvider && <p className="sm">Selected provider: {routedProvider==='chatgpt'?'ChatGPT':'Higgsfield'} · fixed for this revision</p>}
+                  {isOpen && qc && <section className={studioStyles.approval} aria-label="Independent visual check"><h5>Independent visual check: {qc.status==='pass'?'Passed':qc.status==='fail'?'Needs attention':'Unavailable'}</h5><p className="sm">{qc.note}</p>{qc.checks && <p className="sm">Product {qc.checks.productMatch?'✓':'✕'} · Logo {qc.checks.logoMatch?'✓':'✕'} · Text {qc.checks.textAccurate?'✓':'✕'} · Composition {qc.checks.composition?'✓':'✕'} · Format {qc.checks.ratio?'✓':'✕'}</p>}<p className="sm">This check helps the reviewer; the human Good/Bad decision remains required.</p></section>}
                   {(awaitingImport || generating) && <ChatGPTArtwork key={d.artwork_request_id || d.id} source={d.source as 'design' | 'creative'} id={d.id} requestId={d.artwork_request_id} status={d.status} initialProvider={routedProvider || (automaticChatGPT || importProvider === 'ChatGPT' ? 'chatgpt' : 'higgsfield')} {...(selectedChatGPT ? {automaticChatGPT:true} : {})} title={d.headline || d.brief} />}
 
                   <div className={studioStyles.fileActions}><span className="sm">{LANGS[d.language as keyof typeof LANGS] || d.language} · {when(d.created_at)}</span>
@@ -204,7 +215,7 @@ export default async function Studio({ searchParams }: { searchParams: Promise<R
                         <label className="vg"><input type="radio" name="verdict" value="good" defaultChecked={d.verdict === 'good'} required disabled={d.kind === 'carousel_card' && d.status !== 'ready'} /><span>Good</span></label>
                         <label className="vb"><input type="radio" name="verdict" value="bad" defaultChecked={d.verdict === 'bad'} /><span>Bad</span></label>
                       </div>
-                      <textarea name="note" className="in" rows={2} defaultValue={d.review || ''} placeholder="What works or what is wrong (needed for Bad)" aria-label="Review note" />
+                      <textarea name="note" className="in" rows={2} defaultValue={d.review || ''} placeholder={qc?.status==='fail'?'Explain a Good decision despite the flagged issue, or describe what needs correction.':'What works or what is wrong (needed for Bad)'} aria-label="Review note" />
                     </Locked></details>
                   )}
                   {d.kind === 'carousel_card' && !carousel && <a className="btn ghost sm-btn" href={`/studio?carousel=${d.carousel_id}`}>{handoff ? 'Prepare the five-card set' : 'Redesign the five-card set'}</a>}
